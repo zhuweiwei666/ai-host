@@ -438,7 +438,7 @@ const ChatPage: React.FC = () => {
         <div className="absolute inset-0 z-0 pointer-events-none">
             {agent.coverVideoUrl ? (
                 <video 
-                    src={agent.coverVideoUrl} 
+                    src={normalizeImageUrl(agent.coverVideoUrl)} 
                     className="w-full h-full object-cover opacity-30" // Low opacity to not distract
                     autoPlay 
                     loop 
