@@ -4,7 +4,7 @@ import { http } from '../api/http';
 interface STSResponse {
   accessKeyId: string;
   accessKeySecret: string;
-  securityToken: string;
+  securityToken?: string; // Optional: root accounts don't have STS token
   expiration: string;
   bucket: string;
   region: string;
