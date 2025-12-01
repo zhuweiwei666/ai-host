@@ -577,7 +577,12 @@ const EditAgent: React.FC = () => {
                         onClick={() => setFormData(prev => ({ ...prev, avatarUrl: url }))}
                                 className={`cursor-pointer relative rounded-md overflow-hidden border-2 transition-all ${formData.avatarUrl === url ? 'border-indigo-600' : 'border-transparent hover:border-gray-300'}`}
                       >
-                                <img src={url} alt={`Option ${idx + 1}`} className="w-full h-20 object-cover object-[50%_20%]" />
+                                <img 
+                                  src={normalizeImageUrl(url)} 
+                                  alt={`Option ${idx + 1}`} 
+                                  className="w-full h-20 object-cover object-[50%_20%]" 
+                                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80'; }}
+                                />
                       </div>
                     ))}
                   </div>
