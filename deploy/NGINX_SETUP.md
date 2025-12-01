@@ -38,3 +38,26 @@ sudo nginx -s reload
 2. 确保后端服务运行在 `127.0.0.1:4000`
 3. 确保后端路由已配置 `/api` 前缀（如 `/api/agents`, `/api/chat` 等）
 
+## 遇到 500 错误？
+
+### 快速修复
+
+在服务器上运行快速修复脚本：
+
+```bash
+cd /path/to/ai-host/deploy
+chmod +x quick_fix.sh
+sudo ./quick_fix.sh
+```
+
+### 手动排查
+
+详细排查步骤请参考 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+
+### 常见问题
+
+1. **文件不存在**: 确保前端已构建并部署到 `/var/www/ai-host-frontend/dist`
+2. **权限问题**: 运行 `sudo chown -R www-data:www-data /var/www/ai-host-frontend`
+3. **配置错误**: 运行 `sudo nginx -t` 检查配置语法
+4. **查看日志**: `sudo tail -f /var/log/nginx/error.log`
+
