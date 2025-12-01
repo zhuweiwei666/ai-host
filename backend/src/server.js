@@ -13,10 +13,11 @@ process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION! 💥', err);
 });
 
-// 先加载默认 .env
+// Load environment variables
+// 1. Load default .env from root directory
 dotenv.config();
 
-// 再加载服务器专用环境变量（不会被 git 覆盖）
+// 2. Load production local environment variables (overrides .env, not tracked by git)
 dotenv.config({ path: ".env.production.local" });
 
 // Initialize DB connection once
@@ -24,12 +25,12 @@ connectDB();
 
 const app = express();
 
-// CORS Configuration - Allow all origins for development and production
+// CORS Configuration - Compatible with Nginx reverse proxy
 app.use(cors({
-  origin: "*", // Allow all origins
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Mock-User-Id', 'X-Mock-User-Role']
+  origin: "*",
+  methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  allowedHeaders: "Content-Type,Authorization",
+  credentials: true
 }));
 
 app.use(express.json());
@@ -77,6 +78,7 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 API endpoints available at: http://localhost:${PORT}/api`);
-  console.log(`📁 Static uploads at: http://localhost:${PORT}/uploads`);
+  console.log(`🌐 API endpoints available at: /api/*`);
+  console.log(`📁 Static uploads at: /uploads`);
+  console.log(`✅ Ready to accept requests via Nginx reverse proxy`);
 });
