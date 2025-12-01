@@ -59,16 +59,26 @@ export const deleteAgent = (id: string) => http.delete(`/api/agents/${id}`);
 
 export const scrapeAgents = (url?: string) => http.post('/api/agents/scrape', { url });
 
+// OSS direct upload - imports from utils
+import { uploadToOSS, uploadImageToOSS, uploadVideoToOSS } from '../utils/ossUpload';
+
+/**
+ * Upload image file directly to OSS
+ * @returns Object with url property containing the OSS public URL
+ */
 export const uploadImage = async (file: File) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await http.post<{ url: string }>('/api/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return response.data;
+  const url = await uploadToOSS(file);
+  return { url };
 };
 
-export const uploadFile = uploadImage; // Alias for generic file upload
+/**
+ * Upload file directly to OSS (generic, supports any file type)
+ * @returns Object with url property containing the OSS public URL
+ */
+export const uploadFile = async (file: File) => {
+  const url = await uploadToOSS(file);
+  return { url };
+};
 
 export const generateImage = (
   description: string, 

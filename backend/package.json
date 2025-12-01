@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "ali-oss": "^6.23.0",
     "axios": "^1.6.0",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",

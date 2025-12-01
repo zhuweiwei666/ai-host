@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 try {
   app.use('/api/agents', require('./routes/agents'));
   app.use('/api/chat', require('./routes/chat'));
-  app.use('/api/upload', require('./routes/upload'));
+  app.use('/api/oss', require('./routes/oss'));
   app.use('/api/voice-models', require('./routes/voiceModels'));
   app.use('/api/generate-image', require('./routes/imageGen'));
   app.use('/api/generate-video', require('./routes/videoGen'));
@@ -77,7 +77,8 @@ try {
   console.error('Error loading routes:', err);
 }
 
-// Static uploads
+// Static uploads (legacy - kept for backward compatibility with old files)
+// New uploads go directly to OSS, not through this endpoint
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // 404 Handler
@@ -100,7 +101,7 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/upload, /api/voice-models, /api/generate-image, /api/generate-video, /api/users, /api/wallet, /api/stats`);
+  console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/oss, /api/voice-models, /api/generate-image, /api/generate-video, /api/users, /api/wallet, /api/stats`);
   console.log(`📁 Static uploads at: /uploads`);
   console.log(`✅ Ready to accept requests at /api/* endpoints`);
 });
