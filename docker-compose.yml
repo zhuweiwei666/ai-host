@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: ai-host-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file: ./backend/.env
+
+  frontend:
+    build: ./frontend
+    container_name: ai-host-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  aiwallet:
+    build: ./ai-wallet-backend
+    container_name: ai-wallet
+    restart: always
+    ports:
+      - "9000:9000"
+    env_file: ./ai-wallet-backend/.env
+

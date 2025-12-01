@@ -1,0 +1,24 @@
+{
+  "name": "ai-wallet-backend",
+  "version": "1.0.0",
+  "description": "Dedicated wallet service for AI-related currency operations (AI coins, ad rewards, etc.)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "NODE_ENV=production node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.0.0",
+    "mongoose": "^8.5.2",
+    "morgan": "^1.10.0",
+    "puppeteer": "^24.31.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
