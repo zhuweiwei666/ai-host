@@ -13,7 +13,11 @@ process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION! 💥', err);
 });
 
+// 先加载默认 .env
 dotenv.config();
+
+// 再加载服务器专用环境变量（不会被 git 覆盖）
+dotenv.config({ path: ".env.production.local" });
 
 // Initialize DB connection once
 connectDB();
