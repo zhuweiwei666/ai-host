@@ -483,9 +483,10 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     });
 
     // Return current balance and intimacy so frontend can update
-    const newBalance = await walletService.getBalance(userId);
+    // Get final balance (may have changed due to image generation)
+    const finalBalance = await walletService.getBalance(userId);
     const finalIntimacy = await relationshipService.getIntimacy(userId, agentId); 
-    res.json({ reply, audioUrl: null, imageUrl, balance: newBalance, intimacy: finalIntimacy });
+    res.json({ reply, audioUrl: null, imageUrl, balance: finalBalance, intimacy: finalIntimacy });
 
   } catch (err) {
     console.error('CHAT ROUTE ERROR:', err);
