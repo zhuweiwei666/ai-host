@@ -16,9 +16,10 @@ const requireAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // For development: allow mock token or skip auth
-      // In production, this should return 401
-      if (process.env.NODE_ENV === 'development' && req.headers['x-mock-user-id']) {
+      // Allow mock header in development or if ENABLE_MOCK_AUTH is set
+      const allowMockAuth = process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_AUTH === 'true';
+      
+      if (allowMockAuth && req.headers['x-mock-user-id']) {
         req.user = {
           id: req.headers['x-mock-user-id'],
           role: req.headers['x-mock-user-role'] || 'user'
@@ -85,11 +86,15 @@ const optionalAuth = (req, res, next) => {
         id: decoded.userId || decoded.id,
         role: decoded.role || 'user'
       };
-    } else if (process.env.NODE_ENV === 'development' && req.headers['x-mock-user-id']) {
-      req.user = {
-        id: req.headers['x-mock-user-id'],
-        role: req.headers['x-mock-user-role'] || 'user'
-      };
+    } else {
+      // Allow mock header in development or if ENABLE_MOCK_AUTH is set
+      const allowMockAuth = process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_AUTH === 'true';
+      if (allowMockAuth && req.headers['x-mock-user-id']) {
+        req.user = {
+          id: req.headers['x-mock-user-id'],
+          role: req.headers['x-mock-user-role'] || 'user'
+        };
+      }
     }
     
     next();
