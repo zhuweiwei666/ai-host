@@ -6,6 +6,10 @@ const relationshipService = require('../services/relationshipService');
 const Agent = require('../models/Agent');
 const UsageLog = require('../models/UsageLog');
 const costCalculator = require('../utils/costCalculator');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
 
 // POST /api/generate-video
 router.post('/', async (req, res) => {
@@ -15,8 +19,14 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'Prompt or Image URL required' });
   }
 
-  // Mock User ID if not provided (for testing)
-  const safeUserId = userId || 'test_user_001'; 
+  // Get userId from authenticated user or request body
+  let safeUserId = userId;
+  if (!safeUserId) {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+    }
+    safeUserId = req.user.id;
+  } 
 
   try {
     // 1. Check & Deduct Balance

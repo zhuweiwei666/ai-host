@@ -2,9 +2,14 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const walletService = require('../services/walletService');
+const { requireAuth } = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/admin');
 
-// GET /api/users - List all users
-router.get('/', async (req, res) => {
+// Apply authentication middleware to all routes
+router.use(requireAuth);
+
+// GET /api/users - List all users (Admin only)
+router.get('/', requireAdmin, async (req, res) => {
   try {
     const users = await User.find().sort({ createdAt: -1 });
     // Enhance with balance info
@@ -18,8 +23,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/users - Create a new user
-router.post('/', async (req, res) => {
+// POST /api/users - Create a new user (Admin only)
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const { username, email, role } = req.body;
     const user = await User.create({ username, email, role });
@@ -31,23 +36,50 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /api/users/:id/recharge - Recharge user wallet
+// POST /api/users/:id/recharge - Recharge user wallet (Admin only, or self-recharge)
 router.post('/:id/recharge', async (req, res) => {
   try {
     const { amount } = req.body;
-    const userId = req.params.id;
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
     
-    if (!amount || amount <= 0) return res.status(400).json({ message: 'Invalid amount' });
+    // Permission check: Only admin can recharge others, users can only recharge themselves
+    if (!isAdmin && targetUserId !== currentUserId) {
+      return res.status(403).json({ 
+        message: 'You can only recharge your own wallet',
+        code: 'FORBIDDEN'
+      });
+    }
+    
+    // Amount validation
+    const amountNum = Number(amount);
+    if (!amount || isNaN(amountNum) || amountNum <= 0) {
+      return res.status(400).json({ 
+        message: 'Amount must be a positive number',
+        code: 'INVALID_AMOUNT'
+      });
+    }
+    
+    // Maximum amount limit (prevent abuse)
+    const MAX_RECHARGE_AMOUNT = 1000000;
+    if (amountNum > MAX_RECHARGE_AMOUNT) {
+      return res.status(400).json({ 
+        message: `Amount cannot exceed ${MAX_RECHARGE_AMOUNT}`,
+        code: 'AMOUNT_TOO_LARGE'
+      });
+    }
 
-    const newBalance = await walletService.reward(userId, Number(amount), 'admin_recharge');
+    const newBalance = await walletService.reward(targetUserId, amountNum, 'admin_recharge');
     res.json({ success: true, balance: newBalance });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Recharge error:', err);
+    res.status(500).json({ message: err.message || 'Failed to recharge wallet' });
   }
 });
 
-// POST /api/users/init-admin - Helper to ensure admin user exists
-router.post('/init-admin', async (req, res) => {
+// POST /api/users/init-admin - Helper to ensure admin user exists (Admin only)
+router.post('/init-admin', requireAdmin, async (req, res) => {
   try {
     let admin = await User.findOne({ username: 'admin' });
     if (!admin) {

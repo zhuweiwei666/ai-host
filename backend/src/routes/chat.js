@@ -9,6 +9,10 @@ const fishAudioService = require('../services/fishAudioService');
 const imageGenerationService = require('../services/imageGenerationService');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
 
 // Core protocol prompts - simplified to reduce chance of model error
 const STAGE_1_PROMPT = `
@@ -79,8 +83,12 @@ const cleanTextForTTS = (text) => {
 // GET /api/chat/history/:agentId
 router.get('/history/:agentId', async (req, res) => {
   const { agentId } = req.params;
-  // Mock User ID
-  const userId = "test_user_001";
+  
+  // Get userId from authenticated user
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+  }
+  const userId = req.user.id;
   
   if (!agentId) return res.status(400).json({ message: 'agentId is required' });
 
@@ -111,8 +119,12 @@ router.get('/history/:agentId', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { agentId, prompt, history, skipImageGen } = req.body;
-  // Mock user ID for now (In real app, get from auth token)
-  const userId = "test_user_001"; 
+  
+  // Get userId from authenticated user
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+  }
+  const userId = req.user.id; 
 
   if (!agentId || !prompt) {
     return res.status(400).json({ message: 'agentId and prompt are required' });
@@ -208,25 +220,44 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
     console.log('--- Sending Request to LLM ---');
     
-    // Get reply
-    const response = await provider.chat(agent.modelName, messages, agent.temperature);
+    // Step 1: Execute LLM call first (before deducting coins)
     let reply = '';
     let usage = { prompt_tokens: 0, completion_tokens: 0 };
+    let llmCallSuccess = false;
+    
+    try {
+        const response = await provider.chat(agent.modelName, messages, agent.temperature);
 
-    if (typeof response === 'object' && response.content) {
-        reply = response.content;
-        usage = response.usage || usage;
-    } else {
-        reply = typeof response === 'string' ? response : JSON.stringify(response);
+        if (typeof response === 'object' && response.content) {
+            reply = response.content;
+            usage = response.usage || usage;
+        } else {
+            reply = typeof response === 'string' ? response : JSON.stringify(response);
+        }
+
+        console.log('--- Raw LLM Reply:', reply);
+        console.log('--- Token Usage:', usage);
+        
+        llmCallSuccess = true;
+    } catch (llmError) {
+        console.error('LLM call failed:', llmError);
+        throw new Error(`LLM call failed: ${llmError.message}`);
     }
 
-    console.log('--- Raw LLM Reply:', reply);
-    console.log('--- Token Usage:', usage);
+    // Step 2: Only deduct coins after successful LLM call
+    let newBalance = null;
+    try {
+        newBalance = await walletService.consume(userId, 1, 'ai_message', agentId);
+        console.log(`[Chat] Deducted 1 coin for message. New balance: ${newBalance}`);
+    } catch (deductError) {
+        // If deduction fails after successful LLM call, log error but don't fail the request
+        // (user already got the response)
+        console.error('[Chat] Failed to deduct coins after LLM call:', deductError);
+        // Continue execution but note the error
+    }
 
-    // 2. Deduct 1 Coin for Chat Message
-    await walletService.consume(userId, 1, 'ai_message', agentId);
-
-    // LOG LLM COST
+    // Step 3: Log LLM cost (use try/finally to ensure logging)
+    let logError = null;
     try {
         const inputTokens = usage.prompt_tokens || 0;
         const outputTokens = usage.completion_tokens || 0;
@@ -243,7 +274,14 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
             cost: llmCost
         });
     } catch (logErr) {
+        logError = logErr;
         console.error('Failed to log LLM usage:', logErr);
+        // Don't throw - logging failure shouldn't break the request
+    } finally {
+        // Ensure we always log the attempt (even if it failed)
+        if (logError) {
+            console.warn('[Chat] LLM usage logging failed but request completed');
+        }
     }
 
     // Image Generation Logic
@@ -460,8 +498,12 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
 router.post('/tts', async (req, res) => {
   const { agentId, text } = req.body;
-  // Mock user ID
-  const userId = "test_user_001"; 
+  
+  // Get userId from authenticated user
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+  }
+  const userId = req.user.id; 
 
   if (!agentId || !text) return res.status(400).json({ message: 'Missing args' });
 

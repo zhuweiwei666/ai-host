@@ -3,6 +3,11 @@ const router = express.Router();
 const Agent = require('../models/Agent');
 const { spawn } = require('child_process');
 const path = require('path');
+const { requireAuth } = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/admin');
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
 
 // GET /api/agents
 router.get('/', async (req, res) => {
@@ -33,8 +38,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/agents
-router.post('/', async (req, res) => {
+// POST /api/agents - Create agent (Admin only)
+router.post('/', requireAdmin, async (req, res) => {
   const agent = new Agent(req.body);
   try {
     const newAgent = await agent.save();
@@ -44,8 +49,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/agents/:id
-router.put('/:id', async (req, res) => {
+// PUT /api/agents/:id - Update agent (Admin only)
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const agent = await Agent.findById(req.params.id);
     if (!agent) return res.status(404).json({ message: 'Agent not found' });
@@ -75,8 +80,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/agents/:id
-router.delete('/:id', async (req, res) => {
+// DELETE /api/agents/:id - Delete agent (Admin only)
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const agent = await Agent.findById(req.params.id);
     if (!agent) return res.status(404).json({ message: 'Agent not found' });
@@ -88,8 +93,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// POST /api/agents/scrape
-router.post('/scrape', async (req, res) => {
+// POST /api/agents/scrape - Scrape agents (Admin only)
+router.post('/scrape', requireAdmin, async (req, res) => {
   try {
     const scriptPath = path.join(__dirname, '../services/candyScraper.js');
     console.log('Spawning scraper:', scriptPath);

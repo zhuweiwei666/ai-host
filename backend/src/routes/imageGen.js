@@ -6,6 +6,10 @@ const relationshipService = require('../services/relationshipService');
 const Agent = require('../models/Agent');
 const UsageLog = require('../models/UsageLog');
 const costCalculator = require('../utils/costCalculator');
+const { requireAuth } = require('../middleware/auth');
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
 
 // Debug middleware
 router.use((req, res, next) => {
@@ -21,8 +25,14 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'Description is required' });
   }
 
-  // Mock User ID if not provided
-  const safeUserId = userId || 'test_user_001';
+  // Get userId from authenticated user or request body
+  let safeUserId = userId;
+  if (!safeUserId) {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+    }
+    safeUserId = req.user.id;
+  }
 
   try {
     let agent = null;

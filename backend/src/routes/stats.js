@@ -5,9 +5,14 @@ const Message = require('../models/Message');
 const WalletTransaction = require('../models/WalletTransaction');
 const UsageLog = require('../models/UsageLog'); // Import UsageLog
 const mongoose = require('mongoose');
+const { requireAuth } = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/admin');
 
-// GET /api/stats/agents
-router.get('/agents', async (req, res) => {
+// Apply authentication middleware to all routes
+router.use(requireAuth);
+
+// GET /api/stats/agents - Get agent statistics (Admin only)
+router.get('/agents', requireAdmin, async (req, res) => {
   try {
     // 1. Get all agents to ensure we list even those with no activity
     const agents = await Agent.find({}, 'name modelName avatarUrl');
