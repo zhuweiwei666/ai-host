@@ -167,8 +167,7 @@ const ChatPage: React.FC = () => {
 
   const fetchBalance = async () => {
     try {
-      // Direct call since not in api/index yet, will update api index next
-      const res = await http.get(`/wallet/balance?userId=${userId}`);
+      const res = await http.get(`/api/wallet/balance?userId=${userId}`);
       setBalance(res.data.balance);
     } catch (err) {
       console.error('Failed to fetch balance', err);
@@ -177,7 +176,7 @@ const ChatPage: React.FC = () => {
 
   const handleWatchAd = async () => {
     try {
-      const res = await http.post('/wallet/reward/ad', { 
+      const res = await http.post('/api/wallet/reward/ad', { 
         userId, 
         traceId: `ad_${Date.now()}`, // Mock trace ID
         reward: 50 
