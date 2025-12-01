@@ -1,12 +1,17 @@
 const express = require('express');
 const { STS } = require('ali-oss');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/oss/sts - Get temporary STS credentials for direct OSS upload
-router.get('/sts', requireAuth, async (req, res) => {
+// Use optionalAuth to allow mock user ID in development
+router.get('/sts', optionalAuth, async (req, res) => {
   try {
+    // Log authentication status for debugging
+    const userId = req.user?.id || 'anonymous';
+    console.log(`[OSS STS] Request from user: ${userId}`);
+    
     // Validate required environment variables
     if (!process.env.OSS_ACCESS_KEY_ID || !process.env.OSS_ACCESS_KEY_SECRET) {
       return res.status(500).json({ 
