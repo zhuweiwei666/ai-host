@@ -63,19 +63,25 @@ app.use((req, res, next) => {
 
 // Routes - All APIs under /api prefix
 // Frontend: /api/agents → Backend: /api/agents
-try {
-  app.use('/api/agents', require('./routes/agents'));
-  app.use('/api/chat', require('./routes/chat'));
-  app.use('/api/oss', require('./routes/oss'));
-  app.use('/api/voice-models', require('./routes/voiceModels'));
-  app.use('/api/generate-image', require('./routes/imageGen'));
-  app.use('/api/generate-video', require('./routes/videoGen'));
-  app.use('/api/users', require('./routes/users'));
-  app.use('/api/wallet', require('./routes/wallet'));
-  app.use('/api/stats', require('./routes/stats'));
-} catch (err) {
-  console.error('Error loading routes:', err);
-}
+// Load each route separately to avoid one failure affecting others
+const loadRoute = (path, routeName) => {
+  try {
+    app.use(path, require(routeName));
+    console.log(`✓ Route loaded: ${path}`);
+  } catch (err) {
+    console.error(`✗ Failed to load route ${path}:`, err.message);
+  }
+};
+
+loadRoute('/api/agents', './routes/agents');
+loadRoute('/api/chat', './routes/chat');
+loadRoute('/api/oss', './routes/oss');
+loadRoute('/api/voice-models', './routes/voiceModels');
+loadRoute('/api/generate-image', './routes/imageGen');
+loadRoute('/api/generate-video', './routes/videoGen');
+loadRoute('/api/users', './routes/users');
+loadRoute('/api/wallet', './routes/wallet');
+loadRoute('/api/stats', './routes/stats');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint
