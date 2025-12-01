@@ -20,7 +20,7 @@ interface STSResponse {
 export async function uploadToOSS(file: File): Promise<string> {
   try {
     // 1. Get temporary STS credentials from backend
-    const stsResponse = await http.get<STSResponse>('/api/oss/sts');
+    const stsResponse = await http.get<STSResponse>('/oss/sts');
     const sts = stsResponse.data;
 
     // 2. Initialize OSS client with STS credentials

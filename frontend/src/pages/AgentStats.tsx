@@ -84,7 +84,7 @@ const AgentStats: React.FC = () => {
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
       
-      const res = await http.get(`/api/stats/agents?${params.toString()}`);
+      const res = await http.get(`/stats/agents?${params.toString()}`);
       setStats(res.data);
     } catch (error) {
       console.error('Failed to fetch stats', error);

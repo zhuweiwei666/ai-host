@@ -51,13 +51,13 @@ export interface User {
   createdAt: string;
 }
 
-export const getAgents = (params?: { status?: string; style?: string }) => http.get<Agent[]>('/api/agents', { params });
-export const getAgent = (id: string) => http.get<Agent>(`/api/agents/${id}`);
-export const createAgent = (data: Agent & { updateGlobalCore?: boolean }) => http.post<Agent>('/api/agents', data);
-export const updateAgent = (id: string, data: Agent & { updateGlobalCore?: boolean }) => http.put<Agent>(`/api/agents/${id}`, data);
-export const deleteAgent = (id: string) => http.delete(`/api/agents/${id}`);
+export const getAgents = (params?: { status?: string; style?: string }) => http.get<Agent[]>('/agents', { params });
+export const getAgent = (id: string) => http.get<Agent>(`/agents/${id}`);
+export const createAgent = (data: Agent & { updateGlobalCore?: boolean }) => http.post<Agent>('/agents', data);
+export const updateAgent = (id: string, data: Agent & { updateGlobalCore?: boolean }) => http.put<Agent>(`/agents/${id}`, data);
+export const deleteAgent = (id: string) => http.delete(`/agents/${id}`);
 
-export const scrapeAgents = (url?: string) => http.post('/api/agents/scrape', { url });
+export const scrapeAgents = (url?: string) => http.post('/agents/scrape', { url });
 
 // OSS direct upload - imports from utils
 import { uploadToOSS } from '../utils/ossUpload';
@@ -94,46 +94,46 @@ export const generateImage = (
     skipBalanceCheck?: boolean;
     useImg2Img?: boolean;
   }
-) => http.post<{ url: string; remoteUrl?: string; urls?: string[]; balance?: number; intimacy?: number }>('/api/generate-image', { description, ...options });
+) => http.post<{ url: string; remoteUrl?: string; urls?: string[]; balance?: number; intimacy?: number }>('/generate-image', { description, ...options });
 
 // Deprecated alias if needed, or just replace usages
 export const generateAvatarImage = generateImage;
 
 export const chatWithAgent = (agentId: string, prompt: string, history: { role: string; content: string }[] = [], skipImageGen?: boolean) => {
-  return http.post<{ reply: string; audioUrl?: string; ttsError?: string; balance?: number; imageUrl?: string; intimacy?: number }>('/api/chat', { agentId, prompt, history, skipImageGen });
+  return http.post<{ reply: string; audioUrl?: string; ttsError?: string; balance?: number; imageUrl?: string; intimacy?: number }>('/chat', { agentId, prompt, history, skipImageGen });
 };
 
-export const getChatHistory = (agentId: string) => http.get<{ history: { role: string; content: string; audioUrl?: string }[]; intimacy?: number }>(`/api/chat/history/${agentId}`);
+export const getChatHistory = (agentId: string) => http.get<{ history: { role: string; content: string; audioUrl?: string }[]; intimacy?: number }>(`/chat/history/${agentId}`);
 
-export const generateTTS = (agentId: string, text: string) => http.post<{ audioUrl: string; balance?: number }>('/api/chat/tts', { agentId, text });
+export const generateTTS = (agentId: string, text: string) => http.post<{ audioUrl: string; balance?: number }>('/chat/tts', { agentId, text });
 
-export const generateVideo = (agentId: string, prompt: string, imageUrl?: string, fastMode?: boolean) => http.post<{ url: string; balance?: number; intimacy?: number }>('/api/generate-video', { agentId, prompt, imageUrl, fastMode });
+export const generateVideo = (agentId: string, prompt: string, imageUrl?: string, fastMode?: boolean) => http.post<{ url: string; balance?: number; intimacy?: number }>('/generate-video', { agentId, prompt, imageUrl, fastMode });
 
-export const syncVoiceModels = () => http.post<{ totalFetched: number; upserted: number; modified: number; truncated?: boolean; limit?: number; remoteTotal?: number }>('/api/voice-models/sync');
+export const syncVoiceModels = () => http.post<{ totalFetched: number; upserted: number; modified: number; truncated?: boolean; limit?: number; remoteTotal?: number }>('/voice-models/sync');
 
 export const getVoiceModels = (params?: { favoriteOnly?: boolean }) =>
-  http.get<VoiceModel[]>('/api/voice-models', {
+  http.get<VoiceModel[]>('/voice-models', {
     params: params?.favoriteOnly ? { favoriteOnly: true } : undefined,
   });
 
 export const updateVoiceModelFavorite = (id: string, isFavorite: boolean) =>
-  http.patch<VoiceModel>(`/api/voice-models/${id}/favorite`, { isFavorite });
+  http.patch<VoiceModel>(`/voice-models/${id}/favorite`, { isFavorite });
 
 export const updateVoiceModel = (id: string, data: Partial<VoiceModel>) =>
-  http.patch<VoiceModel>(`/api/voice-models/${id}`, data);
+  http.patch<VoiceModel>(`/voice-models/${id}`, data);
 
-export const deleteVoiceModel = (id: string) => http.delete(`/api/voice-models/${id}`);
-export const batchDeleteVoiceModels = (ids: string[]) => http.delete('/api/voice-models/batch', { data: { ids } });
+export const deleteVoiceModel = (id: string) => http.delete(`/voice-models/${id}`);
+export const batchDeleteVoiceModels = (ids: string[]) => http.delete('/voice-models/batch', { data: { ids } });
 
-export const getVoicePreview = (id: string) => http.post<{ url: string; cached: boolean }>(`/api/voice-models/${id}/preview`);
+export const getVoicePreview = (id: string) => http.post<{ url: string; cached: boolean }>(`/voice-models/${id}/preview`);
 
-export const extractVoiceId = (sourceUrl: string) => http.post<VoiceExtractResult>('/api/voice-models/extract', { sourceUrl });
+export const extractVoiceId = (sourceUrl: string) => http.post<VoiceExtractResult>('/voice-models/extract', { sourceUrl });
 
-export const createVoiceModelManual = (data: Partial<VoiceModel>) => http.post<VoiceModel>('/api/voice-models/create', data);
-export const createVoiceTemplate = (sourceUrl: string) => http.post('/api/voice-models', { sourceUrl });
+export const createVoiceModelManual = (data: Partial<VoiceModel>) => http.post<VoiceModel>('/voice-models/create', data);
+export const createVoiceTemplate = (sourceUrl: string) => http.post('/voice-models', { sourceUrl });
 
 // User API
-export const getUsers = () => http.get<User[]>('/api/users');
-export const createUser = (data: Partial<User>) => http.post<User>('/api/users', data);
-export const rechargeUser = (userId: string, amount: number) => http.post<{ success: true; balance: number }>(`/api/users/${userId}/recharge`, { amount });
-export const initAdminUser = () => http.post<User>('/api/users/init-admin');
+export const getUsers = () => http.get<User[]>('/users');
+export const createUser = (data: Partial<User>) => http.post<User>('/users', data);
+export const rechargeUser = (userId: string, amount: number) => http.post<{ success: true; balance: number }>(`/users/${userId}/recharge`, { amount });
+export const initAdminUser = () => http.post<User>('/users/init-admin');
