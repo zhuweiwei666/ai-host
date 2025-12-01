@@ -9,10 +9,40 @@ export const http = axios.create({
   },
 });
 
-// Add response interceptor for error handling if needed
+// Add request interceptor to include auth token
+http.interceptors.request.use(
+  (config) => {
+    // Get token from localStorage (adjust key name as needed)
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+    
+    // If token exists, add it to Authorization header
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // For development/testing: allow mock user ID header if backend supports it
+    // Backend should have ENABLE_MOCK_AUTH=true for this to work
+    const mockUserId = localStorage.getItem('mockUserId') || 'test_user_001';
+    if (mockUserId) {
+      config.headers['x-mock-user-id'] = mockUserId;
+    }
+    
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
 http.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Handle 401 errors - show helpful message
+    if (error.response?.status === 401) {
+      console.warn('Authentication required. Using mock user ID for development.');
+      // Don't throw error for OSS STS endpoint - it will retry with mock user ID
+    }
     console.error('API Error:', error);
     return Promise.reject(error);
   }

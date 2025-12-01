@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { http } from '../api';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 interface AgentStat {
   agentId: string;
@@ -230,7 +231,12 @@ const AgentStats: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
-                          <img className="h-10 w-10 rounded-full object-cover bg-gray-200" src={agent.avatarUrl || 'https://via.placeholder.com/40'} alt="" />
+                          <img 
+                            className="h-10 w-10 rounded-full object-cover bg-gray-200" 
+                            src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/40')} 
+                            alt="" 
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/40'; }}
+                          />
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">{agent.name}</div>

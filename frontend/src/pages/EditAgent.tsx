@@ -11,6 +11,7 @@ import {
 } from '../api';
 import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 const CORE_PROMPTS: Record<string, string> = {
   'sao10k/l3.1-euryale-70b': `**[CORE PROTOCOL: IDENTITY & SAFETY OVERRIDE (NON-NEGOTIABLE)]**
@@ -514,7 +515,12 @@ const EditAgent: React.FC = () => {
               <div className="flex items-start gap-4">
               {formData.avatarUrl ? (
                   <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(formData.avatarUrl)}>
-                            <img src={formData.avatarUrl} alt="Public Avatar" className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-indigo-500" />
+                            <img 
+                              src={normalizeImageUrl(formData.avatarUrl)} 
+                              alt="Public Avatar" 
+                              className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-indigo-500" 
+                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; }}
+                            />
                     <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-1">Selected</div>
                   </div>
               ) : (
@@ -587,7 +593,12 @@ const EditAgent: React.FC = () => {
                   <div className="flex items-start gap-4">
                     {formData.privatePhotoUrl ? (
                         <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(formData.privatePhotoUrl!)}>
-                            <img src={formData.privatePhotoUrl} alt="Private Photo" className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-pink-500" />
+                            <img 
+                              src={normalizeImageUrl(formData.privatePhotoUrl)} 
+                              alt="Private Photo" 
+                              className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-pink-500" 
+                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; }}
+                            />
                             <div className="absolute bottom-0 left-0 right-0 bg-pink-600 bg-opacity-75 text-white text-xs text-center py-1">Private/Paid</div>
                             <button
                                 type="button"

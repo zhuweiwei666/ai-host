@@ -1,6 +1,7 @@
 import React from 'react';
 import { Agent, deleteAgent } from '../api';
 import { useNavigate } from 'react-router-dom';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 interface AgentCardProps {
   agent: Agent;
@@ -33,9 +34,13 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus }
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4 overflow-hidden">
           <img 
-            src={agent.avatarUrl || 'https://via.placeholder.com/64'} 
+            src={normalizeImageUrl(agent.avatarUrl)} 
             alt={agent.name} 
             className="w-16 h-16 rounded-full object-cover object-[50%_20%] bg-gray-100 flex-shrink-0 border border-gray-200"
+            onError={(e) => {
+              // Fallback to placeholder if image fails to load
+              (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64';
+            }}
           />
           <div className="min-w-0">
             <h3 className="text-lg font-bold text-gray-900 truncate">{agent.name}</h3>

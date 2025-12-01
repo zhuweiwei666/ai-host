@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Agent, getAgent, chatWithAgent, getChatHistory, generateTTS, generateVideo, generateImage, http } from '../api'; // Import generateImage
+import { normalizeImageUrl } from '../utils/imageUrl';
  
 
 interface ChatMessage {
@@ -387,9 +388,10 @@ const ChatPage: React.FC = () => {
           </button>
           
           <img 
-            src={agent.avatarUrl || 'https://via.placeholder.com/64'} 
+            src={normalizeImageUrl(agent.avatarUrl)} 
             alt={agent.name} 
             className="w-10 h-10 rounded-full object-cover object-[50%_20%] bg-gray-200"
+            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64'; }}
           />
           <div>
             <h1 className="text-lg font-bold text-gray-900">{agent.name}</h1>
@@ -445,9 +447,10 @@ const ChatPage: React.FC = () => {
                 />
             ) : (
                 <img 
-                    src={agent.avatarUrl || 'https://via.placeholder.com/400x600'} 
+                    src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')} 
                     alt={agent.name}
                     className="w-full h-full object-cover object-[50%_20%] opacity-30" 
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600'; }}
                 />
             )}
             {/* Overlay to ensure text readability */}
@@ -474,9 +477,10 @@ const ChatPage: React.FC = () => {
             <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
                 <img 
-                  src={agent.avatarUrl || 'https://via.placeholder.com/40'} 
+                  src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/40')} 
                   alt={agent.name} 
                         className="w-8 h-8 rounded-full object-cover object-[50%_20%] flex-shrink-0 mt-1"
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/40'; }}
                 />
               )}
               
@@ -502,7 +506,7 @@ const ChatPage: React.FC = () => {
                             {msg.imageUrl.endsWith('.mp4') ? (
                                 <div className="relative group cursor-pointer" onClick={() => setModalVideo(msg.imageUrl!)}>
                                     <video 
-                                        src={msg.imageUrl} 
+                                        src={normalizeImageUrl(msg.imageUrl)} 
                                         className="rounded-lg shadow-sm max-w-full w-64 object-cover border border-gray-200"
                                         muted
                                         loop
@@ -520,10 +524,11 @@ const ChatPage: React.FC = () => {
                                 </div>
                             ) : (
                     <img 
-                      src={msg.imageUrl} 
+                      src={normalizeImageUrl(msg.imageUrl)} 
                       alt="Sent by AI" 
                       className="rounded-lg shadow-sm max-w-full w-64 object-cover cursor-zoom-in border border-gray-200"
-                      onClick={() => setModalImage(msg.imageUrl!)}
+                      onClick={() => setModalImage(normalizeImageUrl(msg.imageUrl))}
+                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/256'; }}
                     />
                             )}
                   </div>
