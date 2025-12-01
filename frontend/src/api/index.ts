@@ -60,7 +60,7 @@ export const deleteAgent = (id: string) => http.delete(`/api/agents/${id}`);
 export const scrapeAgents = (url?: string) => http.post('/api/agents/scrape', { url });
 
 // OSS direct upload - imports from utils
-import { uploadToOSS, uploadImageToOSS, uploadVideoToOSS } from '../utils/ossUpload';
+import { uploadToOSS } from '../utils/ossUpload';
 
 /**
  * Upload image file directly to OSS
