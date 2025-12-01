@@ -1,3 +1,3 @@
-// Base URL is empty string - Nginx will automatically add /api prefix
-export const BASE_URL = '';
+// Base URL for API requests - Nginx will proxy /api/* to backend
+export const BASE_URL = '/api';
 

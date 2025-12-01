@@ -25,9 +25,23 @@ const Agents: React.FC = () => {
   const fetchAgents = async () => {
     try {
       const res = await getAgents({ style: currentStyle === 'all' ? undefined : currentStyle });
-      setAgents(res.data);
+      const raw: any = res.data;
+      
+      let list: Agent[] = [];
+      
+      if (Array.isArray(raw)) {
+        list = raw;
+      } else if (raw && typeof raw === 'object' && Array.isArray(raw.data)) {
+        list = raw.data;
+      } else {
+        console.error('Unexpected /api/agents response:', raw);
+      }
+      
+      setAgents(list);
     } catch (error) {
-      console.error(error);
+      console.error('Failed to fetch agents:', error);
+      // On error, set to empty array to avoid white screen
+      setAgents([]);
     }
   };
 
