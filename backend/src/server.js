@@ -55,24 +55,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// API logging middleware (after Nginx strips /api prefix)
+// API logging middleware
 app.use((req, res, next) => {
   console.log('[API]', req.method, req.url);
   next();
 });
 
-// Routes - No /api prefix (Nginx handles /api prefix and forwards to backend)
-// Frontend: /api/agents → Nginx: /agents → Backend: /agents
+// Routes - All APIs under /api prefix
+// Frontend: /api/agents → Backend: /api/agents
 try {
-  app.use('/agents', require('./routes/agents'));
-  app.use('/chat', require('./routes/chat'));
-  app.use('/upload', require('./routes/upload'));
-  app.use('/voice-models', require('./routes/voiceModels'));
-  app.use('/generate-image', require('./routes/imageGen'));
-  app.use('/generate-video', require('./routes/videoGen'));
-  app.use('/users', require('./routes/users'));
-  app.use('/wallet', require('./routes/wallet'));
-  app.use('/stats', require('./routes/stats'));
+  app.use('/api/agents', require('./routes/agents'));
+  app.use('/api/chat', require('./routes/chat'));
+  app.use('/api/upload', require('./routes/upload'));
+  app.use('/api/voice-models', require('./routes/voiceModels'));
+  app.use('/api/generate-image', require('./routes/imageGen'));
+  app.use('/api/generate-video', require('./routes/videoGen'));
+  app.use('/api/users', require('./routes/users'));
+  app.use('/api/wallet', require('./routes/wallet'));
+  app.use('/api/stats', require('./routes/stats'));
 } catch (err) {
   console.error('Error loading routes:', err);
 }
@@ -100,7 +100,7 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 API routes (backend): /agents, /chat, /upload, /voice-models, /generate-image, /generate-video, /users, /wallet, /stats`);
+  console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/upload, /api/voice-models, /api/generate-image, /api/generate-video, /api/users, /api/wallet, /api/stats`);
   console.log(`📁 Static uploads at: /uploads`);
-  console.log(`✅ Ready to accept requests via Nginx reverse proxy (Nginx handles /api prefix)`);
+  console.log(`✅ Ready to accept requests at /api/* endpoints`);
 });
