@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 class FishAudioService {
@@ -41,7 +41,7 @@ class FishAudioService {
       );
 
       // 保存音频文件
-      const fileName = `tts-${uuidv4()}.mp3`;
+      const fileName = `tts-${crypto.randomUUID()}.mp3`;
       const uploadDir = path.join(__dirname, '../../uploads');
       
       if (!fs.existsSync(uploadDir)) {
