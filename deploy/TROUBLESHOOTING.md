@@ -6,20 +6,20 @@
 
 ```bash
 # 检查前端构建文件是否存在
-ls -la /var/www/ai-host-frontend/dist/
+ls -la /var/www/ai-host/frontend/dist/
 
 # 检查 index.html 是否存在
-ls -la /var/www/ai-host-frontend/dist/index.html
+ls -la /var/www/ai-host/frontend/dist/index.html
 ```
 
 **如果文件不存在：**
 ```bash
 # 创建目录
-sudo mkdir -p /var/www/ai-host-frontend/dist
+sudo mkdir -p /var/www/ai-host/frontend/dist
 
 # 设置正确的权限
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend
 ```
 
 ### 2. 检查 Nginx 配置语法
@@ -46,8 +46,8 @@ sudo tail -f /var/log/nginx/ai-host-error.log
 ```bash
 # Nginx 通常以 www-data 用户运行
 # 确保文件可读
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend/dist
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend/dist
 ```
 
 ### 5. 检查 SELinux（如果启用）
@@ -57,17 +57,17 @@ sudo chmod -R 755 /var/www/ai-host-frontend/dist
 getenforce
 
 # 如果启用，可能需要设置上下文
-sudo chcon -R -t httpd_sys_content_t /var/www/ai-host-frontend
+sudo chcon -R -t httpd_sys_content_t /var/www/ai-host/frontend
 ```
 
 ### 6. 验证前端构建文件
 
 ```bash
 # 确保 dist 目录中有 index.html
-cat /var/www/ai-host-frontend/dist/index.html | head -20
+cat /var/www/ai-host/frontend/dist/index.html | head -20
 
 # 检查是否有必要的文件
-ls -la /var/www/ai-host-frontend/dist/assets/
+ls -la /var/www/ai-host/frontend/dist/assets/
 ```
 
 ### 7. 重新部署前端文件
@@ -80,12 +80,12 @@ cd frontend
 npm run build
 
 # 上传到服务器（使用 scp 或 rsync）
-scp -r dist/* user@47.245.121.93:/var/www/ai-host-frontend/dist/
+scp -r dist/* user@47.245.121.93:/var/www/ai-host/frontend/dist/
 
 # 或者在服务器上直接构建
 cd /path/to/ai-host/frontend
 npm run build
-sudo cp -r dist/* /var/www/ai-host-frontend/dist/
+sudo cp -r dist/* /var/www/ai-host/frontend/dist/
 ```
 
 ### 8. 检查是否有默认站点冲突
@@ -124,18 +124,18 @@ echo "=== Nginx 配置检查 ==="
 sudo nginx -t
 
 echo -e "\n=== 文件路径检查 ==="
-ls -la /var/www/ai-host-frontend/dist/ | head -10
+ls -la /var/www/ai-host/frontend/dist/ | head -10
 
 echo -e "\n=== index.html 检查 ==="
-if [ -f /var/www/ai-host-frontend/dist/index.html ]; then
+if [ -f /var/www/ai-host/frontend/dist/index.html ]; then
     echo "✓ index.html 存在"
-    head -5 /var/www/ai-host-frontend/dist/index.html
+    head -5 /var/www/ai-host/frontend/dist/index.html
 else
     echo "✗ index.html 不存在"
 fi
 
 echo -e "\n=== 权限检查 ==="
-ls -ld /var/www/ai-host-frontend/dist
+ls -ld /var/www/ai-host/frontend/dist
 
 echo -e "\n=== Nginx 错误日志（最后 20 行）==="
 sudo tail -20 /var/log/nginx/error.log
@@ -151,18 +151,18 @@ sudo tail -20 /var/log/nginx/error.log
 
 2. **创建目标目录**
    ```bash
-   sudo mkdir -p /var/www/ai-host-frontend/dist
+   sudo mkdir -p /var/www/ai-host/frontend/dist
    ```
 
 3. **复制文件**
    ```bash
-   sudo cp -r frontend/dist/* /var/www/ai-host-frontend/dist/
+   sudo cp -r frontend/dist/* /var/www/ai-host/frontend/dist/
    ```
 
 4. **设置权限**
    ```bash
-   sudo chown -R www-data:www-data /var/www/ai-host-frontend
-   sudo chmod -R 755 /var/www/ai-host-frontend
+   sudo chown -R www-data:www-data /var/www/ai-host/frontend
+   sudo chmod -R 755 /var/www/ai-host/frontend
    ```
 
 5. **应用 Nginx 配置**

@@ -10,13 +10,13 @@ echo "  Nginx 500 错误完整修复"
 echo "=========================================="
 echo ""
 
-FRONTEND_DIR="/var/www/ai-host-frontend/dist"
+FRONTEND_DIR="/var/www/ai-host/frontend/dist"
 NGINX_CONFIG="/etc/nginx/sites-available/ai-host"
 
 # 1. 创建目录
 echo "[1/7] 创建前端目录..."
 sudo mkdir -p "$FRONTEND_DIR"
-sudo mkdir -p /var/www/ai-host-frontend
+sudo mkdir -p /var/www/ai-host/frontend
 echo "✓ 目录已创建"
 echo ""
 
@@ -46,8 +46,8 @@ echo ""
 
 # 3. 设置权限
 echo "[3/7] 设置文件权限..."
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend
 echo "✓ 权限已设置"
 echo ""
 

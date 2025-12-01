@@ -28,13 +28,13 @@ sudo nginx -s reload
 
 ## 配置说明
 
-- **前端静态文件路径**: `/var/www/ai-host-frontend/dist`
+- **前端静态文件路径**: `/var/www/ai-host/frontend/dist`
 - **后端 API 代理**: `/api/*` → `http://127.0.0.1:4000/api/`
 - **前端路由支持**: 所有非 `/api/` 的请求都会回退到 `index.html`，支持前端路由刷新
 
 ## 重要提示
 
-1. 确保前端构建文件已部署到 `/var/www/ai-host-frontend/dist`
+1. 确保前端构建文件已部署到 `/var/www/ai-host/frontend/dist`
 2. 确保后端服务运行在 `127.0.0.1:4000`
 3. 确保后端路由已配置 `/api` 前缀（如 `/api/agents`, `/api/chat` 等）
 
@@ -56,8 +56,8 @@ sudo ./quick_fix.sh
 
 ### 常见问题
 
-1. **文件不存在**: 确保前端已构建并部署到 `/var/www/ai-host-frontend/dist`
-2. **权限问题**: 运行 `sudo chown -R www-data:www-data /var/www/ai-host-frontend`
+1. **文件不存在**: 确保前端已构建并部署到 `/var/www/ai-host/frontend/dist`
+2. **权限问题**: 运行 `sudo chown -R www-data:www-data /var/www/ai-host/frontend`
 3. **配置错误**: 运行 `sudo nginx -t` 检查配置语法
 4. **查看日志**: `sudo tail -f /var/log/nginx/error.log`
 

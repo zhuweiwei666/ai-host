@@ -11,19 +11,19 @@ echo "=========================================="
 
 # 1. 检查并创建目录
 echo "[1/6] 检查目录..."
-if [ ! -d "/var/www/ai-host-frontend/dist" ]; then
-    echo "创建目录 /var/www/ai-host-frontend/dist"
-    sudo mkdir -p /var/www/ai-host-frontend/dist
+if [ ! -d "/var/www/ai-host/frontend/dist" ]; then
+    echo "创建目录 /var/www/ai-host/frontend/dist"
+    sudo mkdir -p /var/www/ai-host/frontend/dist
 else
     echo "✓ 目录已存在"
 fi
 
 # 2. 检查 index.html
 echo -e "\n[2/6] 检查 index.html..."
-if [ ! -f "/var/www/ai-host-frontend/dist/index.html" ]; then
+if [ ! -f "/var/www/ai-host/frontend/dist/index.html" ]; then
     echo "⚠️  警告: index.html 不存在！"
-    echo "请确保前端已构建并部署到 /var/www/ai-host-frontend/dist"
-    echo "或者运行: cd frontend && npm run build && sudo cp -r dist/* /var/www/ai-host-frontend/dist/"
+    echo "请确保前端已构建并部署到 /var/www/ai-host/frontend/dist"
+    echo "或者运行: cd frontend && npm run build && sudo cp -r dist/* /var/www/ai-host/frontend/dist/"
     exit 1
 else
     echo "✓ index.html 存在"
@@ -31,8 +31,8 @@ fi
 
 # 3. 设置权限
 echo -e "\n[3/6] 设置文件权限..."
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend
 echo "✓ 权限已设置"
 
 # 4. 检查 Nginx 配置

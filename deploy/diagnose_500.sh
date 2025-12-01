@@ -29,7 +29,7 @@ echo ""
 
 # 3. 检查前端目录是否存在
 echo "[3/10] 检查前端目录..."
-FRONTEND_DIR="/var/www/ai-host-frontend/dist"
+FRONTEND_DIR="/var/www/ai-host/frontend/dist"
 if [ -d "$FRONTEND_DIR" ]; then
     echo "✓ 目录存在: $FRONTEND_DIR"
     echo "  目录内容:"
@@ -164,7 +164,7 @@ elif [ ! -d "$FRONTEND_DIR" ]; then
     echo ""
     echo "解决方案:"
     echo "   sudo mkdir -p $FRONTEND_DIR"
-    echo "   sudo chown -R www-data:www-data /var/www/ai-host-frontend"
+    echo "   sudo chown -R www-data:www-data /var/www/ai-host/frontend"
     echo "   然后部署前端文件"
     echo ""
 else

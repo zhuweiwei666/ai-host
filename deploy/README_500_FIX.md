@@ -36,7 +36,7 @@ sudo ./fix_500_complete.sh
 
 **检查**:
 ```bash
-ls -la /var/www/ai-host-frontend/dist/index.html
+ls -la /var/www/ai-host/frontend/dist/index.html
 ```
 
 **解决**:
@@ -46,25 +46,25 @@ cd frontend
 npm run build
 
 # 上传到服务器（方法 1: 使用 scp）
-scp -r dist/* root@47.245.121.93:/var/www/ai-host-frontend/dist/
+scp -r dist/* root@47.245.121.93:/var/www/ai-host/frontend/dist/
 
 # 或者在服务器上直接构建（方法 2）
 cd /path/to/ai-host/frontend
 npm run build
-sudo cp -r dist/* /var/www/ai-host-frontend/dist/
+sudo cp -r dist/* /var/www/ai-host/frontend/dist/
 ```
 
 ### 原因 2: 文件权限问题
 
 **检查**:
 ```bash
-ls -l /var/www/ai-host-frontend/dist/index.html
+ls -l /var/www/ai-host/frontend/dist/index.html
 ```
 
 **解决**:
 ```bash
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend
 ```
 
 ### 原因 3: Nginx 配置错误
@@ -87,13 +87,13 @@ sudo nginx -s reload
 
 **检查**:
 ```bash
-ls -ld /var/www/ai-host-frontend/dist
+ls -ld /var/www/ai-host/frontend/dist
 ```
 
 **解决**:
 ```bash
-sudo mkdir -p /var/www/ai-host-frontend/dist
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
+sudo mkdir -p /var/www/ai-host/frontend/dist
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
 ```
 
 ---
@@ -113,15 +113,15 @@ npm run build
 
 ```bash
 # 在服务器上
-sudo mkdir -p /var/www/ai-host-frontend/dist
-sudo cp -r /path/to/frontend/dist/* /var/www/ai-host-frontend/dist/
+sudo mkdir -p /var/www/ai-host/frontend/dist
+sudo cp -r /path/to/frontend/dist/* /var/www/ai-host/frontend/dist/
 ```
 
 ### 步骤 3: 设置权限
 
 ```bash
-sudo chown -R www-data:www-data /var/www/ai-host-frontend
-sudo chmod -R 755 /var/www/ai-host-frontend
+sudo chown -R www-data:www-data /var/www/ai-host/frontend
+sudo chmod -R 755 /var/www/ai-host/frontend
 ```
 
 ### 步骤 4: 应用 Nginx 配置
@@ -147,7 +147,7 @@ sudo nginx -s reload
 
 ```bash
 # 检查文件
-ls -la /var/www/ai-host-frontend/dist/index.html
+ls -la /var/www/ai-host/frontend/dist/index.html
 
 # 检查 Nginx 状态
 sudo systemctl status nginx
@@ -175,7 +175,7 @@ sudo tail -f /var/log/nginx/access.log
 
 ## ✅ 验证清单
 
-- [ ] `/var/www/ai-host-frontend/dist/index.html` 存在
+- [ ] `/var/www/ai-host/frontend/dist/index.html` 存在
 - [ ] 文件权限正确（www-data:www-data）
 - [ ] Nginx 配置语法正确（`sudo nginx -t` 通过）
 - [ ] 站点已启用（`/etc/nginx/sites-enabled/ai-host` 存在）
@@ -203,7 +203,7 @@ sudo tail -f /var/log/nginx/access.log
 
 4. **测试文件访问**:
    ```bash
-   sudo -u www-data cat /var/www/ai-host-frontend/dist/index.html | head -5
+   sudo -u www-data cat /var/www/ai-host/frontend/dist/index.html | head -5
    ```
 
 ---
@@ -214,5 +214,5 @@ sudo tail -f /var/log/nginx/access.log
 1. 诊断脚本的完整输出
 2. Nginx 错误日志的最后 50 行
 3. `sudo nginx -t` 的输出
-4. `ls -la /var/www/ai-host-frontend/dist/` 的输出
+4. `ls -la /var/www/ai-host/frontend/dist/` 的输出
 
