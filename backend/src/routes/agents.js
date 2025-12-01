@@ -11,8 +11,16 @@ const { requireAdmin } = require('../middleware/admin');
 // Helper function to check MongoDB connection
 const checkDBConnection = () => {
   const state = mongoose.connection.readyState;
+  const stateMap = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  
   if (state !== 1) {
-    throw new Error(`MongoDB not connected. Connection state: ${state} (0=disconnected, 1=connected, 2=connecting, 3=disconnecting)`);
+    const stateName = stateMap[state] || 'unknown';
+    throw new Error(`MongoDB not connected. Current state: ${state} (${stateName}). Please check MONGO_URI and ensure MongoDB service is running.`);
   }
 };
 
@@ -34,9 +42,17 @@ router.get('/', optionalAuth, async (req, res) => {
     res.json(agents);
   } catch (err) {
     console.error('[GET /agents] Error:', err);
+    console.error('[GET /agents] Error stack:', err.stack);
+    
+    // Return more detailed error in development, simpler message in production
+    const isDev = process.env.NODE_ENV === 'development';
     res.status(500).json({ 
       message: err.message || 'Failed to fetch agents',
-      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      code: err.code || 'INTERNAL_ERROR',
+      ...(isDev && { 
+        stack: err.stack,
+        connectionState: mongoose.connection.readyState 
+      })
     });
   }
 });

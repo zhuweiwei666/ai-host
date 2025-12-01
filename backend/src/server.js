@@ -1,7 +1,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const path = require('path');
 const connectDB = require('./config/db');
 
 // Global error handling for uncaught exceptions
@@ -14,11 +13,26 @@ process.on('unhandledRejection', (err) => {
 });
 
 // Load environment variables
-// 1. Load default .env from root directory
-dotenv.config();
+// 1. Load default .env from backend directory
+const path = require('path');
+const envPath = path.join(__dirname, '../.env');
+const envProdPath = path.join(__dirname, '../.env.production.local');
+
+dotenv.config({ path: envPath });
 
 // 2. Load production local environment variables (overrides .env, not tracked by git)
-dotenv.config({ path: ".env.production.local" });
+// Only load if file exists (won't fail if file doesn't exist)
+try {
+  const fs = require('fs');
+  if (fs.existsSync(envProdPath)) {
+    dotenv.config({ path: envProdPath, override: true });
+    console.log('[ENV] Loaded .env.production.local');
+  } else {
+    console.log('[ENV] .env.production.local not found, using default .env');
+  }
+} catch (err) {
+  console.warn('[ENV] Could not load .env.production.local:', err.message);
+}
 
 // Initialize DB connection once
 connectDB();
