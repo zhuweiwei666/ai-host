@@ -28,8 +28,15 @@ const connectDB = async () => {
     console.error(`  1. MONGO_URI environment variable is set correctly`);
     console.error(`  2. MongoDB service is running`);
     console.error(`  3. Network connectivity to MongoDB server`);
+    console.error(`[DB] Server will continue to start, but database operations will fail until connection is established.`);
     // Don't exit - allow server to start and retry later
     // In production, you might want to exit here: process.exit(1);
+    
+    // Set up retry mechanism
+    setTimeout(() => {
+      console.log('[DB] Retrying MongoDB connection...');
+      connectDB();
+    }, 5000);
   }
 };
 

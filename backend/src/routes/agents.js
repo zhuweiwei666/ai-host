@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Agent = require('../models/Agent');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -7,9 +8,20 @@ const { optionalAuth } = require('../middleware/auth');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 
+// Helper function to check MongoDB connection
+const checkDBConnection = () => {
+  const state = mongoose.connection.readyState;
+  if (state !== 1) {
+    throw new Error(`MongoDB not connected. Connection state: ${state} (0=disconnected, 1=connected, 2=connecting, 3=disconnecting)`);
+  }
+};
+
 // GET /api/agents - Public access (no auth required)
 router.get('/', optionalAuth, async (req, res) => {
   try {
+    // Check MongoDB connection before query
+    checkDBConnection();
+    
     const { status, style } = req.query;
     const query = {};
     if (status) {
@@ -21,18 +33,39 @@ router.get('/', optionalAuth, async (req, res) => {
     const agents = await Agent.find(query).sort({ createdAt: -1 });
     res.json(agents);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[GET /agents] Error:', err);
+    res.status(500).json({ 
+      message: err.message || 'Failed to fetch agents',
+      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 
-// GET /api/agents/:id - Public access (no auth required)
-router.get('/:id', optionalAuth, async (req, res) => {
+// POST /api/agents/scrape - Scrape agents (Admin only) - Must be before /:id route
+router.post('/scrape', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const agent = await Agent.findById(req.params.id);
-    if (!agent) return res.status(404).json({ message: 'Agent not found' });
-    res.json(agent);
+    const scriptPath = path.join(__dirname, '../services/candyScraper.js');
+    console.log('Spawning scraper:', scriptPath);
+    
+    const scraper = spawn('node', [scriptPath]);
+
+    scraper.stdout.on('data', (data) => {
+      console.log(`[Scraper]: ${data}`);
+    });
+
+    scraper.stderr.on('data', (data) => {
+      console.error(`[Scraper Error]: ${data}`);
+    });
+
+    scraper.on('close', (code) => {
+      console.log(`[Scraper] Process exited with code ${code}`);
+    });
+
+    res.json({ message: 'Scraping started in background. Check logs or refresh agent list in a few minutes.' });
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Scrape API Error:', err);
+    res.status(500).json({ message: 'Failed to start scraper' });
   }
 });
 
@@ -91,31 +124,21 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/agents/scrape - Scrape agents (Admin only)
-router.post('/scrape', requireAuth, requireAdmin, async (req, res) => {
+// GET /api/agents/:id - Public access (no auth required) - Must be after /scrape route
+router.get('/:id', optionalAuth, async (req, res) => {
   try {
-    const scriptPath = path.join(__dirname, '../services/candyScraper.js');
-    console.log('Spawning scraper:', scriptPath);
+    // Check MongoDB connection before query
+    checkDBConnection();
     
-    const scraper = spawn('node', [scriptPath]);
-
-    scraper.stdout.on('data', (data) => {
-      console.log(`[Scraper]: ${data}`);
-    });
-
-    scraper.stderr.on('data', (data) => {
-      console.error(`[Scraper Error]: ${data}`);
-    });
-
-    scraper.on('close', (code) => {
-      console.log(`[Scraper] Process exited with code ${code}`);
-    });
-
-    res.json({ message: 'Scraping started in background. Check logs or refresh agent list in a few minutes.' });
-
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) return res.status(404).json({ message: 'Agent not found' });
+    res.json(agent);
   } catch (err) {
-    console.error('Scrape API Error:', err);
-    res.status(500).json({ message: 'Failed to start scraper' });
+    console.error('[GET /agents/:id] Error:', err);
+    res.status(500).json({ 
+      message: err.message || 'Failed to fetch agent',
+      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 
