@@ -23,27 +23,13 @@ const Layout: React.FC = () => {
       <aside className="w-64 glass border-r border-white/30 flex-shrink-0 flex flex-col transition-all duration-300 shadow-soft">
         <div className="h-20 flex items-center px-6 border-b border-gray-200/50 bg-gradient-to-r from-primary-600 to-purple-600">
            <div className="flex items-center gap-3">
-             {/* Aimatrix Logo - A字母网格样式，带蓝色渐变效果 */}
-             <div className="w-10 h-10 rounded-xl bg-gradient-to-b from-blue-400/30 to-blue-600/30 backdrop-blur-sm flex items-center justify-center shadow-lg border border-white/20">
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" viewBox="0 0 24 24" fill="none">
-                 <defs>
-                   <linearGradient id="aimatrix-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                     <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.9"/>
-                     <stop offset="100%" stopColor="#2563eb" stopOpacity="0.9"/>
-                   </linearGradient>
-                 </defs>
-                 {/* A字母外框 - 使用细线构成 */}
-                 <path d="M12 3 L5 19 L8 19 L9.5 15 L14.5 15 L16 19 L19 19 L12 3 Z" 
-                       stroke="url(#aimatrix-gradient)" 
-                       strokeWidth="1.2" 
-                       fill="none" 
-                       strokeLinecap="round" 
-                       strokeLinejoin="round"/>
-                 {/* 内部网格线 - 模拟矩阵效果 */}
-                 <line x1="9.5" y1="11" x2="14.5" y2="11" stroke="url(#aimatrix-gradient)" strokeWidth="0.6" opacity="0.7"/>
-                 <line x1="9" y1="13" x2="15" y2="13" stroke="url(#aimatrix-gradient)" strokeWidth="0.6" opacity="0.7"/>
-                 <line x1="9" y1="15" x2="15" y2="15" stroke="url(#aimatrix-gradient)" strokeWidth="0.6" opacity="0.7"/>
-                 <line x1="9" y1="17" x2="15" y2="17" stroke="url(#aimatrix-gradient)" strokeWidth="0.6" opacity="0.7"/>
+             {/* Aimatrix Logo - 简洁现代的A字母设计 */}
+             <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-md">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                 {/* 简洁的A字母，使用实心填充 */}
+                 <path d="M12 2 L4 20 L7.5 20 L9.5 15 L14.5 15 L16.5 20 L20 20 L12 2 Z M11 12 L13 12 L12 8.5 L11 12 Z" 
+                       fill="currentColor" 
+                       fillRule="evenodd"/>
                </svg>
              </div>
              <h1 className="text-xl font-bold tracking-wide text-white">Aimatrix</h1>
