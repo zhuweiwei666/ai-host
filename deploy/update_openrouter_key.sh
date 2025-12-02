@@ -4,7 +4,7 @@
 
 set -e
 
-NEW_API_KEY="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"
+NEW_API_KEY="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"
 BACKEND_DIR="/var/www/ai-host/backend"
 ENV_FILE="$BACKEND_DIR/.env.production.local"
 
