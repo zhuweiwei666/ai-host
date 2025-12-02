@@ -10,6 +10,35 @@ import AgentStats from './pages/AgentStats'; // Import AgentStats
 import VoiceModelsPage from './pages/VoiceModelsPage'; // Import VoiceModelsPage
 import './index.css';
 
+// Suppress browser extension errors in console
+// These errors come from browser extensions (contentScript.bundle.js) and don't affect the app
+if (typeof window !== 'undefined') {
+  // Filter unhandled promise rejections from browser extensions
+  window.addEventListener('unhandledrejection', (event) => {
+    const errorMessage = event.reason?.message || event.reason?.toString() || '';
+    if (errorMessage.includes('contentScript.bundle.js') && 
+        errorMessage.includes('Access to storage') &&
+        errorMessage.includes('is not allowed from this context')) {
+      // Prevent the error from showing in console
+      event.preventDefault();
+      return;
+    }
+  });
+
+  // Filter console errors from browser extensions
+  const originalError = console.error;
+  console.error = (...args: any[]) => {
+    const errorMessage = args[0]?.toString() || '';
+    if (errorMessage.includes('contentScript.bundle.js') && 
+        errorMessage.includes('Access to storage') &&
+        errorMessage.includes('is not allowed from this context')) {
+      // Silently ignore browser extension errors
+      return;
+    }
+    originalError.apply(console, args);
+  };
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
