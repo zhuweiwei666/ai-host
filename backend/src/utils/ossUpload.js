@@ -39,6 +39,9 @@ async function uploadToOSS(buffer, fileName, contentType = 'image/png') {
   });
 
   try {
+    // Log configuration for debugging
+    console.log(`[OSS Upload] Config: bucket=${process.env.OSS_BUCKET}, endpoint=${process.env.OSS_ENDPOINT}, region=${process.env.OSS_REGION}`);
+    
     // Upload to OSS
     const result = await client.put(objectKey, buffer, {
       headers: {
@@ -53,8 +56,16 @@ async function uploadToOSS(buffer, fileName, contentType = 'image/png') {
     if (!publicUrl || (!publicUrl.startsWith('http://') && !publicUrl.startsWith('https://'))) {
       // Construct OSS public URL
       // Format: https://bucket-name.endpoint/object-key
-      const endpoint = process.env.OSS_ENDPOINT.replace(/^https?:\/\//, ''); // Remove protocol if present
-      publicUrl = `https://${process.env.OSS_BUCKET}.${endpoint}/${objectKey}`;
+      let endpoint = process.env.OSS_ENDPOINT;
+      // Remove protocol if present
+      endpoint = endpoint.replace(/^https?:\/\//, '');
+      // Remove trailing slash if present
+      endpoint = endpoint.replace(/\/$/, '');
+      
+      const bucket = process.env.OSS_BUCKET;
+      publicUrl = `https://${bucket}.${endpoint}/${objectKey}`;
+      
+      console.log(`[OSS Upload] Constructed URL manually: ${publicUrl}`);
     }
     
     // Force HTTPS
@@ -63,8 +74,13 @@ async function uploadToOSS(buffer, fileName, contentType = 'image/png') {
     }
     
     // Validate the URL format
-    if (!publicUrl.includes(process.env.OSS_BUCKET)) {
-      console.warn(`[OSS Upload] Warning: Generated URL doesn't contain bucket name. URL: ${publicUrl}, Bucket: ${process.env.OSS_BUCKET}`);
+    const bucket = process.env.OSS_BUCKET;
+    if (bucket && !publicUrl.includes(bucket)) {
+      console.error(`[OSS Upload] ERROR: Generated URL doesn't contain bucket name!`);
+      console.error(`[OSS Upload] URL: ${publicUrl}`);
+      console.error(`[OSS Upload] Expected bucket: ${bucket}`);
+      console.error(`[OSS Upload] Result from OSS client:`, result);
+      throw new Error(`Invalid OSS URL generated. URL: ${publicUrl}, Bucket: ${bucket}`);
     }
 
     console.log(`[OSS Upload] Successfully uploaded ${objectKey} (${buffer.length} bytes) -> ${publicUrl}`);
