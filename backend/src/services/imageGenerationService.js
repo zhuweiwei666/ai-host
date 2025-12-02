@@ -82,9 +82,16 @@ class ImageGenerationService {
             return { url: ossUrl, remoteUrl };
         } catch (ossError) {
             console.error('[ImageGen] OSS upload failed, falling back to local storage:', ossError.message);
-            // Fallback to local storage if OSS fails
-            const localUrl = await this.downloadAndSaveImage(remoteUrl);
-            return { url: localUrl, remoteUrl };
+            try {
+                // Fallback to local storage if OSS fails
+                const localUrl = await this.downloadAndSaveImage(remoteUrl);
+                return { url: localUrl, remoteUrl };
+            } catch (localError) {
+                console.error('[ImageGen] Both OSS and local storage failed:', localError.message);
+                // If both fail, return the remote URL directly (from Fal.ai)
+                // This ensures the image is still accessible even if upload fails
+                return { url: remoteUrl, remoteUrl };
+            }
         }
     }));
     

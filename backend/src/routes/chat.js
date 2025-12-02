@@ -454,13 +454,20 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
                     cost: imgCost
                 });
               } catch (logErr) { console.error('Image Log Error', logErr); }
+        } else {
+          console.warn('[Chat] Image generation returned no results');
         }
       } catch (err) {
+        console.error('[Chat] Image Generation Error:', err);
         if (err.message === 'INSUFFICIENT_FUNDS') {
              reply += `\n\n(System: Failed to send image. Insufficient AI Coins.)`;
+        } else if (err.message && err.message.includes('OSS')) {
+             // OSS upload failed, but image was generated - use remoteUrl if available
+             console.warn('[Chat] OSS upload failed, but image generation succeeded. Error:', err.message);
+             reply += `\n\n(System: Image generated but upload failed. Please try again.)`;
         } else {
-             console.error('Image Gen Failed:', err.message);
-             reply += ` (Image failed: ${err.message})`;
+             console.error('Image Gen Failed:', err.message || err);
+             reply += ` (Image failed: ${err.message || 'Unknown error'})`;
         }
           }
         }
