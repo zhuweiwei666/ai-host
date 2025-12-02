@@ -34,7 +34,7 @@ const WalletTraceSchema = new mongoose.Schema({
 });
 
 // Compound index for faster lookups
-WalletTraceSchema.index({ userId, traceId }, { unique: true });
+WalletTraceSchema.index({ userId: 1, traceId: 1 }, { unique: true });
 
 module.exports = mongoose.model('WalletTrace', WalletTraceSchema);
 
