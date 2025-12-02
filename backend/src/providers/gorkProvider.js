@@ -12,13 +12,21 @@ class GorkProvider {
       throw new Error('GORK_API_KEY is not set');
     }
 
+    // Model name mapping: map sao10k models to xAI model names if needed
+    // If GORK_MODEL_MAP is set in env, use it; otherwise try to map sao10k models
+    const modelMap = process.env.GORK_MODEL_MAP ? JSON.parse(process.env.GORK_MODEL_MAP) : {
+      'sao10k/l3.1-euryale-70b': 'grok-beta', // Default mapping, adjust as needed
+    };
+    
+    const actualModelName = modelMap[modelName] || modelName;
+
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${this.apiKey}`,
     };
 
     const payload = {
-      model: modelName,
+      model: actualModelName,
       messages,
       temperature,
     };
