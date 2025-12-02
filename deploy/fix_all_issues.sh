@@ -20,8 +20,17 @@ git pull origin main || {
 }
 echo ""
 
-# 2. 修复所有 uuid 问题
-echo "[2/5] 修复所有 uuid 问题..."
+# 2. 修复 WalletTrace.js 索引定义
+echo "[2/6] 修复 WalletTrace.js 索引定义..."
+if [ -f "$BACKEND_DIR/src/models/WalletTrace.js" ]; then
+    # 修复索引定义：{ userId, traceId } -> { userId: 1, traceId: 1 }
+    sed -i 's/WalletTraceSchema\.index({ userId, traceId }/WalletTraceSchema.index({ userId: 1, traceId: 1 }/g' "$BACKEND_DIR/src/models/WalletTrace.js"
+    echo "  ✓ WalletTrace.js 已修复"
+fi
+echo ""
+
+# 3. 修复所有 uuid 问题
+echo "[3/6] 修复所有 uuid 问题..."
 FILES_TO_FIX=(
     "src/services/candyScraper.js"
     "src/services/voiceTemplateScraper.js"
@@ -48,8 +57,8 @@ for file in "${FILES_TO_FIX[@]}"; do
 done
 echo ""
 
-# 3. 验证语法
-echo "[3/5] 验证文件语法..."
+# 4. 验证语法
+echo "[4/6] 验证文件语法..."
 for file in "${FILES_TO_FIX[@]}"; do
     if [ -f "$BACKEND_DIR/$file" ]; then
         if node -c "$BACKEND_DIR/$file" 2>/dev/null; then
@@ -62,8 +71,8 @@ for file in "${FILES_TO_FIX[@]}"; do
 done
 echo ""
 
-# 4. 检查环境变量
-echo "[4/5] 检查环境变量..."
+# 5. 检查环境变量
+echo "[5/6] 检查环境变量..."
 if grep -q "ENABLE_MOCK_AUTH=true" "$BACKEND_DIR/.env.production.local" 2>/dev/null || grep -q "ENABLE_MOCK_AUTH=true" "$BACKEND_DIR/.env" 2>/dev/null; then
     echo "  ✓ ENABLE_MOCK_AUTH=true 已设置"
 else
@@ -72,8 +81,8 @@ else
 fi
 echo ""
 
-# 5. 重启服务
-echo "[5/5] 重启后端服务..."
+# 6. 重启服务
+echo "[6/6] 重启后端服务..."
 pm2 restart "$PM2_APP_NAME" || pm2 start "$BACKEND_DIR/src/server.js" --name "$PM2_APP_NAME" || {
     echo "  ✗ PM2 重启失败"
     exit 1
