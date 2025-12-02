@@ -38,11 +38,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus }
       {/* Content */}
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-4 overflow-hidden flex-1">
-            {/* Avatar with Glow Effect */}
-            <div className={`relative flex-shrink-0 ${
-              agent.status === 'online' ? 'ring-2 ring-primary-400/50 ring-offset-2 ring-offset-white' : ''
-            }`}>
+          <div className="flex items-center gap-4 overflow-hidden flex-1 min-w-0">
+            {/* Avatar - 移除外框 */}
+            <div className="relative flex-shrink-0">
               <img 
                 src={normalizeImageUrl(agent.avatarUrl)} 
                 alt={agent.name} 
@@ -56,16 +54,17 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus }
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-xl font-bold text-gray-900 truncate mb-1.5">{agent.name}</h3>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold capitalize shadow-sm ${
+              <h3 className="text-xl font-bold text-gray-900 truncate mb-2">{agent.name}</h3>
+              {/* 优化布局：使用 flex-col 避免挤压 */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold capitalize shadow-sm flex-shrink-0 ${
                   agent.gender === 'female' ? 'bg-gradient-to-r from-pink-100 to-rose-100 text-pink-700 border border-pink-200/50' : 
                   agent.gender === 'male' ? 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border border-blue-200/50' : 
                   'bg-gray-100 text-gray-700 border border-gray-200/50'
                 }`}>
                   {agent.gender}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium flex-shrink-0 ${
                   agent.status === 'online' ? 'text-green-600' : 'text-gray-400'
                 }`}>
                   <span className={`w-2 h-2 rounded-full ${agent.status === 'online' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
