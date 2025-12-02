@@ -82,37 +82,49 @@ const Agents: React.FC = () => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-10">
       {/* Removed Sidebar from here */}
       
       {activePanel === 'agents' && (
         <div className="animate-fade-in">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h2 className="text-2xl font-bold text-gray-900">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 px-2">
+            <div className="space-y-2">
+                <h2 className="text-4xl font-bold gradient-text">
                   {currentStyle === 'anime' ? 'AI 主播列表 (卡通风格)' : currentStyle === 'realistic' ? 'AI 主播列表 (真人风格)' : 'AI 主播列表'}
                 </h2>
-                <p className="text-sm text-gray-500 mt-1">管理您的 AI 虚拟形象与配置</p>
+                <p className="text-base text-gray-600 font-medium">管理您的 AI 虚拟形象与配置</p>
         </div>
 
-            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+            <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
               {/* Status Filter Tabs */}
-              <div className="flex bg-gray-100 p-1 rounded-lg">
+              <div className="flex glass p-1.5 rounded-xl shadow-soft border border-white/50">
            <button
                   onClick={() => setFilterStatus('all')}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filterStatus === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                    filterStatus === 'all' 
+                      ? 'bg-gradient-to-r from-primary-500 to-purple-600 text-white shadow-lg shadow-primary-500/30' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
            >
                   大厅 (All)
            </button>
              <button
                   onClick={() => setFilterStatus('online')}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filterStatus === 'online' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                    filterStatus === 'online' 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
                 >
                   已上架
              </button>
                  <button
                   onClick={() => setFilterStatus('offline')}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${filterStatus === 'offline' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                    filterStatus === 'offline' 
+                      ? 'bg-gradient-to-r from-gray-500 to-gray-600 text-white shadow-lg shadow-gray-500/30' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
                  >
                   未上架
                  </button>
@@ -121,18 +133,18 @@ const Agents: React.FC = () => {
               <div className="flex gap-3 ml-auto">
                 <button
                     onClick={() => setShowScrapeDialog(true)}
-                    className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 glass rounded-xl shadow-soft text-sm font-semibold text-gray-700 hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/50"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     导入/爬取
                 </button>
                 <button
                   onClick={() => navigate('/create')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-primary-600 via-purple-600 to-pink-600 hover:from-primary-700 hover:via-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 hover:shadow-xl hover:shadow-primary-500/30 hover:scale-105 active:scale-95"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
                   </svg>
                   创建主播
@@ -141,26 +153,33 @@ const Agents: React.FC = () => {
             </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredAgents.map((agent) => (
-              <AgentCard 
-                key={agent._id} 
-                agent={agent} 
-                onDelete={fetchAgents} 
-                onToggleStatus={() => handleToggleStatus(agent)} 
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 px-2">
+            {filteredAgents.map((agent, index) => (
+              <div key={agent._id} className="animate-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
+                <AgentCard 
+                  agent={agent} 
+                  onDelete={fetchAgents} 
+                  onToggleStatus={() => handleToggleStatus(agent)} 
+                />
+              </div>
                 ))}
             {filteredAgents.length === 0 && (
-                  <div className="col-span-full flex flex-col items-center justify-center py-24 text-gray-500 bg-white rounded-xl border-2 border-dashed border-gray-200 hover:border-indigo-300 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                <p className="text-lg font-medium">
+                  <div className="col-span-full flex flex-col items-center justify-center py-32 glass rounded-2xl border-2 border-dashed border-gray-300/50 hover:border-primary-300/50 transition-all duration-300 shadow-soft">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-purple-100 flex items-center justify-center mb-6 shadow-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                <p className="text-xl font-bold text-gray-700 mb-2">
                     {filterStatus === 'all' ? '暂无主播' : filterStatus === 'online' ? '暂无上架主播' : '暂无未上架主播'}
                 </p>
+                <p className="text-sm text-gray-500 mb-6">开始创建您的第一个 AI 虚拟形象吧</p>
                 {filterStatus === 'all' && (
-                    <button onClick={() => navigate('/create')} className="mt-2 text-indigo-600 hover:text-indigo-500 font-medium">
-                        点击创建第一个 AI 主播
+                    <button 
+                      onClick={() => navigate('/create')} 
+                      className="px-6 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-primary-600 via-purple-600 to-pink-600 hover:from-primary-700 hover:via-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+                    >
+                      创建第一个 AI 主播
                     </button>
                 )}
                   </div>
@@ -198,15 +217,24 @@ const Agents: React.FC = () => {
 
       {/* Scrape Dialog */}
       {showScrapeDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-scale-in">
-            <h3 className="text-lg font-bold mb-4">Import / Scrape Agent</h3>
-            <p className="text-sm text-gray-500 mb-4">Enter a URL to scrape character data from supported sites (e.g., Candy.ai).</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="glass rounded-2xl shadow-2xl max-w-md w-full p-8 animate-scale-in border border-white/30">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">导入 / 爬取</h3>
+                <p className="text-sm text-gray-500 mt-1">从支持的网站导入角色数据</p>
+              </div>
+            </div>
             
             <input 
               type="url" 
               placeholder="https://candy.ai/character/..." 
-              className="w-full border border-gray-300 rounded-md px-3 py-2 mb-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              className="w-full glass border border-white/50 rounded-xl px-4 py-3 mb-6 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400"
               value={scrapeUrl}
               onChange={(e) => setScrapeUrl(e.target.value)}
             />
@@ -214,23 +242,23 @@ const Agents: React.FC = () => {
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setShowScrapeDialog(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-6 py-2.5 text-gray-700 hover:bg-gray-100/80 rounded-xl font-semibold transition-all duration-200"
                 disabled={isScraping}
               >
-                Cancel
+                取消
               </button>
               <button 
                 onClick={handleScrape}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-                disabled={isScraping} // Allow running without URL since it auto-discovers
+                className="px-6 py-2.5 bg-gradient-to-r from-primary-600 via-purple-600 to-pink-600 text-white rounded-xl hover:from-primary-700 hover:via-purple-700 hover:to-pink-700 disabled:opacity-50 flex items-center gap-2 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+                disabled={isScraping}
               >
                 {isScraping && (
-                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 )}
-                {isScraping ? 'Scraping...' : 'Start Scrape'}
+                {isScraping ? '爬取中...' : '开始爬取'}
               </button>
             </div>
           </div>

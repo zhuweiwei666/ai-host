@@ -17,27 +17,29 @@ const Layout: React.FC = () => {
   const isUsersActive = location.pathname === '/users';
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col transition-all duration-300">
-        <div className="h-16 flex items-center px-6 border-b border-gray-200">
-           <div className="flex items-center gap-2 text-indigo-600">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
-               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12zm-1-9.243a1 1 0 112 0v4.486a1 1 0 11-2 0V6.757z" clipRule="evenodd" />
-             </svg>
-             <h1 className="text-xl font-bold tracking-wide">HeartMerge</h1>
+      <aside className="w-64 glass border-r border-white/30 flex-shrink-0 flex flex-col transition-all duration-300 shadow-soft">
+        <div className="h-20 flex items-center px-6 border-b border-gray-200/50 bg-gradient-to-r from-primary-600 to-purple-600">
+           <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor">
+                 <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+               </svg>
+             </div>
+             <h1 className="text-xl font-bold tracking-wide text-white">HeartMerge</h1>
            </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
            {/* Agents Menu Group */}
            <div>
              <button
                onClick={() => setAgentsMenuOpen(!agentsMenuOpen)}
-               className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-md transition-colors ${
-                 isAgentsActive && currentStyle === 'all' // Optional: highlight parent if strictly active or contains active child? Usually parent is active if any child is.
-                   ? 'text-gray-900 bg-gray-50' 
-                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+               className={`w-full flex items-center justify-between px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
+                 isAgentsActive && currentStyle === 'all'
+                   ? 'text-primary-700 bg-gradient-to-r from-primary-50 to-purple-50 shadow-sm border border-primary-200/50' 
+                   : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-50/50 hover:text-gray-900'
                }`}
              >
                <div className="flex items-center">
@@ -57,33 +59,33 @@ const Layout: React.FC = () => {
              </button>
 
              {agentsMenuOpen && (
-               <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 pl-2">
+               <div className="mt-2 ml-6 space-y-1 border-l-2 border-primary-200/50 pl-4">
                  <button
                    onClick={() => navigate('/')} 
-                   className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                   className={`w-full flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
                      isAgentsActive && (currentStyle === 'all' || !currentStyle)
-                       ? 'text-indigo-600 bg-indigo-50'
-                       : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                       ? 'text-primary-700 bg-gradient-to-r from-primary-100 to-purple-100 shadow-sm border border-primary-200/50'
+                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50/80'
                    }`}
                  >
                    大厅 (All)
                  </button>
                  <button
                    onClick={() => navigate('/?style=realistic')} 
-                   className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                   className={`w-full flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
                      isAgentsActive && currentStyle === 'realistic'
-                       ? 'text-indigo-600 bg-indigo-50'
-                       : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                       ? 'text-primary-700 bg-gradient-to-r from-primary-100 to-purple-100 shadow-sm border border-primary-200/50'
+                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50/80'
                    }`}
                  >
                    真人风格
                  </button>
                  <button
                    onClick={() => navigate('/?style=anime')} 
-                   className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                   className={`w-full flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
                      isAgentsActive && currentStyle === 'anime'
-                       ? 'text-indigo-600 bg-indigo-50'
-                       : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                       ? 'text-primary-700 bg-gradient-to-r from-primary-100 to-purple-100 shadow-sm border border-primary-200/50'
+                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50/80'
                    }`}
                  >
                    卡通风格
@@ -95,10 +97,10 @@ const Layout: React.FC = () => {
            {/* Stats Menu */}
            <button
              onClick={() => navigate('/stats')}
-             className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-md transition-colors mt-1 ${
+             className={`w-full flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
                isStatsActive
-                 ? 'bg-indigo-50 text-indigo-600'
-                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                 ? 'text-primary-700 bg-gradient-to-r from-primary-50 to-purple-50 shadow-sm border border-primary-200/50'
+                 : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-50/50 hover:text-gray-900'
              }`}
            >
              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,7 +113,7 @@ const Layout: React.FC = () => {
            <div className="pt-2">
              <button
                onClick={() => setVoiceMenuOpen(!voiceMenuOpen)}
-               className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
+               className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 rounded-xl hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-50/50 hover:text-gray-900 transition-all duration-200"
              >
                <div className="flex items-center">
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -130,13 +132,13 @@ const Layout: React.FC = () => {
              </button>
              
              {voiceMenuOpen && (
-               <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 pl-2">
+               <div className="mt-2 ml-6 space-y-1 border-l-2 border-primary-200/50 pl-4">
                  <button
                    onClick={() => navigate('/voice-models')} 
-                   className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                   className={`w-full flex items-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
                      isVoiceModelsActive
-                       ? 'text-indigo-600 bg-indigo-50'
-                       : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                       ? 'text-primary-700 bg-gradient-to-r from-primary-100 to-purple-100 shadow-sm border border-primary-200/50'
+                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50/80'
                    }`}
                  >
                    模型同步 / 收藏
@@ -148,10 +150,10 @@ const Layout: React.FC = () => {
            {/* Users Menu */}
            <button
              onClick={() => navigate('/users')}
-             className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-md transition-colors mt-2 ${
+             className={`w-full flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
                 isUsersActive
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'text-primary-700 bg-gradient-to-r from-primary-50 to-purple-50 shadow-sm border border-primary-200/50'
+                  : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-50/50 hover:text-gray-900'
               }`}
            >
              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -161,13 +163,13 @@ const Layout: React.FC = () => {
            </button>
         </nav>
         
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
+        <div className="p-5 border-t border-gray-200/50 bg-gradient-to-r from-gray-50/80 to-gray-100/50 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-white/50">
                     A
                 </div>
-                <div className="overflow-hidden">
-                    <p className="text-sm font-medium text-gray-900 truncate">Administrator</p>
+                <div className="overflow-hidden flex-1">
+                    <p className="text-sm font-semibold text-gray-900 truncate">Administrator</p>
                     <p className="text-xs text-gray-500 truncate">admin@ai-host.com</p>
                 </div>
             </div>
@@ -175,8 +177,10 @@ const Layout: React.FC = () => {
       </aside>
 
       {/* Main Content Area - This is where pages will be injected */}
-      <main className="flex-1 overflow-y-auto bg-gray-50 relative">
-        <Outlet /> 
+      <main className="flex-1 overflow-y-auto relative">
+        <div className="min-h-full">
+          <Outlet /> 
+        </div>
       </main>
     </div>
   );
