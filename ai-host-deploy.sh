@@ -4,6 +4,7 @@
 REMOTE_HOST="root@139.162.62.115"
 REMOTE_DIR="/root/ai-host"
 GIT_BRANCH="main" # 您的GitHub主分支名称，通常是main或master
+GIT_REPO="git@github.com:zhuweiwei666/ai-host.git" # GitHub 仓库地址
 PROJECT_DIR="/Users/zhuweiwei/ai-host" # 项目根目录的绝对路径
 
 echo "============================================="
@@ -78,25 +79,19 @@ else
     echo -e "${YELLOW}⚠️  跳过提交，直接部署服务器上的最新代码${NC}"
 fi
 
-# 2. 同步本地文件到服务器（确保 .env 等配置文件也被同步）
-echo -e "${YELLOW}[3/6] 同步本地文件到服务器（包括配置文件）...${NC}"
+# 2. 同步配置文件到服务器（.env 等，但不包括代码文件，代码通过 Git 同步）
+echo -e "${YELLOW}[3/6] 同步配置文件到服务器...${NC}"
 rsync -avz \
-    --exclude 'node_modules' \
-    --exclude '.git' \
-    --exclude 'frontend/dist' \
-    --exclude 'frontend/node_modules' \
-    --exclude 'backend/node_modules' \
-    --exclude 'backend/uploads' \
-    --exclude 'ai-wallet-backend/node_modules' \
-    --exclude '.DS_Store' \
-    "$PROJECT_DIR/" "$REMOTE_HOST:$REMOTE_DIR"
+    --include 'backend/.env' \
+    --include 'ai-wallet-backend/.env' \
+    --exclude '*' \
+    "$PROJECT_DIR/" "$REMOTE_HOST:$REMOTE_DIR/"
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ 错误：文件同步失败，请检查 SSH 连接${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  配置文件同步失败，继续执行（可能文件不存在）${NC}"
 fi
 
-echo -e "${GREEN}✅ 文件同步完成${NC}"
+echo -e "${GREEN}✅ 配置文件同步完成${NC}"
 
 # 3. 在服务器上执行部署操作
 echo -e "${YELLOW}[4/6] 在服务器上拉取最新代码并重新构建...${NC}"
@@ -104,13 +99,38 @@ echo -e "${YELLOW}[4/6] 在服务器上拉取最新代码并重新构建...${NC}
 ssh "$REMOTE_HOST" "bash -s" <<EOF
     set -e
     
-    echo "📁 进入项目目录: $REMOTE_DIR"
+    # 检查项目目录是否存在，如果不存在则创建
+    if [ ! -d "$REMOTE_DIR" ]; then
+        echo "📁 创建项目目录: $REMOTE_DIR"
+        mkdir -p "$REMOTE_DIR"
+    fi
+    
     cd "$REMOTE_DIR"
     
-    echo "📥 从 GitHub 拉取最新代码..."
-    git fetch origin
-    git reset --hard origin/"$GIT_BRANCH"
-    git pull origin "$GIT_BRANCH" || echo "⚠️  Git pull 有冲突或警告，继续执行..."
+    # 检查是否是 Git 仓库
+    if [ ! -d .git ]; then
+        echo "📥 检测到目录不是 Git 仓库，正在从 GitHub 克隆..."
+        
+        # 检查服务器是否能访问 GitHub
+        if ! ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+            echo "⚠️  警告：服务器可能未配置 GitHub SSH 密钥"
+            echo "   如果克隆失败，请在服务器上运行："
+            echo "   ssh-copy-id -i ~/.ssh/id_rsa.pub git@github.com"
+            echo "   或者配置 GitHub SSH 密钥"
+        fi
+        
+        cd ..
+        rm -rf "$(basename $REMOTE_DIR)" || true
+        git clone "$GIT_REPO" "$(basename $REMOTE_DIR)"
+        cd "$REMOTE_DIR"
+        git checkout "$GIT_BRANCH"
+        echo "✅ Git 仓库克隆完成"
+    else
+        echo "📥 从 GitHub 拉取最新代码..."
+        git fetch origin
+        git reset --hard origin/"$GIT_BRANCH"
+        git pull origin "$GIT_BRANCH" || echo "⚠️  Git pull 有冲突或警告，继续执行..."
+    fi
     
     echo "🛑 停止现有容器..."
     docker compose down --remove-orphans || true
