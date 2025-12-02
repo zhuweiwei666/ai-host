@@ -132,7 +132,7 @@ const scrape = async () => {
                   description: char.description,
                   avatarUrl: avatarUrl,
                   gender: 'female', 
-                  modelName: 'sao10k/l3.1-euryale-70b',
+                  modelName: 'grok-beta',
                   temperature: 0.75,
                   corePrompt: `[Character: ${char.name}]`,
                   systemPrompt: `You are ${char.name}.`

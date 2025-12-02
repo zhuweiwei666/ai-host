@@ -8,7 +8,7 @@ const AgentSchema = new mongoose.Schema({
   coverVideoUrl: { type: String, default: '' }, // Video preview on hover
   privatePhotoUrl: { type: String, default: '' }, // NSFW/Paid Variant
   description: { type: String, default: '' },
-  modelName: { type: String, required: true, default: 'gpt-4o-mini' },
+  modelName: { type: String, required: true, default: 'grok-beta' },
   temperature: { type: Number, default: 0.7 },
   
   // Deprecated but kept for compatibility or as a base fallback

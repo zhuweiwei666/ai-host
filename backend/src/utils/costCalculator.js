@@ -6,17 +6,15 @@ class CostCalculator {
     constructor() {
       this.rates = {
         llm: {
-          // OpenRouter / DeepSeek / Groq pricing (per 1M tokens)
+          // Gork (xAI) pricing (per 1M tokens)
           // Default fallback
           'default': { input: 0.5, output: 1.5 },
           
-          // Specific Models
-          'sao10k/l3.1-euryale-70b': { input: 0.7, output: 0.8 }, // Est. OpenRouter 70B
-          'deepseek-chat': { input: 0.14, output: 0.28 }, // DeepSeek V3 is very cheap
-          'deepseek-coder': { input: 0.14, output: 0.28 },
-          'gpt-4o': { input: 2.5, output: 10.0 },
-          'gpt-4o-mini': { input: 0.15, output: 0.6 },
-          'llama3-70b-8192': { input: 0.59, output: 0.79 } // Groq ~
+          // Gork Models (xAI)
+          'grok-beta': { input: 0.1, output: 0.1 }, // Estimated pricing
+          'grok-2': { input: 0.1, output: 0.1 },
+          'grok-2-1212': { input: 0.1, output: 0.1 },
+          'grok-2-vision-1212': { input: 0.1, output: 0.1 },
         },
         tts: {
           // Per 1M characters

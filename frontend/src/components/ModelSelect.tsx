@@ -6,12 +6,10 @@ interface ModelSelectProps {
 }
 
 const models = [
-  { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini' },
-  { id: 'llama-3-70b-8192', name: 'Groq Llama 3 70B' }, // Groq specific model ID
-  { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-  { id: 'claude-3-sonnet-20240229', name: 'Anthropic Claude 3 Sonnet' },
-  { id: 'moonshot-v1-32k', name: 'Moonshot v1 32k' },
-  { id: 'sao10k/l3.1-euryale-70b', name: 'OpenRouter Sao10K Llama 3.1 70B v2.2' },
+  { id: 'grok-beta', name: 'Gork Grok Beta' },
+  { id: 'grok-2', name: 'Gork Grok 2' },
+  { id: 'grok-2-1212', name: 'Gork Grok 2 1212' },
+  { id: 'grok-2-vision-1212', name: 'Gork Grok 2 Vision 1212' },
 ];
 
 const ModelSelect: React.FC<ModelSelectProps> = ({ value, onChange }) => {

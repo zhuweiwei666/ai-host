@@ -98,7 +98,7 @@ const scrape = async () => {
             description: charData.description,
             avatarUrl: avatarUrl,
             gender: 'female',
-            modelName: 'sao10k/l3.1-euryale-70b',
+            modelName: 'grok-beta',
             temperature: 0.7,
             corePrompt: `[Imported from Candy.ai] Character Name: ${charData.name}. Description: ${charData.description}.`,
             systemPrompt: `You are ${charData.name}. ${charData.description}. Roleplay with the user accordingly.`
