@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 class VideoGenerationService {
   constructor() {
@@ -205,7 +205,7 @@ class VideoGenerationService {
 
   async downloadAndSave(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const fileName = `vid-${uuidv4()}.mp4`;
+    const fileName = `vid-${crypto.randomUUID()}.mp4`;
     
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
