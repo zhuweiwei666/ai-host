@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { downloadAndUploadToOSS } = require('../utils/ossUpload');
 
 class ImageGenerationService {
   constructor() {
@@ -73,10 +74,18 @@ class ImageGenerationService {
       throw new Error('Image generation failed to return any URLs');
     }
 
-    // Download all images
+    // Download and upload all images to OSS
     const results = await Promise.all(imageUrls.map(async (remoteUrl) => {
-        const localUrl = await this.downloadAndSaveImage(remoteUrl);
-        return { url: localUrl, remoteUrl };
+        try {
+            // Upload to OSS instead of saving locally
+            const ossUrl = await downloadAndUploadToOSS(remoteUrl, `gen-${crypto.randomUUID()}.png`, 'image/png');
+            return { url: ossUrl, remoteUrl };
+        } catch (ossError) {
+            console.error('[ImageGen] OSS upload failed, falling back to local storage:', ossError.message);
+            // Fallback to local storage if OSS fails
+            const localUrl = await this.downloadAndSaveImage(remoteUrl);
+            return { url: localUrl, remoteUrl };
+        }
     }));
     
     return results;

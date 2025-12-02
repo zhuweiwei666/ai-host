@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { uploadToOSS } = require('../utils/ossUpload');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 class FishAudioService {
@@ -40,19 +41,25 @@ class FishAudioService {
         }
       );
 
-      // 保存音频文件
+      // Upload audio to OSS
       const fileName = `tts-${crypto.randomUUID()}.mp3`;
-      const uploadDir = path.join(__dirname, '../../uploads');
+      const buffer = Buffer.from(response.data);
       
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
+      try {
+        // Upload to OSS
+        const ossUrl = await uploadToOSS(buffer, fileName, 'audio/mpeg');
+        return ossUrl;
+      } catch (ossError) {
+        console.error('[FishAudio] OSS upload failed, falling back to local storage:', ossError.message);
+        // Fallback to local storage if OSS fails
+        const uploadDir = path.join(__dirname, '../../uploads');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const filePath = path.join(uploadDir, fileName);
+        fs.writeFileSync(filePath, buffer);
+        return `/uploads/${fileName}`;
       }
-
-      const filePath = path.join(uploadDir, fileName);
-      fs.writeFileSync(filePath, response.data);
-
-      // 返回相对 URL
-      return `/uploads/${fileName}`;
 
     } catch (error) {
       console.error('Fish Audio TTS Request Failed!');

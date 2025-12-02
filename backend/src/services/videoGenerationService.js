@@ -2,6 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { downloadAndUploadToOSS } = require('../utils/ossUpload');
 
 class VideoGenerationService {
   constructor() {
@@ -204,17 +205,25 @@ class VideoGenerationService {
   }
 
   async downloadAndSave(url) {
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const fileName = `vid-${crypto.randomUUID()}.mp4`;
-    
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
+    try {
+      // Upload to OSS instead of saving locally
+      const ossUrl = await downloadAndUploadToOSS(url, `vid-${crypto.randomUUID()}.mp4`, 'video/mp4');
+      return ossUrl;
+    } catch (ossError) {
+      console.error('[VideoGen] OSS upload failed, falling back to local storage:', ossError.message);
+      // Fallback to local storage if OSS fails
+      const response = await axios.get(url, { responseType: 'arraybuffer' });
+      const fileName = `vid-${crypto.randomUUID()}.mp4`;
+      
+      if (!fs.existsSync(this.uploadDir)) {
+        fs.mkdirSync(this.uploadDir, { recursive: true });
+      }
+
+      const filePath = path.join(this.uploadDir, fileName);
+      fs.writeFileSync(filePath, response.data);
+
+      return `/uploads/${fileName}`;
     }
-
-    const filePath = path.join(this.uploadDir, fileName);
-    fs.writeFileSync(filePath, response.data);
-
-    return `/uploads/${fileName}`;
   }
 }
 
