@@ -48,14 +48,23 @@ async function uploadToOSS(buffer, fileName, contentType = 'image/png') {
 
     // Ensure URL is HTTPS and absolute
     let publicUrl = result.url;
-    if (!publicUrl.startsWith('http://') && !publicUrl.startsWith('https://')) {
-      const protocol = process.env.OSS_ENDPOINT.includes('https') ? 'https' : 'http';
-      publicUrl = `${protocol}://${process.env.OSS_BUCKET}.${process.env.OSS_ENDPOINT}/${objectKey}`;
+    
+    // If result.url is not a full URL, construct it manually
+    if (!publicUrl || (!publicUrl.startsWith('http://') && !publicUrl.startsWith('https://'))) {
+      // Construct OSS public URL
+      // Format: https://bucket-name.endpoint/object-key
+      const endpoint = process.env.OSS_ENDPOINT.replace(/^https?:\/\//, ''); // Remove protocol if present
+      publicUrl = `https://${process.env.OSS_BUCKET}.${endpoint}/${objectKey}`;
     }
     
     // Force HTTPS
     if (publicUrl.startsWith('http://')) {
       publicUrl = publicUrl.replace('http://', 'https://');
+    }
+    
+    // Validate the URL format
+    if (!publicUrl.includes(process.env.OSS_BUCKET)) {
+      console.warn(`[OSS Upload] Warning: Generated URL doesn't contain bucket name. URL: ${publicUrl}, Bucket: ${process.env.OSS_BUCKET}`);
     }
 
     console.log(`[OSS Upload] Successfully uploaded ${objectKey} (${buffer.length} bytes) -> ${publicUrl}`);
