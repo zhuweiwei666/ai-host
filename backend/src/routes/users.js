@@ -9,8 +9,24 @@ const { requireAdmin } = require('../middleware/admin');
 router.use(requireAuth);
 
 // GET /api/users - List all users (Admin only)
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
+    // Check if user is admin (either real admin or mock admin)
+    const isAdmin = req.user && req.user.role === 'admin';
+    
+    if (!isAdmin) {
+      // If no users exist, allow access to initialize first admin
+      const userCount = await User.countDocuments();
+      if (userCount === 0) {
+        return res.json([]);
+      }
+      
+      return res.status(403).json({ 
+        message: 'Admin access required',
+        code: 'FORBIDDEN'
+      });
+    }
+    
     const users = await User.find().sort({ createdAt: -1 });
     // Enhance with balance info
     const usersWithBalance = await Promise.all(users.map(async (u) => {
@@ -19,6 +35,7 @@ router.get('/', requireAdmin, async (req, res) => {
     }));
     res.json(usersWithBalance);
   } catch (err) {
+    console.error('Get users error:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -78,24 +95,37 @@ router.post('/:id/recharge', async (req, res) => {
   }
 });
 
-// POST /api/users/init-admin - Helper to ensure admin user exists (Admin only)
-router.post('/init-admin', requireAdmin, async (req, res) => {
+// POST /api/users/init-admin - Helper to ensure admin user exists
+// Allow creating first admin if no users exist, otherwise require admin role
+router.post('/init-admin', async (req, res) => {
   try {
+    // Check if any users exist
+    const userCount = await User.countDocuments();
+    const isFirstUser = userCount === 0;
+    
+    // If not first user, require admin role
+    if (!isFirstUser) {
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ 
+          message: 'Admin access required',
+          code: 'FORBIDDEN'
+        });
+      }
+    }
+    
     let admin = await User.findOne({ username: 'admin' });
     if (!admin) {
       admin = await User.create({ 
         username: 'admin', 
         email: 'admin@ai-host.com', 
         role: 'admin',
-        // Force specific ID if we want to match the hardcoded "test_user_001" from before,
-        // but better to just use the mongo ID. 
-        // For compatibility with previous "test_user_001" hardcoding in ChatPage,
-        // we might want to update ChatPage to use a real login system later.
-        // For now, let's just create a standard user.
       });
+      // Initialize wallet for admin
+      await walletService.getBalance(admin._id.toString());
     }
     res.json(admin);
   } catch (err) {
+    console.error('Init admin error:', err);
     res.status(500).json({ message: err.message });
   }
 });
