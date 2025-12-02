@@ -97,7 +97,7 @@ const ApiDocs: React.FC = () => {
           }
         },
         response: {
-          user: { _id: 'string', username: 'string', email: 'string', ... },
+          user: { _id: 'string', username: 'string', email: 'string' },
           token: 'JWT token'
         }
       },
@@ -115,7 +115,7 @@ const ApiDocs: React.FC = () => {
           }
         },
         response: {
-          user: { _id: 'string', username: 'string', ... },
+          user: { _id: 'string', username: 'string' },
           token: 'JWT token',
           balance: 0
         }
@@ -139,8 +139,7 @@ const ApiDocs: React.FC = () => {
             email: 'string',
             userType: 'operator' | 'channel',
             platform: 'string',
-            balance: 0,
-            ...
+            balance: 0
           }
         ]
       },
@@ -160,7 +159,7 @@ const ApiDocs: React.FC = () => {
             password: 'string (可选) - 渠道用户必填'
           }
         },
-        response: { _id: 'string', username: 'string', ... }
+        response: { _id: 'string', username: 'string' }
       },
       {
         method: 'POST',
@@ -178,7 +177,7 @@ const ApiDocs: React.FC = () => {
         path: '/api/users/init-admin',
         description: '初始化管理员用户（如果不存在）',
         auth: 'Public',
-        response: { _id: 'string', username: 'admin', role: 'admin', ... }
+        response: { _id: 'string', username: 'admin', role: 'admin' }
       }
     ],
     agents: [
@@ -203,7 +202,6 @@ const ApiDocs: React.FC = () => {
             description: 'string',
             modelName: 'string',
             status: 'online' | 'offline',
-            ...
           }
         ]
       },
@@ -215,7 +213,7 @@ const ApiDocs: React.FC = () => {
         params: {
           path: { id: 'string - 主播ID' }
         },
-        response: { _id: 'string', name: 'string', ... }
+        response: { _id: 'string', name: 'string' }
       },
       {
         method: 'POST',
@@ -230,10 +228,9 @@ const ApiDocs: React.FC = () => {
             description: 'string (可选)',
             modelName: 'string (可选)',
             avatarUrl: 'string (可选)',
-            ...
           }
         },
-        response: { _id: 'string', name: 'string', ... }
+        response: { _id: 'string', name: 'string' }
       },
       {
         method: 'PUT',
@@ -242,9 +239,9 @@ const ApiDocs: React.FC = () => {
         auth: 'Admin',
         params: {
           path: { id: 'string - 主播ID' },
-          body: { name: 'string', ... }
+          body: { name: 'string' }
         },
-        response: { _id: 'string', name: 'string', ... }
+        response: { _id: 'string', name: 'string' }
       },
       {
         method: 'DELETE',
@@ -435,7 +432,6 @@ const ApiDocs: React.FC = () => {
             remoteId: 'string',
             title: 'string',
             description: 'string',
-            ...
           }
         ]
       },
@@ -450,7 +446,7 @@ const ApiDocs: React.FC = () => {
             name: 'string (必填) - 模型名称'
           }
         },
-        response: { _id: 'string', ... }
+        response: { _id: 'string' }
       },
       {
         method: 'POST',
@@ -461,10 +457,9 @@ const ApiDocs: React.FC = () => {
           body: {
             remoteId: 'string (必填)',
             title: 'string (必填)',
-            ...
           }
         },
-        response: { _id: 'string', ... }
+        response: { _id: 'string' }
       },
       {
         method: 'POST',
@@ -515,9 +510,9 @@ const ApiDocs: React.FC = () => {
         auth: 'Public',
         params: {
           path: { id: 'string - 模型ID' },
-          body: { title: 'string', ... }
+          body: { title: 'string' }
         },
-        response: { _id: 'string', ... }
+        response: { _id: 'string' }
       }
     ],
     stats: [
@@ -543,7 +538,6 @@ const ApiDocs: React.FC = () => {
             ttsCost: 0,
             imageCost: 0,
             videoCost: 0,
-            ...
           }
         ]
       }
