@@ -2,6 +2,7 @@ const OpenAIProvider = require('./openaiProvider');
 const GroqProvider = require('./groqProvider');
 const DeepSeekProvider = require('./deepseekProvider');
 const OpenRouterProvider = require('./openRouterProvider');
+const GorkProvider = require('./gorkProvider');
 
 class ProviderFactory {
   static getProvider(modelName) {
@@ -12,12 +13,14 @@ class ProviderFactory {
       return new GroqProvider();
     } else if (modelName.includes('deepseek')) {
       return new DeepSeekProvider();
+    } else if (modelName.includes('sao10k')) {
+      // sao10k models now use Gork API instead of OpenRouter
+      return new GorkProvider();
     } else if (
-      modelName.includes('sao10k') ||
       modelName.includes('openrouter') ||
-      modelName.includes('/')
+      (modelName.includes('/') && !modelName.includes('sao10k'))
     ) {
-      // OpenRouter models often include vendor prefixes like sao10k/model-name
+      // Other OpenRouter models (not sao10k)
       return new OpenRouterProvider();
     } else if (modelName.includes('claude')) {
        // Placeholder for Anthropic, using OpenAI interface as fallback or error if not implemented
