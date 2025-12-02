@@ -6,10 +6,16 @@ interface ModelSelectProps {
 }
 
 const models = [
-  { id: 'grok-beta', name: 'Gork Grok Beta' },
-  { id: 'grok-2', name: 'Gork Grok 2' },
-  { id: 'grok-2-1212', name: 'Gork Grok 2 1212' },
-  { id: 'grok-2-vision-1212', name: 'Gork Grok 2 Vision 1212' },
+  { id: 'grok-4-1-fast-reasoning', name: 'Grok 4.1 Fast Reasoning' },
+  { id: 'grok-4-1-fast-non-reasoning', name: 'Grok 4.1 Fast Non-Reasoning' },
+  { id: 'grok-code-fast-1', name: 'Grok Code Fast 1' },
+  { id: 'grok-4-fast-reasoning', name: 'Grok 4 Fast Reasoning' },
+  { id: 'grok-4-fast-non-reasoning', name: 'Grok 4 Fast Non-Reasoning' },
+  { id: 'grok-4-0709', name: 'Grok 4 0709' },
+  { id: 'grok-3-mini', name: 'Grok 3 Mini' },
+  { id: 'grok-3', name: 'Grok 3' },
+  { id: 'grok-2-vision-1212', name: 'Grok 2 Vision 1212' },
+  { id: 'grok-2-1212', name: 'Grok 2 1212' },
 ];
 
 const ModelSelect: React.FC<ModelSelectProps> = ({ value, onChange }) => {

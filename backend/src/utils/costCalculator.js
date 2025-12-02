@@ -10,11 +10,17 @@ class CostCalculator {
           // Default fallback
           'default': { input: 0.5, output: 1.5 },
           
-          // Gork Models (xAI)
-          'grok-beta': { input: 0.1, output: 0.1 }, // Estimated pricing
-          'grok-2': { input: 0.1, output: 0.1 },
-          'grok-2-1212': { input: 0.1, output: 0.1 },
-          'grok-2-vision-1212': { input: 0.1, output: 0.1 },
+          // Gork Models (xAI) - Official pricing from xAI
+          'grok-4-1-fast-reasoning': { input: 0.20, output: 0.50 },
+          'grok-4-1-fast-non-reasoning': { input: 0.20, output: 0.50 },
+          'grok-code-fast-1': { input: 0.20, output: 1.50 },
+          'grok-4-fast-reasoning': { input: 0.20, output: 0.50 },
+          'grok-4-fast-non-reasoning': { input: 0.20, output: 0.50 },
+          'grok-4-0709': { input: 3.00, output: 15.00 },
+          'grok-3-mini': { input: 0.30, output: 0.50 },
+          'grok-3': { input: 3.00, output: 15.00 },
+          'grok-2-vision-1212': { input: 2.00, output: 10.00 },
+          'grok-2-1212': { input: 2.00, output: 10.00 },
         },
         tts: {
           // Per 1M characters
