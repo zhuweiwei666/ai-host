@@ -46,9 +46,14 @@ export interface User {
   _id: string;
   username: string;
   email?: string;
+  phone?: string;
   role: 'admin' | 'user';
+  userType?: 'operator' | 'channel';
+  platform?: 'web' | 'android' | 'ios' | 'admin';
+  isActive?: boolean;
   balance?: number;
   createdAt: string;
+  lastLoginAt?: string;
 }
 
 export const getAgents = (params?: { status?: string; style?: string }) => http.get<Agent[]>('/agents', { params });
@@ -133,7 +138,14 @@ export const createVoiceModelManual = (data: Partial<VoiceModel>) => http.post<V
 export const createVoiceTemplate = (sourceUrl: string) => http.post('/voice-models', { sourceUrl });
 
 // User API
-export const getUsers = () => http.get<User[]>('/users');
-export const createUser = (data: Partial<User>) => http.post<User>('/users', data);
+export const getUsers = (params?: { userType?: 'operator' | 'channel'; platform?: 'web' | 'android' | 'ios'; isActive?: boolean }) => 
+  http.get<User[]>('/users', { params });
+export const createUser = (data: Partial<User> & { password?: string }) => http.post<User>('/users', data);
 export const rechargeUser = (userId: string, amount: number) => http.post<{ success: true; balance: number }>(`/users/${userId}/recharge`, { amount });
 export const initAdminUser = () => http.post<User>('/users/init-admin');
+
+// Channel User Auth API (public)
+export const registerChannelUser = (data: { username: string; password: string; email?: string; phone?: string; platform?: 'web' | 'android' | 'ios' }) => 
+  http.post<{ user: User; token: string }>('/users/register', data);
+export const loginChannelUser = (data: { username: string; password: string }) => 
+  http.post<{ user: User; token: string; balance: number }>('/users/login', data);
