@@ -267,8 +267,8 @@ const UserList: React.FC = () => {
                     </span>
                     <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-lg ${
                       user.role === 'admin' ? 'bg-purple-100 text-purple-700 border border-purple-200/50' : 'bg-gray-100 text-gray-700 border border-gray-200/50'
-                    }`}>
-                      {user.role}
+                  }`}>
+                    {user.role}
                     </span>
                   </div>
                 </td>
@@ -374,7 +374,7 @@ const UserList: React.FC = () => {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">用户类型 *</label>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setNewUser({ ...newUser, userType: 'operator', platform: 'admin' })}
+                    onClick={() => setNewUser({ ...newUser, userType: 'operator', platform: 'web' })}
                     className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 ${
                       newUser.userType === 'operator'
                         ? 'bg-gradient-to-r from-primary-500 to-purple-600 text-white shadow-lg'
