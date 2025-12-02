@@ -39,7 +39,7 @@ const ApiDocs: React.FC = () => {
         params: {
           body: {
             externalUserId: 'string (必填) - 外部产品的用户ID',
-            platform: 'string (必填) - "android" 或 "ios"',
+            platform: 'string (必填) - android 或 ios',
             externalAppId: 'string (可选) - 外部应用ID',
             email: 'string (可选) - 邮箱',
             phone: 'string (可选) - 手机号',
@@ -111,7 +111,7 @@ const ApiDocs: React.FC = () => {
             username: 'string (可选) - 用户名（Web平台）',
             password: 'string (可选) - 密码（Web平台）',
             externalUserId: 'string (可选) - 外部用户ID（Android/iOS）',
-            platform: 'string (可选) - "android" 或 "ios"'
+            platform: 'string (可选) - android 或 ios'
           }
         },
         response: {
@@ -127,8 +127,8 @@ const ApiDocs: React.FC = () => {
         auth: 'Admin',
         params: {
           query: {
-            userType: 'string (可选) - "operator" 或 "channel"',
-            platform: 'string (可选) - "web", "android", "ios"',
+            userType: 'string (可选) - operator 或 channel',
+            platform: 'string (可选) - web, android, ios',
             isActive: 'boolean (可选) - 是否激活'
           }
         },
@@ -153,8 +153,8 @@ const ApiDocs: React.FC = () => {
           body: {
             username: 'string (必填)',
             email: 'string (可选)',
-            role: 'string (可选) - "admin" 或 "user"',
-            userType: 'string (可选) - "operator" 或 "channel"',
+            role: 'string (可选) - admin 或 user',
+            userType: 'string (可选) - operator 或 channel',
             platform: 'string (可选)',
             phone: 'string (可选)',
             password: 'string (可选) - 渠道用户必填'
@@ -189,8 +189,8 @@ const ApiDocs: React.FC = () => {
         auth: 'Public',
         params: {
           query: {
-            status: 'string (可选) - "online" 或 "offline"',
-            style: 'string (可选) - "realistic" 或 "anime"'
+            status: 'string (可选) - online 或 offline',
+            style: 'string (可选) - realistic 或 anime'
           }
         },
         response: [
@@ -225,8 +225,8 @@ const ApiDocs: React.FC = () => {
         params: {
           body: {
             name: 'string (必填)',
-            gender: 'string (必填) - "male", "female", "other"',
-            style: 'string (可选) - "realistic" 或 "anime"',
+            gender: 'string (必填) - male, female, other',
+            style: 'string (可选) - realistic 或 anime',
             description: 'string (可选)',
             modelName: 'string (可选)',
             avatarUrl: 'string (可选)',
@@ -332,7 +332,7 @@ const ApiDocs: React.FC = () => {
             count: 'number (可选) - 生成数量，默认1',
             width: 'number (可选) - 图片宽度',
             height: 'number (可选) - 图片高度',
-            provider: 'string (可选) - "fal" 或 "volcengine"',
+            provider: 'string (可选) - fal 或 volcengine',
             agentId: 'string (可选) - 关联的主播ID',
             useAvatar: 'boolean (可选) - 是否使用主播头像',
             useImg2Img: 'boolean (可选) - 是否使用图片到图片'
