@@ -50,20 +50,3 @@ http.interceptors.response.use(
   }
 );
 
-// Suppress browser extension errors in console
-// These errors come from browser extensions (contentScript.bundle.js) and don't affect the app
-if (typeof window !== 'undefined') {
-  const originalError = console.error;
-  console.error = (...args: any[]) => {
-    // Filter out browser extension storage errors
-    const errorMessage = args[0]?.toString() || '';
-    if (errorMessage.includes('contentScript.bundle.js') && 
-        errorMessage.includes('Access to storage') &&
-        errorMessage.includes('is not allowed from this context')) {
-      // Silently ignore browser extension errors
-      return;
-    }
-    originalError.apply(console, args);
-  };
-}
-
