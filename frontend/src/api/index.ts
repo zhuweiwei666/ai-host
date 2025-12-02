@@ -43,7 +43,9 @@ export interface VoiceExtractResult {
 
 // User Interface
 export interface User {
-  _id: string;
+  _id: string; // 内部用户ID
+  externalUserId?: string; // 外部产品用户ID（Android/iOS）
+  externalAppId?: string; // 外部应用ID
   username: string;
   email?: string;
   phone?: string;
@@ -145,7 +147,26 @@ export const rechargeUser = (userId: string, amount: number) => http.post<{ succ
 export const initAdminUser = () => http.post<User>('/users/init-admin');
 
 // Channel User Auth API (public)
-export const registerChannelUser = (data: { username: string; password: string; email?: string; phone?: string; platform?: 'web' | 'android' | 'ios' }) => 
+// For Android/iOS: Sync external user (creates if not exists, returns existing if exists)
+export const syncExternalUser = (data: { 
+  externalUserId: string; 
+  platform: 'android' | 'ios'; 
+  externalAppId?: string;
+  email?: string; 
+  phone?: string; 
+  username?: string;
+}) => 
+  http.post<{ user: User; token: string; balance: number; isNew: boolean }>('/users/sync', data);
+
+// For Web: Traditional register with username/password
+export const registerChannelUser = (data: { username: string; password: string; email?: string; phone?: string; platform?: 'web' }) => 
   http.post<{ user: User; token: string }>('/users/register', data);
-export const loginChannelUser = (data: { username: string; password: string }) => 
+
+// Login (supports both web username/password and Android/iOS externalUserId)
+export const loginChannelUser = (data: { 
+  username?: string; 
+  password?: string;
+  externalUserId?: string;
+  platform?: 'android' | 'ios';
+}) => 
   http.post<{ user: User; token: string; balance: number }>('/users/login', data);

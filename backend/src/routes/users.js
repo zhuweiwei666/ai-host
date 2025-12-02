@@ -8,7 +8,136 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 
 // Public routes (no auth required)
-// POST /api/users/register - Register a new channel user
+
+// POST /api/users/sync - Sync external user (for Android/iOS integration)
+// This endpoint is called by external products to sync their users
+// It will create a new user if not exists, or return existing user
+router.post('/sync', async (req, res) => {
+  try {
+    const { externalUserId, platform, externalAppId, email, phone, username } = req.body;
+    
+    // Validation
+    if (!externalUserId) {
+      return res.status(400).json({ 
+        message: 'externalUserId is required',
+        code: 'MISSING_EXTERNAL_USER_ID'
+      });
+    }
+    
+    if (!platform || !['android', 'ios'].includes(platform)) {
+      return res.status(400).json({ 
+        message: 'platform must be "android" or "ios"',
+        code: 'INVALID_PLATFORM'
+      });
+    }
+    
+    // Build query to find existing user by externalUserId
+    const query = { 
+      externalUserId,
+      platform,
+      userType: 'channel'
+    };
+    
+    // If externalAppId is provided, include it in the query
+    if (externalAppId) {
+      query.externalAppId = externalAppId;
+    }
+    
+    // Try to find existing user
+    let user = await User.findOne(query);
+    
+    if (user) {
+      // User exists, update last login and return
+      user.lastLoginAt = new Date();
+      await user.save();
+      
+      // Get balance
+      const balance = await walletService.getBalance(user._id.toString());
+      
+      // Generate JWT token
+      const token = jwt.sign(
+        { 
+          userId: user._id.toString(), 
+          username: user.username,
+          role: user.role,
+          userType: user.userType 
+        },
+        process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+        { expiresIn: '30d' }
+      );
+      
+      return res.json({
+        user: {
+          _id: user._id, // 内部用户ID
+          externalUserId: user.externalUserId, // 外部用户ID
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          platform: user.platform,
+          userType: user.userType,
+          role: user.role
+        },
+        token,
+        balance,
+        isNew: false
+      });
+    }
+    
+    // User doesn't exist, create new one
+    // Generate internal username if not provided
+    const internalUsername = username || `user_${externalUserId}_${platform}_${Date.now()}`;
+    
+    // Create channel user with externalUserId
+    user = await User.create({
+      username: internalUsername,
+      email,
+      phone,
+      externalUserId,
+      externalAppId,
+      platform,
+      userType: 'channel',
+      role: 'user',
+      isActive: true,
+      lastLoginAt: new Date()
+    });
+    
+    // Initialize wallet
+    const balance = await walletService.getBalance(user._id.toString());
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id.toString(), 
+        username: user.username,
+        role: user.role,
+        userType: user.userType 
+      },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '30d' }
+    );
+    
+    res.status(201).json({
+      user: {
+        _id: user._id, // 内部用户ID
+        externalUserId: user.externalUserId, // 外部用户ID
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        platform: user.platform,
+        userType: user.userType,
+        role: user.role
+      },
+      token,
+      balance,
+      isNew: true
+    });
+  } catch (err) {
+    console.error('Sync user error:', err);
+    res.status(500).json({ message: err.message || 'Failed to sync user' });
+  }
+});
+
+// POST /api/users/register - Register a new channel user (for web platform)
 router.post('/register', async (req, res) => {
   try {
     const { username, password, email, phone, platform = 'web' } = req.body;
@@ -25,6 +154,14 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ 
         message: 'Password must be at least 6 characters',
         code: 'WEAK_PASSWORD'
+      });
+    }
+    
+    // Web platform doesn't use externalUserId
+    if (platform === 'android' || platform === 'ios') {
+      return res.status(400).json({ 
+        message: 'For Android/iOS platforms, please use /api/users/sync endpoint with externalUserId',
+        code: 'USE_SYNC_ENDPOINT'
       });
     }
     
@@ -53,7 +190,7 @@ router.post('/register', async (req, res) => {
       password: hashedPassword,
       email,
       phone,
-      platform: ['web', 'android', 'ios'].includes(platform) ? platform : 'web',
+      platform: 'web',
       userType: 'channel',
       role: 'user',
       isActive: true
@@ -92,11 +229,73 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// POST /api/users/login - Login for channel users
+// POST /api/users/login - Login for channel users (web platform only)
+// For Android/iOS, use /api/users/sync instead
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, externalUserId, platform } = req.body;
     
+    // Support login by externalUserId for Android/iOS
+    if (externalUserId && (platform === 'android' || platform === 'ios')) {
+      // Redirect to sync endpoint logic
+      const query = { 
+        externalUserId,
+        platform,
+        userType: 'channel'
+      };
+      
+      const user = await User.findOne(query);
+      
+      if (!user) {
+        return res.status(404).json({ 
+          message: 'User not found. Please use /api/users/sync to create user first.',
+          code: 'USER_NOT_FOUND'
+        });
+      }
+      
+      if (!user.isActive) {
+        return res.status(403).json({ 
+          message: 'Account is disabled',
+          code: 'ACCOUNT_DISABLED'
+        });
+      }
+      
+      // Update last login
+      user.lastLoginAt = new Date();
+      await user.save();
+      
+      // Generate JWT token
+      const token = jwt.sign(
+        { 
+          userId: user._id.toString(), 
+          username: user.username,
+          role: user.role,
+          userType: user.userType 
+        },
+        process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+        { expiresIn: '30d' }
+      );
+      
+      // Get balance
+      const balance = await walletService.getBalance(user._id.toString());
+      
+      return res.json({
+        user: {
+          _id: user._id,
+          externalUserId: user.externalUserId,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          platform: user.platform,
+          userType: user.userType,
+          role: user.role
+        },
+        token,
+        balance
+      });
+    }
+    
+    // Traditional username/password login (for web platform)
     if (!username || !password) {
       return res.status(400).json({ 
         message: 'Username and password are required',

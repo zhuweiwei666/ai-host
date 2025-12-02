@@ -233,6 +233,7 @@ const UserList: React.FC = () => {
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">用户信息</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">类型</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">平台</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">外部ID</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">余额</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">创建时间</th>
               <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">操作</th>
@@ -253,6 +254,7 @@ const UserList: React.FC = () => {
                     <div className="ml-4">
                       <div className="text-sm font-semibold text-gray-900">{user.username}</div>
                       <div className="text-xs text-gray-500">{user.email || user.phone || 'No contact'}</div>
+                      <div className="text-xs text-gray-400 font-mono">ID: {user._id}</div>
                     </div>
                   </div>
                 </td>
@@ -277,6 +279,20 @@ const UserList: React.FC = () => {
                     {getPlatformLabel(user.platform)}
                   </span>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {user.externalUserId ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                        {user.externalUserId}
+                      </span>
+                      {user.externalAppId && (
+                        <span className="text-xs text-gray-500">App: {user.externalAppId}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">-</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
                   💎 {user.balance ?? 0}
                 </td>
@@ -295,7 +311,7 @@ const UserList: React.FC = () => {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
