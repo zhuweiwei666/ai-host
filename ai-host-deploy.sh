@@ -4,6 +4,7 @@
 REMOTE_HOST="root@139.162.62.115"
 REMOTE_DIR="/root/ai-host"
 GIT_BRANCH="main" # 您的GitHub主分支名称，通常是main或master
+PROJECT_DIR="/Users/zhuweiwei/ai-host" # 项目根目录的绝对路径
 
 echo "============================================="
 echo "   AI Host 一键部署脚本 (GitHub → 服务器)    "
@@ -14,6 +15,13 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# 切换到项目目录
+echo -e "${YELLOW}📁 切换到项目目录: $PROJECT_DIR${NC}"
+cd "$PROJECT_DIR" || {
+    echo -e "${RED}❌ 错误：无法进入项目目录 $PROJECT_DIR${NC}"
+    exit 1
+}
 
 # 检查是否在 Git 仓库中
 if [ ! -d .git ]; then
@@ -48,7 +56,20 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     git push origin "$GIT_BRANCH"
     
     if [ $? -ne 0 ]; then
+        echo ""
         echo -e "${RED}❌ 错误：推送到 GitHub 失败${NC}"
+        echo ""
+        echo "可能的原因："
+        echo "1. 未配置 GitHub SSH 公钥"
+        echo "2. SSH 密钥未添加到 GitHub 账户"
+        echo ""
+        echo "💡 解决方案："
+        echo "   运行以下命令获取配置指南："
+        echo "   $PROJECT_DIR/setup_github_ssh.sh"
+        echo ""
+        echo "或者，如果您想跳过推送直接部署，可以："
+        echo "   重新运行脚本，选择 'n' 跳过提交"
+        echo ""
         exit 1
     fi
     
@@ -68,7 +89,7 @@ rsync -avz \
     --exclude 'backend/uploads' \
     --exclude 'ai-wallet-backend/node_modules' \
     --exclude '.DS_Store' \
-    ./ "$REMOTE_HOST:$REMOTE_DIR"
+    "$PROJECT_DIR/" "$REMOTE_HOST:$REMOTE_DIR"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ 错误：文件同步失败，请检查 SSH 连接${NC}"
