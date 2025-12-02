@@ -50,8 +50,27 @@ class OpenRouterProvider {
         usage: response.data.usage
       };
     } catch (error) {
-      console.error('OpenRouter API Error:', error.response?.data || error.message);
-      throw new Error('Failed to fetch response from OpenRouter');
+      const errorData = error.response?.data || {};
+      const errorMessage = errorData.error?.message || error.message || 'Unknown error';
+      const errorCode = error.response?.status || errorData.error?.code;
+      
+      console.error('OpenRouter API Error:', {
+        status: error.response?.status,
+        code: errorCode,
+        message: errorMessage,
+        data: errorData
+      });
+      
+      // Provide more specific error messages
+      if (errorCode === 401 || errorMessage.includes('User not found') || errorMessage.includes('Invalid API key')) {
+        throw new Error(`OpenRouter API authentication failed. Please check OPENROUTER_API_KEY in .env.production.local. Error: ${errorMessage}`);
+      } else if (errorCode === 429) {
+        throw new Error('OpenRouter API rate limit exceeded. Please try again later.');
+      } else if (errorCode === 402) {
+        throw new Error('OpenRouter API payment required. Please check your account balance.');
+      } else {
+        throw new Error(`OpenRouter API error (${errorCode || 'unknown'}): ${errorMessage}`);
+      }
     }
   }
 }

@@ -241,7 +241,12 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
         llmCallSuccess = true;
     } catch (llmError) {
         console.error('LLM call failed:', llmError);
-        throw new Error(`LLM call failed: ${llmError.message}`);
+        // Preserve the original error message for better debugging
+        const errorMsg = llmError.message || 'Unknown LLM error';
+        if (errorMsg.includes('authentication failed') || errorMsg.includes('API key')) {
+            throw new Error(`LLM authentication failed: ${errorMsg}. Please check your API key configuration.`);
+        }
+        throw new Error(`LLM call failed: ${errorMsg}`);
     }
 
     // Step 2: Only deduct coins after successful LLM call
@@ -500,7 +505,26 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     if (err.message === 'INSUFFICIENT_FUNDS') {
         return res.status(402).json({ message: 'Insufficient AI Coins', code: 'INSUFFICIENT_FUNDS' });
     }
-    res.status(500).json({ message: 'Internal Server Error in Chat', error: err.toString() });
+    // Provide more specific error messages
+    if (err.message && err.message.includes('authentication failed')) {
+        return res.status(500).json({ 
+            message: 'LLM API authentication failed. Please check your API key configuration.', 
+            code: 'AUTH_ERROR',
+            error: err.message 
+        });
+    }
+    if (err.message && err.message.includes('LLM call failed')) {
+        return res.status(500).json({ 
+            message: 'Failed to get response from AI model. Please check your API configuration.', 
+            code: 'LLM_ERROR',
+            error: err.message 
+        });
+    }
+    res.status(500).json({ 
+        message: 'Internal Server Error in Chat', 
+        code: 'INTERNAL_ERROR',
+        error: err.message || err.toString() 
+    });
   }
 });
 
