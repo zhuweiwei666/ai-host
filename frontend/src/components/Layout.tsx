@@ -23,14 +23,9 @@ const Layout: React.FC = () => {
       <aside className="w-64 glass border-r border-white/30 flex-shrink-0 flex flex-col transition-all duration-300 shadow-soft">
         <div className="h-20 flex items-center px-6 border-b border-gray-200/50 bg-gradient-to-r from-primary-600 to-purple-600">
            <div className="flex items-center gap-3">
-             {/* Aimatrix Logo - 简洁现代的A字母设计 */}
-             <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-md">
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                 {/* 简洁的A字母，使用实心填充 */}
-                 <path d="M12 2 L4 20 L7.5 20 L9.5 15 L14.5 15 L16.5 20 L20 20 L12 2 Z M11 12 L13 12 L12 8.5 L11 12 Z" 
-                       fill="currentColor" 
-                       fillRule="evenodd"/>
-               </svg>
+             {/* Aimatrix Logo - 极简设计，直接使用文字图标 */}
+             <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
+               <span className="text-2xl font-extrabold text-white">A</span>
              </div>
              <h1 className="text-xl font-bold tracking-wide text-white">Aimatrix</h1>
            </div>
