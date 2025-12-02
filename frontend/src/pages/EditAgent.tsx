@@ -180,25 +180,34 @@ const EditAgent: React.FC = () => {
         setUploading(true);
         try {
             // 1. Upload Video File to Server
-            console.log('Uploading video file...');
+            console.log('[Video Upload] Step 1: Uploading video file...');
             const videoRes = await uploadFile(file);
             const videoUrl = videoRes.url;
-            console.log('Video uploaded:', videoUrl);
+            console.log('[Video Upload] Video uploaded, URL:', videoUrl);
 
             // 2. Extract Frame
-            console.log('Extracting frame from video...');
+            console.log('[Video Upload] Step 2: Extracting frame from video...');
             const imageBlob = await extractFrameFromVideo(file);
+            console.log('[Video Upload] Frame extracted, blob size:', imageBlob.size);
+            
             // Convert Blob to File for uploadImage API
             const imageFile = new File([imageBlob], "video-frame.jpg", { type: "image/jpeg" });
             
             // 3. Upload Frame
-            console.log('Uploading extracted frame...');
+            console.log('[Video Upload] Step 3: Uploading extracted frame...');
             const res = await uploadImage(imageFile);
+            console.log('[Video Upload] Frame uploaded, URL:', res.url);
+            
+            // 4. Update form data with both URLs
+            const updatedData = {
+                avatarUrl: res.url,
+                coverVideoUrl: videoUrl
+            };
+            console.log('[Video Upload] Updating form data:', updatedData);
             
             setFormData(prev => ({ 
                 ...prev, 
-                avatarUrl: res.url,
-                coverVideoUrl: videoUrl // Save video URL
+                ...updatedData
             }));
             setGeneratedCandidates([]); // Clear candidates
             alert('Video uploaded and frame extracted successfully!');
@@ -514,12 +523,18 @@ const EditAgent: React.FC = () => {
                   
               <div className="flex items-start gap-4">
               {formData.avatarUrl ? (
-                  <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(formData.avatarUrl)}>
+                  <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(normalizeImageUrl(formData.avatarUrl))}>
                             <img 
                               src={normalizeImageUrl(formData.avatarUrl)} 
                               alt="Public Avatar" 
                               className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-indigo-500" 
-                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; }}
+                              onError={(e) => { 
+                                console.error('[EditAgent] Failed to load avatar image:', formData.avatarUrl);
+                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; 
+                              }}
+                              onLoad={() => {
+                                console.log('[EditAgent] Avatar image loaded successfully:', normalizeImageUrl(formData.avatarUrl));
+                              }}
                             />
                     <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-1">Selected</div>
                   </div>

@@ -4,7 +4,7 @@ const Agent = require('../models/Agent');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 // Connect to MongoDB
@@ -82,7 +82,7 @@ const scrape = async () => {
 
         if (charData.name !== 'Unknown' && charData.img) {
           const imgExt = charData.img.split('.').pop().split('?')[0] || 'png';
-          const imgName = `candy-${crypto.randomUUID()}.${imgExt}`;
+          const imgName = `candy-${uuidv4()}.${imgExt}`;
           const uploadDir = path.join(__dirname, '../../uploads');
           const localPath = path.join(uploadDir, imgName);
 

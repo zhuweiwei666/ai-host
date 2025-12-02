@@ -47,9 +47,35 @@ export async function uploadToOSS(file: File): Promise<string> {
 
     // 4. Upload file to OSS
     const result = await client.put(objectKey, file);
+    
+    console.log('[OSS Upload] Upload result:', {
+      url: result.url,
+      name: result.name,
+      bucket: sts.bucket,
+      region: sts.region
+    });
 
     // 5. Return public URL
-    return result.url;
+    // OSS put() returns result.url which should be the full public URL
+    // Format: http://bucket-name.oss-region.aliyuncs.com/path/to/file
+    // If bucket is private, we need to use signature URL, but for now assume public read
+    let publicUrl = result.url;
+    
+    // Ensure URL is absolute (starts with http:// or https://)
+    if (!publicUrl.startsWith('http://') && !publicUrl.startsWith('https://')) {
+      // Construct full URL manually if needed
+      const protocol = sts.endpoint.includes('https') ? 'https' : 'http';
+      publicUrl = `${protocol}://${sts.bucket}.${sts.endpoint}/${objectKey}`;
+      console.log('[OSS Upload] Constructed URL:', publicUrl);
+    }
+    
+    // Normalize to https if available (more secure and works better with CORS)
+    if (publicUrl.startsWith('http://')) {
+      publicUrl = publicUrl.replace('http://', 'https://');
+      console.log('[OSS Upload] Normalized to HTTPS:', publicUrl);
+    }
+    
+    return publicUrl;
   } catch (error: any) {
     console.error('[OSS Upload] Failed:', error);
     throw new Error(error?.response?.data?.error || error?.message || 'Failed to upload file to OSS');

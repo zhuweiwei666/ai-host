@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 
 class ImageGenerationService {
   constructor() {
@@ -256,7 +256,7 @@ class ImageGenerationService {
 
   async downloadAndSaveImage(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const fileName = `gen-${crypto.randomUUID()}.png`; // Flux usually returns png or jpg
+    const fileName = `gen-${uuidv4()}.png`; // Flux usually returns png or jpg
     
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
