@@ -8,6 +8,7 @@ import ChatPage from './pages/ChatPage';
 import UserList from './pages/UserList'; 
 import AgentStats from './pages/AgentStats'; // Import AgentStats
 import VoiceModelsPage from './pages/VoiceModelsPage'; // Import VoiceModelsPage
+import ApiDocs from './pages/ApiDocs'; // Import ApiDocs
 import './index.css';
 
 // Suppress browser extension errors in console
@@ -48,7 +49,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/" element={<Agents />} />
           <Route path="/stats" element={<AgentStats />} /> {/* Stats Route */}
           <Route path="/users" element={<UserList />} />
-          <Route path="/voice-models" element={<VoiceModelsPage />} /> 
+          <Route path="/voice-models" element={<VoiceModelsPage />} />
+          <Route path="/api-docs" element={<ApiDocs />} /> {/* API Docs Route */}
         </Route>
         
         {/* Pages that might not need sidebar or are distinct */}

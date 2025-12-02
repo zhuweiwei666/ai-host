@@ -15,6 +15,7 @@ const Layout: React.FC = () => {
   const isVoiceModelsActive = location.pathname === '/voice-models'; // Placeholder path if we split it later
   const isStatsActive = location.pathname === '/stats'; // Stats active state
   const isUsersActive = location.pathname === '/users';
+  const isApiDocsActive = location.pathname === '/api-docs';
 
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20">
@@ -160,6 +161,21 @@ const Layout: React.FC = () => {
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
              </svg>
              用户管理
+           </button>
+
+           {/* API Docs Menu */}
+           <button
+             onClick={() => navigate('/api-docs')}
+             className={`w-full flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
+                isApiDocsActive
+                  ? 'text-primary-700 bg-gradient-to-r from-primary-50 to-purple-50 shadow-sm border border-primary-200/50'
+                  : 'text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-50/50 hover:text-gray-900'
+              }`}
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+             </svg>
+             接口文档
            </button>
         </nav>
         
