@@ -37,67 +37,64 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus }
       
       {/* Content */}
       <div className="relative z-10">
-        <div className="mb-4">
-          {/* 顶部：头像 + 名称 + 操作按钮 */}
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              {/* Avatar - 移除外框 */}
-              <div className="relative flex-shrink-0">
-                <img 
-                  src={normalizeImageUrl(agent.avatarUrl)} 
-                  alt={agent.name} 
-                  className="w-20 h-20 rounded-2xl object-cover object-[50%_20%] bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 shadow-lg"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80';
-                  }}
-                />
-                {agent.status === 'online' && (
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xl font-bold text-gray-900 truncate mb-2">{agent.name}</h3>
-                <p className="text-xs text-gray-500 truncate font-medium">Model: {agent.modelName?.split('/').pop() || 'N/A'}</p>
-              </div>
+        {/* 顶部：头像 + 名称 + 操作按钮 */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* Avatar - 移除外框 */}
+            <div className="relative flex-shrink-0">
+              <img 
+                src={normalizeImageUrl(agent.avatarUrl)} 
+                alt={agent.name} 
+                className="w-20 h-20 rounded-2xl object-cover object-[50%_20%] bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0 shadow-lg"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80';
+                }}
+              />
+              {agent.status === 'online' && (
+                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
+              )}
             </div>
-            {/* 操作按钮移到最右侧，不占用中间空间 */}
-            <div className="flex gap-1.5 flex-shrink-0">
-              <button 
-                onClick={() => navigate(`/edit/${agent._id}`)}
-                className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-all duration-200"
-                title="编辑"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-              <button 
-                onClick={handleDelete}
-                className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                title="删除"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-xl font-bold text-gray-900 truncate mb-1">{agent.name}</h3>
+              <p className="text-xs text-gray-500 truncate font-medium mb-2">Model: {agent.modelName?.split('/').pop() || 'N/A'}</p>
+              {/* 性别和在线状态：紧跟在模型信息下方，独立一行，确保有足够空间 */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold capitalize shadow-sm whitespace-nowrap ${
+                  agent.gender === 'female' ? 'bg-gradient-to-r from-pink-100 to-rose-100 text-pink-700 border border-pink-200/50' : 
+                  agent.gender === 'male' ? 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border border-blue-200/50' : 
+                  'bg-gray-100 text-gray-700 border border-gray-200/50'
+                }`}>
+                  {agent.gender}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${
+                  agent.status === 'online' ? 'text-green-600' : 'text-gray-400'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${agent.status === 'online' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                  {agent.status === 'online' ? 'Online' : 'Offline'}
+                </span>
+              </div>
             </div>
           </div>
-          
-          {/* 性别和在线状态：独立一行，确保有足够空间 */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold capitalize shadow-sm whitespace-nowrap ${
-              agent.gender === 'female' ? 'bg-gradient-to-r from-pink-100 to-rose-100 text-pink-700 border border-pink-200/50' : 
-              agent.gender === 'male' ? 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border border-blue-200/50' : 
-              'bg-gray-100 text-gray-700 border border-gray-200/50'
-            }`}>
-              {agent.gender}
-            </span>
-            <span className={`inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${
-              agent.status === 'online' ? 'text-green-600' : 'text-gray-400'
-            }`}>
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${agent.status === 'online' ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-              {agent.status === 'online' ? 'Online' : 'Offline'}
-            </span>
+          {/* 操作按钮移到最右侧，不占用中间空间 */}
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button 
+              onClick={() => navigate(`/edit/${agent._id}`)}
+              className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-all duration-200"
+              title="编辑"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+            <button 
+              onClick={handleDelete}
+              className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+              title="删除"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
           </div>
         </div>
         
