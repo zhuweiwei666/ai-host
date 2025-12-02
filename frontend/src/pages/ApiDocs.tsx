@@ -137,7 +137,7 @@ const ApiDocs: React.FC = () => {
             _id: 'string',
             username: 'string',
             email: 'string',
-            userType: 'operator' | 'channel',
+            userType: 'operator 或 channel',
             platform: 'string',
             balance: 0
           }
@@ -201,7 +201,7 @@ const ApiDocs: React.FC = () => {
             avatarUrl: 'string',
             description: 'string',
             modelName: 'string',
-            status: 'online' | 'offline',
+            status: 'online 或 offline',
           }
         ]
       },
@@ -273,7 +273,7 @@ const ApiDocs: React.FC = () => {
         response: [
           {
             _id: 'string',
-            role: 'user' | 'assistant',
+            role: 'user 或 assistant',
             content: 'string',
             createdAt: 'string',
             audioUrl: 'string (可选)'
