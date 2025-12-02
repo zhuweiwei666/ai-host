@@ -23,8 +23,10 @@ http.interceptors.request.use(
     // For development/testing: allow mock user ID header if backend supports it
     // Backend should have ENABLE_MOCK_AUTH=true for this to work
     const mockUserId = localStorage.getItem('mockUserId') || 'test_user_001';
+    const mockUserRole = localStorage.getItem('mockUserRole') || 'admin'; // Default to admin for edit operations
     if (mockUserId) {
       config.headers['x-mock-user-id'] = mockUserId;
+      config.headers['x-mock-user-role'] = mockUserRole;
     }
     
     return config;

@@ -339,14 +339,20 @@ const EditAgent: React.FC = () => {
       // Prepare payload with potential global update flag
       const payload = { ...formData, updateGlobalCore };
       
+      console.log('[EditAgent] Submitting form:', { isEdit, id, payloadKeys: Object.keys(payload) });
+      
       if (isEdit && id) {
+        console.log('[EditAgent] Updating agent with ID:', id);
         await updateAgent(id, payload);
       } else {
+        console.log('[EditAgent] Creating new agent');
         await createAgent(payload);
       }
       navigate('/');
-    } catch (err) {
-      alert('Save failed');
+    } catch (err: any) {
+      console.error('[EditAgent] Save failed:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Save failed';
+      alert(`保存失败: ${errorMessage}`);
     }
   };
 
