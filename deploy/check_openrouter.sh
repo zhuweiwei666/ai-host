@@ -42,13 +42,15 @@ echo ""
 # 2. 测试 API Key（如果配置了）
 echo "[2/3] 测试 OpenRouter API..."
 if [ -f "$BACKEND_DIR/.env.production.local" ]; then
-    source "$BACKEND_DIR/.env.production.local"
-    if [ -n "$OPENROUTER_API_KEY" ]; then
+    # 安全地读取 API Key（只读取以 OPENROUTER_API_KEY= 开头的行，忽略注释和空行）
+    API_KEY=$(grep "^OPENROUTER_API_KEY=" "$BACKEND_DIR/.env.production.local" | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs)
+    
+    if [ -n "$API_KEY" ] && [ "$API_KEY" != "" ]; then
         echo "  正在测试 API Key..."
         RESPONSE=$(curl -s -w "\n%{http_code}" \
             -X POST "https://openrouter.ai/api/v1/chat/completions" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+            -H "Authorization: Bearer $API_KEY" \
             -H "HTTP-Referer: http://47.245.121.93" \
             -H "X-Title: AI Host Admin" \
             -d '{
@@ -63,18 +65,21 @@ if [ -f "$BACKEND_DIR/.env.production.local" ]; then
             echo "  ✓ API Key 有效"
         elif [ "$HTTP_CODE" = "401" ]; then
             echo "  ✗ API Key 无效或已过期"
-            echo "  响应: $BODY"
+            echo "  错误详情: $(echo "$BODY" | grep -o '"message":"[^"]*"' | head -1 || echo 'Unknown error')"
         elif [ "$HTTP_CODE" = "402" ]; then
             echo "  ✗ 账户余额不足"
+        elif [ "$HTTP_CODE" = "429" ]; then
+            echo "  ⚠ API 请求频率限制"
         else
             echo "  ⚠ API 测试返回状态码: $HTTP_CODE"
-            echo "  响应: $BODY"
+            ERROR_MSG=$(echo "$BODY" | grep -o '"message":"[^"]*"' | head -1 || echo "$BODY" | head -c 200)
+            echo "  错误: $ERROR_MSG"
         fi
     else
-        echo "  ⚠ OPENROUTER_API_KEY 未设置，跳过测试"
+        echo "  ⚠ OPENROUTER_API_KEY 未设置或为空，跳过测试"
     fi
 else
-    echo "  ⚠ 无法加载环境变量，跳过测试"
+    echo "  ⚠ .env.production.local 文件不存在，跳过测试"
 fi
 echo ""
 
