@@ -1,33 +1,53 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { getUser, logout } from '../utils/auth';
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [voiceMenuOpen, setVoiceMenuOpen] = useState(true);
-  const [agentsMenuOpen, setAgentsMenuOpen] = useState(true); // Default open
+  const [agentsMenuOpen, setAgentsMenuOpen] = useState(true);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // 获取当前用户
+  const user = getUser();
 
   // Determine active state based on current path
   const isAgentsActive = location.pathname === '/';
   const searchParams = new URLSearchParams(location.search);
   const currentStyle = searchParams.get('style') || 'all';
 
-  const isVoiceModelsActive = location.pathname === '/voice-models'; // Placeholder path if we split it later
-  const isStatsActive = location.pathname === '/stats'; // Stats active state
+  const isVoiceModelsActive = location.pathname === '/voice-models';
+  const isStatsActive = location.pathname === '/stats';
   const isUsersActive = location.pathname === '/users';
   const isApiDocsActive = location.pathname === '/api-docs';
+
+  // 登出处理
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20">
       {/* Sidebar */}
-      <aside className="w-64 glass border-r border-white/30 flex-shrink-0 flex flex-col transition-all duration-300 shadow-soft">
-        <div className="h-20 flex items-center px-6 border-b border-gray-200/50 bg-gradient-to-r from-primary-600 to-purple-600">
+      <aside className="w-64 glass flex-shrink-0 flex flex-col transition-all duration-300 shadow-soft border-r-0">
+        <div className="h-20 flex items-center justify-center px-6 border-b border-gray-200/50 bg-gradient-to-r from-primary-600 to-purple-600">
            <div className="flex items-center gap-3">
-             {/* Aimatrix Logo - 极简设计，直接使用文字图标 */}
+             <div className="relative w-10 h-10 flex-shrink-0">
+               <img 
+                 src="/logo.png" 
+                 alt="Clingai Logo" 
+                 className="w-10 h-10 rounded-lg object-cover absolute inset-0"
+                 onError={(e) => {
+                   (e.target as HTMLImageElement).style.display = 'none';
+                 }}
+               />
              <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
-               <span className="text-2xl font-extrabold text-white">A</span>
+                 <span className="text-2xl font-extrabold text-white">C</span>
+               </div>
              </div>
-             <h1 className="text-xl font-bold tracking-wide text-white">Aimatrix</h1>
+             <h1 className="text-xl font-bold tracking-wide text-white">Clingai-控制台</h1>
            </div>
         </div>
 
@@ -178,20 +198,42 @@ const Layout: React.FC = () => {
            </button>
         </nav>
         
-        <div className="p-5 border-t border-gray-200/50 bg-gradient-to-r from-gray-50/80 to-gray-100/50 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
+        {/* 用户信息和登出 */}
+        <div className="p-5 border-t border-gray-200/50 bg-gradient-to-r from-gray-50/80 to-gray-100/50 backdrop-blur-sm relative">
+            <div 
+              className="flex items-center gap-3 cursor-pointer hover:bg-white/50 rounded-lg p-2 -m-2 transition-colors"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+            >
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-white/50">
-                    A
+                    {user?.username?.charAt(0).toUpperCase() || 'A'}
                 </div>
                 <div className="overflow-hidden flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">Administrator</p>
-                    <p className="text-xs text-gray-500 truncate">admin@aimatrix.com</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{user?.username || 'Admin'}</p>
+                    <p className="text-xs text-gray-500 truncate">{user?.email || '管理员'}</p>
                 </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
             </div>
+            
+            {/* 下拉菜单 */}
+            {showUserMenu && (
+              <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  退出登录
+                </button>
+              </div>
+            )}
         </div>
       </aside>
 
-      {/* Main Content Area - This is where pages will be injected */}
+      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto relative">
         <div className="min-h-full">
           <Outlet /> 

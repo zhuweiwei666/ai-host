@@ -6,6 +6,7 @@ const User = require('../models/User');
 const walletService = require('../services/walletService');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
+const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
 // Public routes (no auth required)
 
@@ -18,17 +19,11 @@ router.post('/sync', async (req, res) => {
     
     // Validation
     if (!externalUserId) {
-      return res.status(400).json({ 
-        message: 'externalUserId is required',
-        code: 'MISSING_EXTERNAL_USER_ID'
-      });
+      return errors.badRequest(res, 'externalUserId is required', { code: 'MISSING_EXTERNAL_USER_ID' });
     }
     
     if (!platform || !['android', 'ios'].includes(platform)) {
-      return res.status(400).json({ 
-        message: 'platform must be "android" or "ios"',
-        code: 'INVALID_PLATFORM'
-      });
+      return errors.badRequest(res, 'platform must be "android" or "ios"', { code: 'INVALID_PLATFORM' });
     }
     
     // Build query to find existing user by externalUserId
@@ -66,7 +61,7 @@ router.post('/sync', async (req, res) => {
         { expiresIn: '30d' }
       );
       
-      return res.json({
+      return sendSuccess(res, HTTP_STATUS.OK, {
         user: {
           _id: user._id, // 内部用户ID
           externalUserId: user.externalUserId, // 外部用户ID
@@ -116,7 +111,7 @@ router.post('/sync', async (req, res) => {
       { expiresIn: '30d' }
     );
     
-    res.status(201).json({
+    sendSuccess(res, HTTP_STATUS.CREATED, {
       user: {
         _id: user._id, // 内部用户ID
         externalUserId: user.externalUserId, // 外部用户ID
@@ -133,7 +128,7 @@ router.post('/sync', async (req, res) => {
     });
   } catch (err) {
     console.error('Sync user error:', err);
-    res.status(500).json({ message: err.message || 'Failed to sync user' });
+    errors.internalError(res, err.message || 'Failed to sync user', { error: err.message });
   }
 });
 
@@ -144,25 +139,16 @@ router.post('/register', async (req, res) => {
     
     // Validation
     if (!username || !password) {
-      return res.status(400).json({ 
-        message: 'Username and password are required',
-        code: 'MISSING_FIELDS'
-      });
+      return errors.badRequest(res, 'Username and password are required', { code: 'MISSING_FIELDS' });
     }
     
     if (password.length < 6) {
-      return res.status(400).json({ 
-        message: 'Password must be at least 6 characters',
-        code: 'WEAK_PASSWORD'
-      });
+      return errors.badRequest(res, 'Password must be at least 6 characters', { code: 'WEAK_PASSWORD' });
     }
     
     // Web platform doesn't use externalUserId
     if (platform === 'android' || platform === 'ios') {
-      return res.status(400).json({ 
-        message: 'For Android/iOS platforms, please use /api/users/sync endpoint with externalUserId',
-        code: 'USE_SYNC_ENDPOINT'
-      });
+      return errors.badRequest(res, 'For Android/iOS platforms, please use /api/users/sync endpoint with externalUserId', { code: 'USE_SYNC_ENDPOINT' });
     }
     
     // Check if user exists
@@ -175,10 +161,7 @@ router.post('/register', async (req, res) => {
     });
     
     if (existingUser) {
-      return res.status(400).json({ 
-        message: 'User already exists',
-        code: 'USER_EXISTS'
-      });
+      return errors.conflict(res, 'User already exists', { code: 'USER_EXISTS' });
     }
     
     // Hash password
@@ -211,7 +194,7 @@ router.post('/register', async (req, res) => {
       { expiresIn: '30d' }
     );
     
-    res.status(201).json({
+    sendSuccess(res, HTTP_STATUS.CREATED, {
       user: {
         _id: user._id,
         username: user.username,
@@ -225,7 +208,7 @@ router.post('/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Register error:', err);
-    res.status(500).json({ message: err.message || 'Registration failed' });
+    errors.internalError(res, err.message || 'Registration failed', { error: err.message });
   }
 });
 
@@ -247,17 +230,11 @@ router.post('/login', async (req, res) => {
       const user = await User.findOne(query);
       
       if (!user) {
-        return res.status(404).json({ 
-          message: 'User not found. Please use /api/users/sync to create user first.',
-          code: 'USER_NOT_FOUND'
-        });
+        return errors.notFound(res, 'User not found. Please use /api/users/sync to create user first.', { code: 'USER_NOT_FOUND' });
       }
       
       if (!user.isActive) {
-        return res.status(403).json({ 
-          message: 'Account is disabled',
-          code: 'ACCOUNT_DISABLED'
-        });
+        return errors.forbidden(res, 'Account is disabled', { code: 'ACCOUNT_DISABLED' });
       }
       
       // Update last login
@@ -279,7 +256,7 @@ router.post('/login', async (req, res) => {
       // Get balance
       const balance = await walletService.getBalance(user._id.toString());
       
-      return res.json({
+      return sendSuccess(res, HTTP_STATUS.OK, {
         user: {
           _id: user._id,
           externalUserId: user.externalUserId,
@@ -297,43 +274,28 @@ router.post('/login', async (req, res) => {
     
     // Traditional username/password login (for web platform)
     if (!username || !password) {
-      return res.status(400).json({ 
-        message: 'Username and password are required',
-        code: 'MISSING_FIELDS'
-      });
+      return errors.badRequest(res, 'Username and password are required', { code: 'MISSING_FIELDS' });
     }
     
     // Find user
     const user = await User.findOne({ username });
     if (!user) {
-      return res.status(401).json({ 
-        message: 'Invalid credentials',
-        code: 'INVALID_CREDENTIALS'
-      });
+      return errors.unauthorized(res, 'Invalid credentials', { code: 'INVALID_CREDENTIALS' });
     }
     
     // Check if user is active
     if (!user.isActive) {
-      return res.status(403).json({ 
-        message: 'Account is disabled',
-        code: 'ACCOUNT_DISABLED'
-      });
+      return errors.forbidden(res, 'Account is disabled', { code: 'ACCOUNT_DISABLED' });
     }
     
     // Verify password
     if (!user.password) {
-      return res.status(401).json({ 
-        message: 'Invalid credentials',
-        code: 'INVALID_CREDENTIALS'
-      });
+      return errors.unauthorized(res, 'Invalid credentials', { code: 'INVALID_CREDENTIALS' });
     }
     
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ 
-        message: 'Invalid credentials',
-        code: 'INVALID_CREDENTIALS'
-      });
+      return errors.unauthorized(res, 'Invalid credentials', { code: 'INVALID_CREDENTIALS' });
     }
     
     // Update last login
@@ -355,7 +317,7 @@ router.post('/login', async (req, res) => {
     // Get balance
     const balance = await walletService.getBalance(user._id.toString());
     
-    res.json({
+    sendSuccess(res, HTTP_STATUS.OK, {
       user: {
         _id: user._id,
         username: user.username,
@@ -370,7 +332,159 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ message: err.message || 'Login failed' });
+    errors.internalError(res, err.message || 'Login failed', { error: err.message });
+  }
+});
+
+// POST /api/users/google-login - Login with Google
+router.post('/google-login', async (req, res) => {
+  try {
+    const { google_id, email, name, picture } = req.body;
+
+    // 1. Check required parameters
+    if (!google_id || !email) {
+      return errors.badRequest(res, 'Missing google_id or email');
+    }
+
+    // 2. Find user by google_id or email
+    let user = await User.findOne({
+      $or: [
+        { google_id: google_id },
+        { email: email }
+      ]
+    });
+
+    if (user) {
+      // 3. User exists: Link Google ID if not linked
+      if (!user.google_id) {
+        user.google_id = google_id;
+        await user.save();
+      }
+      // Update avatar if user has no avatar and picture is provided
+      if (!user.avatar && picture) {
+        user.avatar = picture;
+        await user.save();
+      }
+    } else {
+      // 4. User does not exist: Auto-register
+      const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+      
+      // Use name or email prefix as username
+      // Ensure username is unique by appending random string if necessary (simple handling here)
+      let username = name || email.split('@')[0];
+      
+      // Check if username exists (unlikely for name but possible for email prefix)
+      const existingUsername = await User.findOne({ username });
+      if (existingUsername) {
+        username = `${username}_${Math.floor(Math.random() * 10000)}`;
+      }
+
+      user = await User.create({
+        username: username,
+        email: email,
+        password: await bcrypt.hash(randomPassword, 10), // Hash the random password
+        google_id: google_id,
+        avatar: picture || '',
+        role: 'user',
+        userType: 'channel', // Default to channel user
+        platform: 'web',
+        isActive: true,
+        lastLoginAt: new Date()
+      });
+
+      // Initialize wallet
+      await walletService.getBalance(user._id.toString());
+    }
+
+    // 5. Generate Token
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        username: user.username,
+        role: user.role,
+        userType: user.userType
+      },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '30d' }
+    );
+
+    // Get balance
+    const balance = await walletService.getBalance(user._id.toString());
+
+    // Return response
+    sendSuccess(res, HTTP_STATUS.OK, {
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        balance: balance,
+        isVip: false // Placeholder, add logic if VIP system exists
+      }
+    });
+
+  } catch (err) {
+    console.error('Google Login Error:', err);
+    errors.internalError(res, 'Server error during Google login', { error: err.message });
+  }
+});
+
+// POST /api/users/init-admin - Helper to ensure admin user exists
+// Allow creating first admin if no users exist, otherwise require admin role
+// This must be before requireAuth to allow creating first admin without authentication
+// Body: { username?, password? } - optional, defaults to admin/admin123
+router.post('/init-admin', optionalAuth, async (req, res) => {
+  try {
+    // Check if any users exist
+    const userCount = await User.countDocuments();
+    const isFirstUser = userCount === 0;
+    
+    // If not first user, require admin role (but allow without auth for first user)
+    if (!isFirstUser) {
+      const user = req.user;
+      if (!user || user.role !== 'admin') {
+        return errors.adminRequired(res);
+      }
+    }
+    
+    const { username = 'admin', password = 'admin123' } = req.body;
+    
+    let admin = await User.findOne({ username });
+    let isNewAdmin = false;
+    
+    if (!admin) {
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      admin = await User.create({ 
+        username, 
+        password: hashedPassword,
+        email: `${username}@ai-host.com`, 
+        role: 'admin',
+        userType: 'operator',
+        platform: 'admin'
+      });
+      isNewAdmin = true;
+      
+      // Initialize wallet for admin
+      await walletService.getBalance(admin._id.toString());
+    }
+    
+    // Don't send password
+    const adminObj = admin.toObject();
+    delete adminObj.password;
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      ...adminObj,
+      isNew: isNewAdmin,
+      message: isNewAdmin 
+        ? `管理员账号已创建，用户名: ${username}，密码: ${password}` 
+        : '管理员账号已存在'
+    });
+  } catch (err) {
+    console.error('Init admin error:', err);
+    errors.internalError(res, err.message || 'Operation failed', { error: err.message });
   }
 });
 
@@ -388,13 +502,10 @@ router.get('/', async (req, res) => {
       // If no users exist, allow access to initialize first admin
       const userCount = await User.countDocuments();
       if (userCount === 0) {
-        return res.json([]);
+        return sendSuccess(res, HTTP_STATUS.OK, []);
       }
       
-      return res.status(403).json({ 
-        message: 'Admin access required',
-        code: 'FORBIDDEN'
-      });
+      return errors.adminRequired(res);
     }
     
     // Build query
@@ -419,10 +530,10 @@ router.get('/', async (req, res) => {
       return { ...userObj, balance };
     }));
     
-    res.json(usersWithBalance);
+    sendSuccess(res, HTTP_STATUS.OK, usersWithBalance);
   } catch (err) {
     console.error('Get users error:', err);
-    res.status(500).json({ message: err.message });
+    errors.internalError(res, err.message || 'Operation failed', { error: err.message });
   }
 });
 
@@ -433,28 +544,19 @@ router.post('/', requireAdmin, async (req, res) => {
     
     // Validate userType
     if (userType && !['operator', 'channel'].includes(userType)) {
-      return res.status(400).json({ 
-        message: 'Invalid userType. Must be "operator" or "channel"',
-        code: 'INVALID_USER_TYPE'
-      });
+      return errors.badRequest(res, 'Invalid userType. Must be "operator" or "channel"', { code: 'INVALID_USER_TYPE' });
     }
     
     // For channel users, password is required
     if (userType === 'channel' && !password) {
-      return res.status(400).json({ 
-        message: 'Password is required for channel users',
-        code: 'PASSWORD_REQUIRED'
-      });
+      return errors.badRequest(res, 'Password is required for channel users', { code: 'PASSWORD_REQUIRED' });
     }
     
     // Hash password if provided
     let hashedPassword = null;
     if (password) {
       if (password.length < 6) {
-        return res.status(400).json({ 
-          message: 'Password must be at least 6 characters',
-          code: 'WEAK_PASSWORD'
-        });
+        return errors.badRequest(res, 'Password must be at least 6 characters', { code: 'WEAK_PASSWORD' });
       }
       hashedPassword = await bcrypt.hash(password, 10);
     }
@@ -478,10 +580,10 @@ router.post('/', requireAdmin, async (req, res) => {
     const userObj = user.toObject();
     delete userObj.password;
     
-    res.status(201).json(userObj);
+    sendSuccess(res, HTTP_STATUS.CREATED, userObj);
   } catch (err) {
     console.error('Create user error:', err);
-    res.status(400).json({ message: err.message });
+    errors.badRequest(res, err.message);
   }
 });
 
@@ -495,75 +597,26 @@ router.post('/:id/recharge', async (req, res) => {
     
     // Permission check: Only admin can recharge others, users can only recharge themselves
     if (!isAdmin && targetUserId !== currentUserId) {
-      return res.status(403).json({ 
-        message: 'You can only recharge your own wallet',
-        code: 'FORBIDDEN'
-      });
+      return errors.forbidden(res, 'You can only recharge your own wallet');
     }
     
     // Amount validation
     const amountNum = Number(amount);
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
-      return res.status(400).json({ 
-        message: 'Amount must be a positive number',
-        code: 'INVALID_AMOUNT'
-      });
+      return errors.badRequest(res, 'Amount must be a positive number', { code: 'INVALID_AMOUNT' });
     }
     
     // Maximum amount limit (prevent abuse)
     const MAX_RECHARGE_AMOUNT = 1000000;
     if (amountNum > MAX_RECHARGE_AMOUNT) {
-      return res.status(400).json({ 
-        message: `Amount cannot exceed ${MAX_RECHARGE_AMOUNT}`,
-        code: 'AMOUNT_TOO_LARGE'
-      });
+      return errors.badRequest(res, `Amount cannot exceed ${MAX_RECHARGE_AMOUNT}`, { code: 'AMOUNT_TOO_LARGE' });
     }
 
     const newBalance = await walletService.reward(targetUserId, amountNum, 'admin_recharge');
-    res.json({ success: true, balance: newBalance });
+    sendSuccess(res, HTTP_STATUS.OK, { success: true, balance: newBalance });
   } catch (err) {
     console.error('Recharge error:', err);
-    res.status(500).json({ message: err.message || 'Failed to recharge wallet' });
-  }
-});
-
-// POST /api/users/init-admin - Helper to ensure admin user exists
-// Allow creating first admin if no users exist, otherwise require admin role
-router.post('/init-admin', async (req, res) => {
-  try {
-    // Check if any users exist
-    const userCount = await User.countDocuments();
-    const isFirstUser = userCount === 0;
-    
-    // If not first user, require admin role
-    if (!isFirstUser) {
-      if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ 
-          message: 'Admin access required',
-          code: 'FORBIDDEN'
-        });
-      }
-    }
-    
-    let admin = await User.findOne({ username: 'admin' });
-    if (!admin) {
-      admin = await User.create({ 
-        username: 'admin', 
-        email: 'admin@ai-host.com', 
-        role: 'admin',
-        userType: 'operator',
-        platform: 'admin'
-      });
-      // Initialize wallet for admin
-      await walletService.getBalance(admin._id.toString());
-    }
-    // Don't send password
-    const adminObj = admin.toObject();
-    delete adminObj.password;
-    res.json(adminObj);
-  } catch (err) {
-    console.error('Init admin error:', err);
-    res.status(500).json({ message: err.message });
+    errors.internalError(res, err.message || 'Failed to recharge wallet', { error: err.message });
   }
 });
 

@@ -1,32 +1,32 @@
 import axios from "axios";
 import { BASE_URL } from "./config";
+import { getToken, logout, isTokenExpired } from "../utils/auth";
 
 export const http = axios.create({
   baseURL: BASE_URL,
-  timeout: 20000,
+  timeout: 60000, // 60 秒超时
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add request interceptor to include auth token
+// 请求拦截器 - 添加认证 token
 http.interceptors.request.use(
   (config) => {
-    // Get token from localStorage (adjust key name as needed)
-    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+    const token = getToken();
     
-    // If token exists, add it to Authorization header
     if (token) {
+      // 检查 token 是否过期
+      if (isTokenExpired()) {
+        logout();
+        // 如果在浏览器环境，跳转到登录页
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        return Promise.reject(new Error('Token expired'));
+      }
+      
       config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // For development/testing: allow mock user ID header if backend supports it
-    // Backend should have ENABLE_MOCK_AUTH=true for this to work
-    const mockUserId = localStorage.getItem('mockUserId') || 'test_user_001';
-    const mockUserRole = localStorage.getItem('mockUserRole') || 'admin'; // Default to admin for edit operations
-    if (mockUserId) {
-      config.headers['x-mock-user-id'] = mockUserId;
-      config.headers['x-mock-user-role'] = mockUserRole;
     }
     
     return config;
@@ -36,17 +36,37 @@ http.interceptors.request.use(
   }
 );
 
-// Add response interceptor for error handling
+// 响应拦截器 - 处理错误和数据解包
 http.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Handle 401 errors - show helpful message
-    if (error.response?.status === 401) {
-      console.warn('Authentication required. Using mock user ID for development.');
-      // Don't throw error for OSS STS endpoint - it will retry with mock user ID
+  (response) => {
+    // 解包标准化的后端响应 { success, data, ... }
+    if (
+      response?.data &&
+      typeof response.data === 'object' &&
+      response.data.success === true &&
+      Object.prototype.hasOwnProperty.call(response.data, 'data')
+    ) {
+      return {
+        ...response,
+        data: response.data.data,
+        __meta: response.data,
+      };
     }
+    return response;
+  },
+  (error) => {
+    // 处理 401 错误 - token 无效或过期
+    if (error.response?.status === 401) {
+      console.warn('认证失败，请重新登录');
+      logout();
+      
+      // 跳转到登录页（除非已经在登录页）
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    
     console.error('API Error:', error);
     return Promise.reject(error);
   }
 );
-

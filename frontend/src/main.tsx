@@ -1,39 +1,36 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Layout from './components/Layout'; // Import Layout
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
 import Agents from './pages/Agents';
 import EditAgent from './pages/EditAgent';
 import ChatPage from './pages/ChatPage';
 import UserList from './pages/UserList'; 
-import AgentStats from './pages/AgentStats'; // Import AgentStats
-import VoiceModelsPage from './pages/VoiceModelsPage'; // Import VoiceModelsPage
-import ApiDocs from './pages/ApiDocs'; // Import ApiDocs
+import AgentStats from './pages/AgentStats';
+import VoiceModelsPage from './pages/VoiceModelsPage';
+import ApiDocs from './pages/ApiDocs';
+import AdminLogin from './pages/AdminLogin';
 import './index.css';
 
 // Suppress browser extension errors in console
-// These errors come from browser extensions (contentScript.bundle.js) and don't affect the app
 if (typeof window !== 'undefined') {
-  // Filter unhandled promise rejections from browser extensions
   window.addEventListener('unhandledrejection', (event) => {
     const errorMessage = event.reason?.message || event.reason?.toString() || '';
     if (errorMessage.includes('contentScript.bundle.js') && 
         errorMessage.includes('Access to storage') &&
         errorMessage.includes('is not allowed from this context')) {
-      // Prevent the error from showing in console
       event.preventDefault();
       return;
     }
   });
 
-  // Filter console errors from browser extensions
   const originalError = console.error;
   console.error = (...args: any[]) => {
     const errorMessage = args[0]?.toString() || '';
     if (errorMessage.includes('contentScript.bundle.js') && 
         errorMessage.includes('Access to storage') &&
         errorMessage.includes('is not allowed from this context')) {
-      // Silently ignore browser extension errors
       return;
     }
     originalError.apply(console, args);
@@ -44,19 +41,38 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Wrap pages that need sidebar in Layout */}
-        <Route element={<Layout />}>
-        <Route path="/" element={<Agents />} />
-          <Route path="/stats" element={<AgentStats />} /> {/* Stats Route */}
+        {/* 登录页面 - 无需认证 */}
+        <Route path="/login" element={<AdminLogin />} />
+        
+        {/* 受保护的路由 - 需要管理员登录 */}
+        <Route element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
+          <Route path="/" element={<Agents />} />
+          <Route path="/stats" element={<AgentStats />} />
           <Route path="/users" element={<UserList />} />
           <Route path="/voice-models" element={<VoiceModelsPage />} />
-          <Route path="/api-docs" element={<ApiDocs />} /> {/* API Docs Route */}
+          <Route path="/api-docs" element={<ApiDocs />} />
         </Route>
         
-        {/* Pages that might not need sidebar or are distinct */}
-        <Route path="/create" element={<EditAgent />} />
-        <Route path="/edit/:id" element={<EditAgent />} />
-        <Route path="/chat/:id" element={<ChatPage />} />
+        {/* 其他受保护页面 */}
+        <Route path="/create" element={
+          <ProtectedRoute>
+            <EditAgent />
+          </ProtectedRoute>
+        } />
+        <Route path="/edit/:id" element={
+          <ProtectedRoute>
+            <EditAgent />
+          </ProtectedRoute>
+        } />
+        <Route path="/chat/:id" element={
+          <ProtectedRoute>
+            <ChatPage />
+          </ProtectedRoute>
+        } />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,
