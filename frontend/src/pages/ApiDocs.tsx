@@ -21,7 +21,7 @@ const ApiDocs: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('users');
   const [copiedEndpoint, setCopiedEndpoint] = useState<string | null>(null);
 
-  const baseUrl = 'http://139.162.62.115';
+  const baseUrl = 'https://www.cling-ai.com';
 
   const copyToClipboard = (text: string, endpoint: string) => {
     navigator.clipboard.writeText(text);
