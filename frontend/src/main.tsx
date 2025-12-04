@@ -11,6 +11,7 @@ import AgentStats from './pages/AgentStats';
 import VoiceModelsPage from './pages/VoiceModelsPage';
 import ApiDocs from './pages/ApiDocs';
 import AdminLogin from './pages/AdminLogin';
+import Settings from './pages/Settings';
 import './index.css';
 
 // Suppress browser extension errors in console
@@ -55,6 +56,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/users" element={<UserList />} />
           <Route path="/voice-models" element={<VoiceModelsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
         
         {/* 其他受保护页面 */}

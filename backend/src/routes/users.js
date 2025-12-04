@@ -587,6 +587,131 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/users/change-password - Change current user's password
+router.post('/change-password', async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id;
+    
+    // Validation
+    if (!oldPassword || !newPassword) {
+      return errors.badRequest(res, '请输入旧密码和新密码', { code: 'MISSING_FIELDS' });
+    }
+    
+    if (newPassword.length < 6) {
+      return errors.badRequest(res, '新密码至少需要6个字符', { code: 'WEAK_PASSWORD' });
+    }
+    
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return errors.notFound(res, '用户不存在');
+    }
+    
+    // Verify old password
+    if (!user.password) {
+      return errors.badRequest(res, '该账号没有设置密码', { code: 'NO_PASSWORD' });
+    }
+    
+    const isValidPassword = await bcrypt.compare(oldPassword, user.password);
+    if (!isValidPassword) {
+      return errors.badRequest(res, '旧密码不正确', { code: 'INVALID_PASSWORD' });
+    }
+    
+    // Hash and save new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+    
+    sendSuccess(res, HTTP_STATUS.OK, { message: '密码修改成功' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    errors.internalError(res, err.message || '修改密码失败', { error: err.message });
+  }
+});
+
+// POST /api/users/create-admin - Create a new admin user (Admin only)
+router.post('/create-admin', requireAdmin, async (req, res) => {
+  try {
+    const { username, password, email } = req.body;
+    
+    // Validation
+    if (!username || !password) {
+      return errors.badRequest(res, '用户名和密码为必填项', { code: 'MISSING_FIELDS' });
+    }
+    
+    if (password.length < 6) {
+      return errors.badRequest(res, '密码至少需要6个字符', { code: 'WEAK_PASSWORD' });
+    }
+    
+    // Check if username already exists
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return errors.badRequest(res, '用户名已存在', { code: 'USERNAME_EXISTS' });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create admin user
+    const admin = await User.create({
+      username,
+      password: hashedPassword,
+      email: email || `${username}@ai-host.com`,
+      role: 'admin',
+      userType: 'operator',
+      platform: 'admin'
+    });
+    
+    // Initialize wallet
+    await walletService.getBalance(admin._id.toString());
+    
+    // Don't send password
+    const adminObj = admin.toObject();
+    delete adminObj.password;
+    
+    sendSuccess(res, HTTP_STATUS.CREATED, adminObj);
+  } catch (err) {
+    console.error('Create admin error:', err);
+    errors.badRequest(res, err.message || '创建管理员失败');
+  }
+});
+
+// GET /api/users/admins - List all admin users (Admin only)
+router.get('/admins', requireAdmin, async (req, res) => {
+  try {
+    const admins = await User.find({ role: 'admin' }).select('-password').sort({ createdAt: -1 });
+    sendSuccess(res, HTTP_STATUS.OK, admins);
+  } catch (err) {
+    console.error('Get admins error:', err);
+    errors.internalError(res, err.message || '获取管理员列表失败');
+  }
+});
+
+// DELETE /api/users/admins/:id - Delete an admin user (Admin only, cannot delete self)
+router.delete('/admins/:id', requireAdmin, async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const currentUserId = req.user.id;
+    
+    // Cannot delete yourself
+    if (targetId === currentUserId) {
+      return errors.badRequest(res, '不能删除自己的账号', { code: 'CANNOT_DELETE_SELF' });
+    }
+    
+    const admin = await User.findOne({ _id: targetId, role: 'admin' });
+    if (!admin) {
+      return errors.notFound(res, '管理员不存在');
+    }
+    
+    await admin.deleteOne();
+    sendSuccess(res, HTTP_STATUS.OK, { message: '管理员已删除' });
+  } catch (err) {
+    console.error('Delete admin error:', err);
+    errors.internalError(res, err.message || '删除管理员失败');
+  }
+});
+
 // POST /api/users/:id/recharge - Recharge user wallet (Admin only, or self-recharge)
 router.post('/:id/recharge', async (req, res) => {
   try {
