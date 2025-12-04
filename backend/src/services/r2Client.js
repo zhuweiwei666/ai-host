@@ -37,9 +37,18 @@ function getR2Client() {
         accessKeyId: process.env.R2_ACCESS_KEY_ID,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       },
+      // R2 需要的额外配置
+      forcePathStyle: true, // 强制使用 path-style URLs
     });
   }
   return r2Client;
+}
+
+/**
+ * 重置客户端（配置更改后使用）
+ */
+function resetR2Client() {
+  r2Client = null;
 }
 
 /**
@@ -57,8 +66,6 @@ function getR2PublicUrl(objectKey) {
   }
   
   // 如果开启了 R2 公开访问，使用 r2.dev 域名
-  // 格式: https://<bucket>.<account_id>.r2.dev/<object_key>
-  // 或者使用自定义域名（推荐）
   if (process.env.R2_DEV_URL) {
     let devUrl = process.env.R2_DEV_URL;
     devUrl = devUrl.replace(/\/$/, '');
@@ -66,8 +73,7 @@ function getR2PublicUrl(objectKey) {
   }
 
   // 默认返回存储 URL（需要签名才能访问）
-  // 建议配置 R2_PUBLIC_URL 或 R2_DEV_URL
-  console.warn('[R2 Client] No public URL configured. Please set R2_PUBLIC_URL or enable R2.dev public access.');
+  console.warn('[R2 Client] No public URL configured. Please set R2_PUBLIC_URL or R2_DEV_URL.');
   return `https://${process.env.R2_BUCKET}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${objectKey}`;
 }
 
@@ -76,13 +82,13 @@ function getR2PublicUrl(objectKey) {
  * @param {Buffer} buffer - 文件 buffer
  * @param {string} objectKey - R2 对象键 (e.g., 'uploads/2025-12-04/uuid.ext')
  * @param {string} contentType - MIME 类型 (e.g., 'image/png', 'video/mp4')
- * @returns {Promise<{url: string, key: string}>}
+ * @returns {Promise<{url: string, key: string, name: string}>}
  */
 async function uploadBufferToR2(buffer, objectKey, contentType) {
   const client = getR2Client();
   const bucket = process.env.R2_BUCKET;
 
-  console.log(`[R2 Client] Uploading: ${objectKey} (${buffer.length} bytes, type: ${contentType || 'unknown'})`);
+  console.log(`[R2 Client] Uploading: ${objectKey} (${buffer.length} bytes, type: ${contentType || 'unknown'}) to bucket: ${bucket}`);
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -100,16 +106,21 @@ async function uploadBufferToR2(buffer, objectKey, contentType) {
     return {
       url: publicUrl,
       key: objectKey,
+      name: objectKey,
       etag: result.ETag,
     };
   } catch (error) {
     console.error('[R2 Client] Upload failed:', {
       message: error.message,
-      code: error.Code,
+      code: error.Code || error.name,
       requestId: error.$metadata?.requestId,
+      bucket,
       objectKey,
       bufferSize: buffer.length,
       contentType,
+      // 打印更多调试信息
+      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      accessKeyIdPrefix: process.env.R2_ACCESS_KEY_ID?.substring(0, 10) + '...',
     });
     throw error;
   }
@@ -117,7 +128,7 @@ async function uploadBufferToR2(buffer, objectKey, contentType) {
 
 module.exports = {
   getR2Client,
+  resetR2Client,
   uploadBufferToR2,
   getR2PublicUrl,
 };
-
