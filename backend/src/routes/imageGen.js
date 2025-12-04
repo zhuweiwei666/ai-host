@@ -32,7 +32,6 @@ router.post('/', async (req, res) => {
     agentId, 
     description, 
     count = 1, 
-    strength = 0.85,  // 提高强度，让用户文案更有效果
     width = 768,
     height = 1152,
     skipBalanceCheck = false,
@@ -60,18 +59,9 @@ router.post('/', async (req, res) => {
       return errors.notFound(res, 'AI 主播不存在');
     }
 
-    // 2. 获取封面图（优先用数组的第一张，兼容旧字段）
-    const coverImage = (agent.avatarUrls && agent.avatarUrls.length > 0) 
-      ? agent.avatarUrls[0] 
-      : agent.avatarUrl;
-
-    if (!coverImage || !coverImage.startsWith('http')) {
-      return errors.badRequest(res, 'AI 主播没有有效的封面图');
-    }
-
     console.log(`[ImageGen] 用户 ${safeUserId} 请求生成图片`, {
       agent: agent.name,
-      coverImage: coverImage.substring(0, 50) + '...',
+      style: agent.style,
       description: description.substring(0, 30) + '...'
     });
 
@@ -83,13 +73,16 @@ router.post('/', async (req, res) => {
     }
 
     // 4. 生成图片
+    // 使用 Agent 的描述作为角色特征（发色、眼睛、服装等）
+    const characterDescription = agent.description || agent.name;
+    
     const results = await imageGenerationService.generate(description, {
-      referenceImage: coverImage,
+      characterDescription,
       count,
       width,
       height,
-      strength,
-      style: agent.style || 'realistic'
+      style: agent.style || 'realistic',
+      model: 'pro'  // 使用最强模型
     });
 
     // 5. 记录使用日志 & 增加亲密度
