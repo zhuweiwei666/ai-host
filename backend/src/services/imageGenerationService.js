@@ -86,21 +86,21 @@ class ImageGenerationService {
   }
 
   /**
-   * Flux Dev Img2Img
+   * Flux Pro Img2Img（最强模型）
    */
   async generateWithImg2Img(prompt, { imageUrl, count, width, height, strength }) {
-    const endpoint = 'https://fal.run/fal-ai/flux/dev/image-to-image';
+    const endpoint = 'https://fal.run/fal-ai/flux-pro/v1.1/redux';
 
-    console.log(`[ImageGen] 调用 Flux Img2Img, strength=${strength}`);
+    console.log(`[ImageGen] 调用 Flux Pro v1.1 Redux (最强), strength=${strength}`);
 
     const makeRequest = async () => {
       const payload = {
         prompt,
         image_url: imageUrl,
-        strength,
         image_size: { width, height },
         num_inference_steps: 28,
         guidance_scale: 3.5,
+        safety_tolerance: "6",
         enable_safety_checker: false
       };
 
