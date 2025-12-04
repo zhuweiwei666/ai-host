@@ -6,9 +6,13 @@ export interface Agent {
   name: string;
   gender: 'male' | 'female' | 'other';
   style?: 'realistic' | 'anime';
-  avatarUrl: string;
-  coverVideoUrl?: string; // Video preview on hover
-  privatePhotoUrl?: string; // Added for NSFW/Paid variant
+  avatarUrl: string; // Deprecated: use avatarUrls[0] instead
+  coverVideoUrl?: string; // Deprecated: use coverVideoUrls[0] instead
+  privatePhotoUrl?: string; // Deprecated: use privatePhotoUrls[0] instead
+  // New: Support multiple media files
+  avatarUrls?: string[]; // Array of image URLs
+  coverVideoUrls?: string[]; // Array of video URLs
+  privatePhotoUrls?: string[]; // Array of NSFW/Paid image URLs
   description: string;
   modelName: string;
   temperature: number;
@@ -63,28 +67,33 @@ export const getAgent = (id: string) => http.get<Agent>(`/agents/${id}`);
 export const createAgent = (data: Agent & { updateGlobalCore?: boolean }) => http.post<Agent>('/agents', data);
 export const updateAgent = (id: string, data: Agent & { updateGlobalCore?: boolean }) => http.put<Agent>(`/agents/${id}`, data);
 export const deleteAgent = (id: string) => http.delete(`/agents/${id}`);
+export const duplicateAgent = (id: string) => http.post<Agent>(`/agents/${id}/duplicate`);
 
 export const scrapeAgents = (url?: string) => http.post('/agents/scrape', { url });
 
-// OSS direct upload - imports from utils
-import { uploadToOSS } from '../utils/ossUpload';
+// OSS upload via backend proxy - imports from utils
+import { uploadFileViaBackend } from '../utils/ossUpload';
 
 /**
- * Upload image file directly to OSS
+ * Upload image file to OSS via backend proxy
+ * @param file - Image file to upload
+ * @param folder - Optional folder prefix (default: 'uploads')
  * @returns Object with url property containing the OSS public URL
  */
-export const uploadImage = async (file: File) => {
-  const url = await uploadToOSS(file);
-  return { url };
+export const uploadImage = async (file: File, folder?: string) => {
+  const result = await uploadFileViaBackend(file, { folder: folder || 'uploads' });
+  return { url: result.url };
 };
 
 /**
- * Upload file directly to OSS (generic, supports any file type)
+ * Upload file to OSS via backend proxy (generic, supports any file type)
+ * @param file - File to upload
+ * @param folder - Optional folder prefix (default: 'uploads')
  * @returns Object with url property containing the OSS public URL
  */
-export const uploadFile = async (file: File) => {
-  const url = await uploadToOSS(file);
-  return { url };
+export const uploadFile = async (file: File, folder?: string) => {
+  const result = await uploadFileViaBackend(file, { folder: folder || 'uploads' });
+  return { url: result.url };
 };
 
 export const generateImage = (
