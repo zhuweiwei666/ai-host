@@ -232,92 +232,84 @@ const UserList: React.FC = () => {
       </div>
 
       {/* User Table */}
-      <div className="glass rounded-xl overflow-hidden border border-white/50 shadow-soft">
+      <div className="glass rounded-xl overflow-x-auto border border-white/50 shadow-soft">
         <table className="min-w-full divide-y divide-gray-200/50">
           <thead className="bg-gradient-to-r from-gray-50/80 to-gray-100/50">
             <tr>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">用户信息</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">类型</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">平台</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">外部ID</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">余额</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">创建时间</th>
-              <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">操作</th>
+              <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">用户信息</th>
+              <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">类型</th>
+              <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">平台</th>
+              <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">外部ID</th>
+              <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">💎 余额</th>
+              <th className="px-3 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">操作</th>
             </tr>
           </thead>
           <tbody className="bg-white/50 divide-y divide-gray-200/50">
             {users.map((user) => (
               <tr key={user._id} className="hover:bg-white/80 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center">
-                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg ${
+                    <div className={`h-9 w-9 rounded-lg flex items-center justify-center text-white font-bold shadow-lg flex-shrink-0 ${
                       user.userType === 'operator' 
                         ? 'bg-gradient-to-br from-primary-500 to-purple-600' 
                         : 'bg-gradient-to-br from-green-500 to-emerald-600'
                     }`}>
                       {user.username.charAt(0).toUpperCase()}
                     </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-semibold text-gray-900">{user.username}</div>
-                      <div className="text-xs text-gray-500">{user.email || user.phone || 'No contact'}</div>
-                      <div className="text-xs text-gray-400 font-mono">ID: {user._id}</div>
+                    <div className="ml-3 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate max-w-[150px]">{user.username}</div>
+                      <div className="text-xs text-gray-500 truncate max-w-[150px]">{user.email || user.phone || 'No contact'}</div>
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className="px-3 py-3 whitespace-nowrap">
                   <div className="flex flex-col gap-1">
-                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-lg ${
+                    <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md ${
                       user.userType === 'operator' 
-                        ? 'bg-gradient-to-r from-primary-100 to-purple-100 text-primary-700 border border-primary-200/50' 
-                        : 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border border-green-200/50'
+                        ? 'bg-gradient-to-r from-primary-100 to-purple-100 text-primary-700' 
+                        : 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-700'
                     }`}>
                       {getUserTypeLabel(user.userType)}
                     </span>
-                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-lg ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-700 border border-purple-200/50' : 'bg-gray-100 text-gray-700 border border-gray-200/50'
+                    <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md ${
+                      user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
                   }`}>
                     {user.role}
                     </span>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="px-2.5 py-1 inline-flex text-xs font-semibold rounded-lg bg-blue-100 text-blue-700 border border-blue-200/50">
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="px-2 py-0.5 inline-flex text-xs font-semibold rounded-md bg-blue-100 text-blue-700">
                     {getPlatformLabel(user.platform)}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className="px-3 py-3">
                   {user.externalUserId ? (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded border border-gray-200">
-                        {user.externalUserId}
-                      </span>
-                      {user.externalAppId && (
-                        <span className="text-xs text-gray-500">App: {user.externalAppId}</span>
-                      )}
-                    </div>
+                    <span className="text-xs font-mono text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[120px] inline-block" title={user.externalUserId}>
+                      {user.externalUserId.length > 15 ? user.externalUserId.substring(0, 15) + '...' : user.externalUserId}
+                    </span>
                   ) : (
                     <span className="text-xs text-gray-400">-</span>
                   )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                  💎 {user.balance ?? 0}
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="text-sm font-bold text-amber-600">
+                    {user.balance ?? 0}
+                  </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(user.createdAt).toLocaleDateString('zh-CN')}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <td className="px-3 py-3 whitespace-nowrap text-right">
                   <button 
                     onClick={() => handleRechargeClick(user)}
-                    className="text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-1.5 rounded-lg transition-all duration-200 hover:bg-primary-100 font-semibold"
+                    className="text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-semibold shadow-md hover:shadow-lg"
                   >
-                    充值
+                    💎 充值
                   </button>
                 </td>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
