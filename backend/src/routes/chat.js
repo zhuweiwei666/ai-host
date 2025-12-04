@@ -87,9 +87,19 @@ const MODEL_CORE_PROMPTS = {
 // Helper to clean text for TTS
 const cleanTextForTTS = (text) => {
   if (!text) return '';
-  let cleaned = text.replace(/\*[^*]+\*/g, ''); // Remove actions
-  cleaned = cleaned.replace(/^[\w\s]+:\s*/, ''); // Remove names
-  return cleaned.replace(/\s+/g, ' ').trim();
+  
+  // 先尝试移除 *动作* 描述
+  let cleaned = text.replace(/\*[^*]+\*/g, '');
+  cleaned = cleaned.replace(/^[\w\s]+:\s*/, ''); // Remove names like "Ali:"
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  // 如果清洗后为空（说明全是动作描述），就保留动作内容
+  if (!cleaned) {
+    // 提取 *...* 中的内容，移除星号
+    cleaned = text.replace(/\*/g, '').trim();
+  }
+  
+  return cleaned;
 };
 
 // GET /api/chat/history/:agentId
