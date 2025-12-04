@@ -80,6 +80,9 @@ const EditAgent: React.FC = () => {
     avatarUrl: '',
     coverVideoUrl: '',
     privatePhotoUrl: '',
+    avatarUrls: [],
+    coverVideoUrls: [],
+    privatePhotoUrls: [],
     description: '',
     modelName: 'grok-4-1-fast-reasoning',
     temperature: 0.7,
@@ -90,6 +93,7 @@ const EditAgent: React.FC = () => {
   });
 
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false); // 防止重复提交
   const [generatingImage, setGeneratingImage] = useState(false);
   const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
 
@@ -105,7 +109,11 @@ const EditAgent: React.FC = () => {
   useEffect(() => {
     if (isEdit && id && !dataLoaded) {
       getAgent(id).then(res => {
-        setFormData(res.data);
+        // API 返回格式: { success: true, data: {...} }
+        // axios 响应结构: response.data = { success: true, data: {...} }
+        const responseData = res.data as any;
+        const agentData = responseData?.data || responseData;
+        setFormData(agentData);
         setDataLoaded(true);
       }).catch(console.error);
     }
@@ -126,14 +134,22 @@ const EditAgent: React.FC = () => {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files && e.target.files.length > 0) {
       setUploading(true);
       try {
-        const res = await uploadImage(e.target.files[0]);
-        setFormData(prev => ({ ...prev, avatarUrl: res.url }));
+        const files = Array.from(e.target.files);
+        const uploadPromises = files.map(file => uploadImage(file));
+        const results = await Promise.all(uploadPromises);
+        const newUrls = results.map(res => res.url);
+        setFormData(prev => ({
+          ...prev,
+          avatarUrl: newUrls[0] || prev.avatarUrl, // 保持兼容性
+          avatarUrls: [...(prev.avatarUrls || []), ...newUrls],
+        }));
         setGeneratedCandidates([]); // Clear candidates on manual upload
+        alert(`成功上传 ${newUrls.length} 张图片`);
       } catch (err) {
-        alert('Upload failed');
+        alert('上传失败');
       } finally {
         setUploading(false);
       }
@@ -150,12 +166,36 @@ const EditAgent: React.FC = () => {
       const objectUrl = URL.createObjectURL(videoFile);
       video.src = objectUrl;
 
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        URL.revokeObjectURL(objectUrl);
+      };
+
+      // 设置超时（30秒）
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error('视频处理超时，请检查视频文件是否损坏'));
+      }, 30000);
+
       video.onloadeddata = () => {
+        try {
+          // 检查视频尺寸
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            cleanup();
+            reject(new Error('无法读取视频尺寸，文件可能已损坏'));
+            return;
+          }
           // Seek to 0.5s to likely capture content rather than a black starting frame
           video.currentTime = 0.5;
+        } catch (err: any) {
+          cleanup();
+          reject(new Error(`视频加载错误: ${err.message || '未知错误'}`));
+        }
       };
 
       video.onseeked = () => {
+        try {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -163,68 +203,134 @@ const EditAgent: React.FC = () => {
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           canvas.toBlob((blob) => {
-            URL.revokeObjectURL(objectUrl);
-            if (blob) resolve(blob);
-            else reject(new Error('Canvas to Blob failed'));
+              cleanup();
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error('无法生成图片，请尝试其他视频文件'));
+              }
           }, 'image/jpeg', 0.95);
         } else {
-          reject(new Error('Canvas context failed'));
+            cleanup();
+            reject(new Error('无法创建画布上下文'));
+          }
+        } catch (err: any) {
+          cleanup();
+          reject(new Error(`帧提取错误: ${err.message || '未知错误'}`));
         }
       };
       
       video.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          reject(new Error('Video load failed'));
+        cleanup();
+        const error = video.error;
+        let errorMsg = '视频加载失败';
+        if (error) {
+          switch (error.code) {
+            case error.MEDIA_ERR_ABORTED:
+              errorMsg = '视频加载被中止';
+              break;
+            case error.MEDIA_ERR_NETWORK:
+              errorMsg = '网络错误，无法加载视频';
+              break;
+            case error.MEDIA_ERR_DECODE:
+              errorMsg = '视频解码失败，文件可能已损坏';
+              break;
+            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+              errorMsg = '不支持的视频格式';
+              break;
+          }
+        }
+        reject(new Error(errorMsg));
       };
     });
   };
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        const file = e.target.files[0];
+    if (e.target.files && e.target.files.length > 0) {
+        const files = Array.from(e.target.files);
         // Basic validation
-        if (!file.type.startsWith('video/')) {
-            alert('Please select a valid video file.');
+        const invalidFiles = files.filter(file => !file.type.startsWith('video/'));
+        if (invalidFiles.length > 0) {
+            alert('请选择有效的视频文件');
+            return;
+        }
+        
+        // 检查文件大小（限制为500MB）
+        const largeFiles = files.filter(file => file.size > 500 * 1024 * 1024);
+        if (largeFiles.length > 0) {
+            alert('视频文件过大，请选择小于500MB的文件');
             return;
         }
         
         setUploading(true);
+        const successCount = { videos: 0, failed: 0 };
+        const errors: string[] = [];
+        
+        try {
+            const videoUrls: string[] = [];
+            const imageUrls: string[] = [];
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
         try {
             // 1. Upload Video File to Server
-            console.log('[Video Upload] Step 1: Uploading video file...');
+                    console.log(`[Video Upload ${i + 1}/${files.length}] Step 1: Uploading video file...`, file.name);
             const videoRes = await uploadFile(file);
             const videoUrl = videoRes.url;
-            console.log('[Video Upload] Video uploaded, URL:', videoUrl);
+                    videoUrls.push(videoUrl);
+                    console.log(`[Video Upload ${i + 1}/${files.length}] Video uploaded, URL:`, videoUrl);
 
             // 2. Extract Frame
-            console.log('[Video Upload] Step 2: Extracting frame from video...');
+                    console.log(`[Video Upload ${i + 1}/${files.length}] Step 2: Extracting frame from video...`);
+                    try {
             const imageBlob = await extractFrameFromVideo(file);
-            console.log('[Video Upload] Frame extracted, blob size:', imageBlob.size);
+                        console.log(`[Video Upload ${i + 1}/${files.length}] Frame extracted, blob size:`, imageBlob.size);
             
             // Convert Blob to File for uploadImage API
-            const imageFile = new File([imageBlob], "video-frame.jpg", { type: "image/jpeg" });
+                        const imageFile = new File([imageBlob], `video-frame-${Date.now()}-${i}.jpg`, { type: "image/jpeg" });
             
             // 3. Upload Frame
-            console.log('[Video Upload] Step 3: Uploading extracted frame...');
+                        console.log(`[Video Upload ${i + 1}/${files.length}] Step 3: Uploading extracted frame...`);
             const res = await uploadImage(imageFile);
-            console.log('[Video Upload] Frame uploaded, URL:', res.url);
+                        imageUrls.push(res.url);
+                        console.log(`[Video Upload ${i + 1}/${files.length}] Frame uploaded, URL:`, res.url);
+                        successCount.videos++;
+                    } catch (frameErr: any) {
+                        console.error(`[Video Upload ${i + 1}/${files.length}] Frame extraction failed:`, frameErr);
+                        // 即使帧提取失败，也保留视频URL
+                        errors.push(`${file.name}: ${frameErr.message || '帧提取失败'}`);
+                        successCount.failed++;
+                    }
+                } catch (uploadErr: any) {
+                    console.error(`[Video Upload ${i + 1}/${files.length}] Upload failed:`, uploadErr);
+                    errors.push(`${file.name}: ${uploadErr.message || '上传失败'}`);
+                    successCount.failed++;
+                }
+            }
             
-            // 4. Update form data with both URLs
-            const updatedData = {
-                avatarUrl: res.url,
-                coverVideoUrl: videoUrl
-            };
-            console.log('[Video Upload] Updating form data:', updatedData);
-            
+            // 4. Update form data with both URLs (only if we have successful uploads)
+            if (videoUrls.length > 0 || imageUrls.length > 0) {
             setFormData(prev => ({ 
                 ...prev, 
-                ...updatedData
+                    avatarUrl: imageUrls[0] || prev.avatarUrl, // 保持兼容性
+                    coverVideoUrl: videoUrls[0] || prev.coverVideoUrl, // 保持兼容性
+                    avatarUrls: [...(prev.avatarUrls || []), ...imageUrls],
+                    coverVideoUrls: [...(prev.coverVideoUrls || []), ...videoUrls],
             }));
             setGeneratedCandidates([]); // Clear candidates
-            alert('Video uploaded and frame extracted successfully!');
-        } catch (err) {
+            }
+            
+            // 显示结果
+            if (successCount.videos > 0 && successCount.failed === 0) {
+                alert(`成功上传 ${successCount.videos} 个视频并提取首帧！`);
+            } else if (successCount.videos > 0 && successCount.failed > 0) {
+                alert(`部分成功：${successCount.videos} 个成功，${successCount.failed} 个失败\n\n失败详情：\n${errors.join('\n')}`);
+            } else {
+                alert(`上传失败\n\n错误详情：\n${errors.join('\n')}`);
+            }
+        } catch (err: any) {
             console.error('Video upload/extraction failed:', err);
-            alert('Failed to process video.');
+            alert(`视频处理失败: ${err.message || '未知错误'}`);
       } finally {
         setUploading(false);
       }
@@ -268,87 +374,30 @@ const EditAgent: React.FC = () => {
     }
   };
 
-  const handleGenerateNude = async () => {
-    console.log('[EditAgent] handleGenerateNude clicked');
-    if (!formData.avatarUrl) {
-        console.warn('[EditAgent] No avatarUrl found');
-        alert('请先选择或生成一张基础头像');
-        return;
-    }
-    
-    // REMOVED CONFIRM DIALOG to prevent browser blocking issues.
-    // console.log('[EditAgent] Calling confirm()...');
-    // const userConfirmed = window.confirm('Generate NSFW Nude Variant? This is an admin operation.');
-    // console.log('[EditAgent] Confirm result:', userConfirmed);
-
-    // if (!userConfirmed) {
-    //     console.log('[EditAgent] User cancelled confirmation');
-    //     return;
-    // }
-
-    console.log('[EditAgent] Starting generation (Auto-confirmed)...');
-    setGeneratingImage(true);
-    try {
-        // Construct explicit prompt for nude body
-        // USER REQUEST: "The logic for generating NSFW images is to take off the clothes of the public image, and keep the rest as consistent as possible."
-        // We need to respect the STYLE (Anime vs Realistic) to avoid jarring mismatches.
-        
-        const genderTerm = formData.gender === 'male' ? 'man' : 'woman';
-        let nudePrompt = "";
-
-        if (formData.style === 'anime') {
-             // Anime Style Prompt
-             nudePrompt = `anime style, 2d, illustration, masterpiece, best quality, a ${genderTerm} standing, full body shot, completely naked, nude, no clothes, detailed skin, detailed genitalia, anatomically correct`;
-        } else {
-             // Realistic Style Prompt (Default)
-             nudePrompt = `raw photo, masterpiece, 8k, a ${genderTerm} standing, full body shot, completely naked, nude, no clothes, detailed skin, detailed genitalia, anatomically correct`;
-        }
-        
-        console.log('[EditAgent] Prompt (Style-Aware):', nudePrompt);
-        console.log('[EditAgent] Calling API with options:', {
-            width: imageSize.width,
-            height: imageSize.height,
-            provider: imageProvider,
-            faceImageUrl: formData.avatarUrl,
-            skipBalanceCheck: true,
-            useImg2Img: true
-        });
-
-        const res = await generateAvatarImage(nudePrompt, {
-            count: 1,
-            width: imageSize.width,
-            height: imageSize.height,
-            provider: imageProvider,
-            faceImageUrl: formData.avatarUrl, // Use current avatar as face ref
-            skipBalanceCheck: true, // Admin/Edit mode skips user balance check
-            useImg2Img: true // FORCE Img2Img to keep body shape
-        });
-
-        console.log('[EditAgent] API Response:', res);
-
-        if (res.data.url) {
-            console.log('[EditAgent] Success! URL:', res.data.url);
-            setFormData(prev => ({ ...prev, privatePhotoUrl: res.data.url }));
-            alert('NSFW Variant Generated! Saved to Private Photo slot.');
-        } else {
-            console.warn('[EditAgent] No URL in response data');
-        }
-    } catch (err: any) {
-        console.error('[EditAgent] Generation Error:', err);
-        alert('生成失败: ' + (err?.response?.data?.message || 'Failed'));
-    } finally {
-        setGeneratingImage(false);
-        console.log('[EditAgent] Finished.');
-    }
-  };
 
   const [updateGlobalCore, setUpdateGlobalCore] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 防止重复提交
+    if (submitting) {
+      console.log('[EditAgent] Already submitting, ignoring duplicate click');
+      return;
+    }
+    
+    setSubmitting(true);
+    
     try {
       // Prepare payload with potential global update flag
-      const payload = { ...formData, updateGlobalCore };
+      // 确保数组字段存在，即使为空也要是数组
+      const payload = {
+        ...formData,
+        updateGlobalCore,
+        avatarUrls: formData.avatarUrls || [],
+        coverVideoUrls: formData.coverVideoUrls || [],
+        privatePhotoUrls: formData.privatePhotoUrls || [],
+      };
       
       console.log('[EditAgent] Submitting form:', { isEdit, id, payloadKeys: Object.keys(payload) });
       
@@ -364,6 +413,8 @@ const EditAgent: React.FC = () => {
       console.error('[EditAgent] Save failed:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Save failed';
       alert(`保存失败: ${errorMessage}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -539,21 +590,54 @@ const EditAgent: React.FC = () => {
                   <p className="text-xs text-gray-500">Used for initial interaction and public listing.</p>
                   
               <div className="flex items-start gap-4">
-              {formData.avatarUrl ? (
-                  <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(normalizeImageUrl(formData.avatarUrl))}>
+              {(formData.avatarUrls && formData.avatarUrls.length > 0) || formData.avatarUrl ? (
+                  <div className="flex flex-col gap-2">
+                    {/* 显示第一个作为主头像 */}
+                    <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(normalizeImageUrl(formData.avatarUrl || formData.avatarUrls?.[0] || ''))}>
                             <img 
-                              src={normalizeImageUrl(formData.avatarUrl)} 
+                                src={normalizeImageUrl(formData.avatarUrl || formData.avatarUrls?.[0] || '')} 
                               alt="Public Avatar" 
                               className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-indigo-500" 
                               onError={(e) => { 
-                                console.error('[EditAgent] Failed to load avatar image:', formData.avatarUrl);
+                                  console.error('[EditAgent] Failed to load avatar image:', formData.avatarUrl || formData.avatarUrls?.[0]);
                                 (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; 
                               }}
                               onLoad={() => {
-                                console.log('[EditAgent] Avatar image loaded successfully:', normalizeImageUrl(formData.avatarUrl));
+                                  console.log('[EditAgent] Avatar image loaded successfully:', normalizeImageUrl(formData.avatarUrl || formData.avatarUrls?.[0] || ''));
                               }}
                             />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-1">Selected</div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-1">主头像</div>
+                    </div>
+                    {/* 显示所有头像的缩略图 */}
+                    {(formData.avatarUrls && formData.avatarUrls.length > 1) && (
+                      <div className="flex flex-wrap gap-2">
+                        {formData.avatarUrls.map((url, idx) => (
+                          <div key={idx} className="relative group">
+                            <img 
+                              src={normalizeImageUrl(url)} 
+                              alt={`Avatar ${idx + 1}`}
+                              className="h-16 w-16 rounded-md object-cover border-2 border-gray-300 cursor-pointer hover:border-indigo-500"
+                              onClick={() => setFormData(prev => ({ ...prev, avatarUrl: url }))}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFormData(prev => ({
+                                  ...prev,
+                                  avatarUrls: prev.avatarUrls?.filter((_, i) => i !== idx) || [],
+                                  avatarUrl: idx === 0 && prev.avatarUrls?.[1] ? prev.avatarUrls[1] : prev.avatarUrl,
+                                }));
+                              }}
+                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                              title="删除"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
               ) : (
                         <div className="h-48 w-48 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-dashed border-gray-300">
@@ -573,12 +657,14 @@ const EditAgent: React.FC = () => {
                 <div className="relative">
                   <input
                     type="file"
+                    accept="image/*"
+                    multiple
                     onChange={handleFileChange}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     disabled={uploading}
                   />
                   <button type="button" className="text-sm text-gray-600 hover:text-gray-900 underline">
-                            Upload Local
+                            {uploading ? '上传中...' : '上传图片（可多选）'}
                         </button>
                         </div>
 
@@ -587,14 +673,48 @@ const EditAgent: React.FC = () => {
                             <input
                                 type="file"
                                 accept="video/*"
+                                multiple
                                 onChange={handleVideoUpload}
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                 disabled={uploading}
                             />
                             <button type="button" className="text-sm text-blue-600 hover:text-blue-900 underline">
-                                Extract from Video
+                                {uploading ? '处理中...' : '上传视频并提取首帧（可多选）'}
                   </button>
                 </div>
+                {/* 显示所有视频 */}
+                {(formData.coverVideoUrls && formData.coverVideoUrls.length > 0) && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-gray-700 mb-2">已上传视频 ({formData.coverVideoUrls.length}):</p>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.coverVideoUrls.map((url, idx) => (
+                        <div key={idx} className="relative group">
+                          <video 
+                            src={url}
+                            className="h-16 w-16 rounded-md object-cover border-2 border-gray-300"
+                            muted
+                            onMouseEnter={(e) => e.currentTarget.play()}
+                            onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                coverVideoUrls: prev.coverVideoUrls?.filter((_, i) => i !== idx) || [],
+                                coverVideoUrl: idx === 0 && prev.coverVideoUrls?.[1] ? prev.coverVideoUrls[1] : prev.coverVideoUrl,
+                              }));
+                            }}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                            title="删除"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               </div>
 
@@ -606,7 +726,11 @@ const EditAgent: React.FC = () => {
                     {generatedCandidates.map((url, idx) => (
                       <div 
                         key={idx} 
-                        onClick={() => setFormData(prev => ({ ...prev, avatarUrl: url }))}
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          avatarUrl: url,
+                          avatarUrls: prev.avatarUrls?.includes(url) ? prev.avatarUrls : [...(prev.avatarUrls || []), url],
+                        }))}
                                 className={`cursor-pointer relative rounded-md overflow-hidden border-2 transition-all ${formData.avatarUrl === url ? 'border-indigo-600' : 'border-transparent hover:border-gray-300'}`}
                       >
                                 <img 
@@ -622,64 +746,116 @@ const EditAgent: React.FC = () => {
               )}
               </div>
 
-              {/* Right Column: Private Photo */}
+              {/* Right Column: 主播相册 */}
               <div className="flex flex-col gap-4">
-                  <h3 className="text-sm font-bold text-gray-900">Private Photo (NSFW/Paid)</h3>
-                  <p className="text-xs text-gray-500">Used for paid content and intimate interaction.</p>
+                  <h3 className="text-sm font-bold text-gray-900">主播相册</h3>
+                  <p className="text-xs text-gray-500">显示所有上传的图片和视频</p>
 
-                  <div className="flex items-start gap-4">
-                    {formData.privatePhotoUrl ? (
-                        <div className="relative group cursor-zoom-in" onDoubleClick={() => setPreviewImage(formData.privatePhotoUrl!)}>
+                  {/* 统计信息 */}
+                  <div className="flex gap-4 text-xs text-gray-600 mb-2">
+                    <span>图片: {formData.avatarUrls?.length || 0} 张</span>
+                    <span>视频: {formData.coverVideoUrls?.length || 0} 个</span>
+                    <span>私有图片: {formData.privatePhotoUrls?.length || 0} 张</span>
+                  </div>
+
+                  {/* 相册网格展示 */}
+                  {((formData.avatarUrls && formData.avatarUrls.length > 0) || 
+                    (formData.coverVideoUrls && formData.coverVideoUrls.length > 0) || 
+                    (formData.privatePhotoUrls && formData.privatePhotoUrls.length > 0)) ? (
+                    <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                      {/* 显示所有图片 */}
+                      {formData.avatarUrls?.map((url, idx) => (
+                        <div key={`img-${idx}`} className="relative group">
                             <img 
-                              src={normalizeImageUrl(formData.privatePhotoUrl)} 
-                              alt="Private Photo" 
-                              className="h-48 w-48 rounded-lg object-cover object-[50%_20%] border-2 border-pink-500" 
-                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/192'; }}
+                            src={normalizeImageUrl(url)} 
+                            alt={`图片 ${idx + 1}`}
+                            className="w-full h-24 rounded-md object-cover border-2 border-gray-300 cursor-pointer hover:border-indigo-500"
+                            onClick={() => setPreviewImage(normalizeImageUrl(url))}
+                            onDoubleClick={() => setFormData(prev => ({ ...prev, avatarUrl: url }))}
                             />
-                            <div className="absolute bottom-0 left-0 right-0 bg-pink-600 bg-opacity-75 text-white text-xs text-center py-1">Private/Paid</div>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-0.5">图片</div>
                             <button
                                 type="button"
-                                onClick={() => setFormData(prev => ({ ...prev, privatePhotoUrl: '' }))}
-                                className="absolute top-1 right-1 bg-white rounded-full p-1 text-red-600 hover:bg-red-50"
-                                title="Remove"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormData(prev => ({
+                                ...prev,
+                                avatarUrls: prev.avatarUrls?.filter((_, i) => i !== idx) || [],
+                                avatarUrl: idx === 0 && prev.avatarUrls?.[1] ? prev.avatarUrls[1] : (prev.avatarUrl === url ? '' : prev.avatarUrl),
+                              }));
+                            }}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="删除"
+                          >
+                            ×
                             </button>
                         </div>
-                    ) : (
-                        <div className="h-48 w-48 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-dashed border-gray-300">
-                            <span>No Private Photo</span>
+                      ))}
+                      
+                      {/* 显示所有视频 */}
+                      {formData.coverVideoUrls?.map((url, idx) => (
+                        <div key={`video-${idx}`} className="relative group">
+                          <video 
+                            src={url}
+                            className="w-full h-24 rounded-md object-cover border-2 border-blue-300 cursor-pointer hover:border-blue-500"
+                            muted
+                            onMouseEnter={(e) => e.currentTarget.play()}
+                            onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                            onClick={() => window.open(url, '_blank')}
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-0.5">视频</div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormData(prev => ({
+                                ...prev,
+                                coverVideoUrls: prev.coverVideoUrls?.filter((_, i) => i !== idx) || [],
+                                coverVideoUrl: idx === 0 && prev.coverVideoUrls?.[1] ? prev.coverVideoUrls[1] : (prev.coverVideoUrl === url ? '' : prev.coverVideoUrl),
+                              }));
+                            }}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="删除"
+                          >
+                            ×
+                          </button>
                         </div>
-                    )}
-
-                    <div className="flex flex-col gap-2">
-                        {/* Nude Generator Button */}
+                      ))}
+                      
+                      {/* 显示所有私有图片 */}
+                      {formData.privatePhotoUrls?.map((url, idx) => (
+                        <div key={`private-${idx}`} className="relative group">
+                          <img 
+                            src={normalizeImageUrl(url)} 
+                            alt={`私有图片 ${idx + 1}`}
+                            className="w-full h-24 rounded-md object-cover border-2 border-pink-300 cursor-pointer hover:border-pink-500"
+                            onClick={() => setPreviewImage(normalizeImageUrl(url))}
+                            onDoubleClick={() => setFormData(prev => ({ ...prev, privatePhotoUrl: url }))}
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-pink-600 bg-opacity-75 text-white text-xs text-center py-0.5">私有</div>
                         <button
                             type="button"
-                            onClick={handleGenerateNude}
-                            disabled={generatingImage || !formData.avatarUrl}
-                            className="bg-pink-600 text-white px-4 py-2 rounded-md hover:bg-pink-700 disabled:opacity-60 text-sm font-medium flex items-center gap-2"
-                            title="Uses Public Avatar as face reference"
-                        >
-                            {generatingImage ? (
-                                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                            ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                            )}
-                            Generate from Public (NSFW)
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormData(prev => ({
+                                ...prev,
+                                privatePhotoUrls: prev.privatePhotoUrls?.filter((_, i) => i !== idx) || [],
+                                privatePhotoUrl: idx === 0 && prev.privatePhotoUrls?.[1] ? prev.privatePhotoUrls[1] : (prev.privatePhotoUrl === url ? '' : prev.privatePhotoUrl),
+                              }));
+                            }}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="删除"
+                          >
+                            ×
                         </button>
-                        <p className="text-xs text-gray-500 w-32">
-                            Generates a nude body and swaps the face from the Public Avatar.
-                        </p>
                     </div>
+                      ))}
                   </div>
+                  ) : (
+                    <div className="h-48 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-dashed border-gray-300">
+                      <span>暂无媒体文件</span>
+                    </div>
+                  )}
               </div>
             </div>
           </div>
@@ -894,9 +1070,18 @@ const EditAgent: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+              disabled={submitting || uploading}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Save
+              {submitting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  保存中...
+                </>
+              ) : 'Save'}
             </button>
           </div>
         </form>
