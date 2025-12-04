@@ -4,6 +4,8 @@ import { Agent, getAgent, chatWithAgent, getChatHistory, generateTTS, generateVi
 import { normalizeImageUrl } from '../utils/imageUrl';
  
 
+const ENABLE_VIDEO_FEATURE = import.meta.env.VITE_ENABLE_VIDEO === 'true';
+
 interface ChatMessage {
   role: string;
   content: string;
@@ -166,6 +168,12 @@ const ChatPage: React.FC = () => {
     fetchBalance();
   }, [id, navigate]);
 
+  useEffect(() => {
+    if (!ENABLE_VIDEO_FEATURE && responseMode === 'video') {
+      setResponseMode('text');
+    }
+  }, [responseMode]);
+
   const fetchBalance = async () => {
     try {
       const res = await http.get(`/wallet/balance?userId=${userId}`);
@@ -201,10 +209,12 @@ const ChatPage: React.FC = () => {
   const handleChat = async () => {
     if (!chatPrompt.trim() || !agent?._id) return;
     
+    const activeMode = (!ENABLE_VIDEO_FEATURE && responseMode === 'video') ? 'text' : responseMode;
+    
     // Balance check based on mode
     let cost = 1; // text
-    if (responseMode === 'image') cost = 10;
-    if (responseMode === 'video') cost = 50;
+    if (activeMode === 'image') cost = 10;
+    if (activeMode === 'video') cost = 50;
 
     if (balance < cost) {
       setShowAdModal(true);
@@ -233,14 +243,14 @@ const ChatPage: React.FC = () => {
           content: textRes.data.reply,
           audioUrl: textRes.data.audioUrl,
           // If mode is NOT text, we show a loading placeholder immediately
-          isMediaLoading: responseMode !== 'text',
-          imageUrl: responseMode !== 'text' ? 'loading_placeholder' : undefined
+          isMediaLoading: activeMode !== 'text',
+          imageUrl: activeMode !== 'text' ? 'loading_placeholder' : undefined
       };
 
       setMessages(prev => [...prev, assistantMessage]);
       
       // 3. If Media Mode, Trigger Generation in Background
-      if (responseMode !== 'text') {
+      if (activeMode !== 'text') {
           // We don't await this immediately to let the UI update with text first? 
           // Actually, we want to start it now.
           
@@ -248,7 +258,7 @@ const ChatPage: React.FC = () => {
               let mediaUrl = '';
               let newBal = balance;
 
-              if (responseMode === 'video') {
+              if (activeMode === 'video') {
                   // Generate Video (Direct Animation of Avatar)
                   // No intermediate image generation to save time and cost.
                   
@@ -617,6 +627,7 @@ const ChatPage: React.FC = () => {
                         </svg>
                         Image (10)
                     </button>
+                    {ENABLE_VIDEO_FEATURE && (
                     <button
                         onClick={() => setResponseMode('video')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1 ${
@@ -630,10 +641,11 @@ const ChatPage: React.FC = () => {
                         </svg>
                         Video (50)
                     </button>
+                    )}
                 </div>
 
                     {/* Video Options (Only visible in Video Mode) */}
-                    {responseMode === 'video' && (
+                    {ENABLE_VIDEO_FEATURE && responseMode === 'video' && (
                         <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1">
                             <select
                                 value={videoTemplate}
@@ -662,7 +674,7 @@ const ChatPage: React.FC = () => {
                     placeholder={
                         loading 
                             ? "Generating..." 
-                            : responseMode === 'video'
+                            : (ENABLE_VIDEO_FEATURE && responseMode === 'video')
                                 ? videoTemplate ? `Template: ${VIDEO_TEMPLATES.find(t => t.value === videoTemplate)?.label}` : "Describe video motion..."
                                 : `Message ${agent.name}...`
                     }

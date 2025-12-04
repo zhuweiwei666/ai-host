@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "ali-oss": "^6.23.0",
     "axios": "^1.6.0",
     "date-fns": "^4.1.0",
     "react": "^18.2.0",

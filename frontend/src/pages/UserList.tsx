@@ -33,7 +33,13 @@ const UserList: React.FC = () => {
         params.platform = platformFilter;
       }
       const res = await getUsers(params);
-      setUsers(res.data);
+      // API 返回格式: { success: true, data: [...] }
+      // axios 响应结构: response.data = { success: true, data: [...] }
+      const responseData = res.data as any;
+      const usersList = Array.isArray(responseData) 
+        ? responseData 
+        : (responseData?.data || []);
+      setUsers(usersList);
     } catch (error) {
       console.error('Failed to fetch users', error);
     }

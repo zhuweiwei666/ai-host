@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Agent, getAgents, scrapeAgents, updateAgent } from '../api';
+import { Agent, getAgents, scrapeAgents, updateAgent, duplicateAgent } from '../api';
 import AgentCard from '../components/AgentCard';
 import VoiceModelManager from '../components/VoiceModelManager';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -76,9 +76,34 @@ const Agents: React.FC = () => {
     }
   };
 
+  const handleDuplicate = async (agent: Agent) => {
+    try {
+      await duplicateAgent(agent._id!);
+      alert(`已成功复制 ${agent.name}！`);
+      fetchAgents(); // Refresh list to show the duplicated agent
+    } catch (error: any) {
+      console.error('Failed to duplicate agent', error);
+      const errorMessage = error?.response?.data?.message || error?.message || '复制失败，请重试';
+      alert(errorMessage);
+    }
+  };
+
   const filteredAgents = agents.filter(agent => {
-    if (filterStatus === 'all') return true;
-    return agent.status === filterStatus; 
+    // Filter by status
+    if (filterStatus !== 'all' && agent.status !== filterStatus) {
+      return false;
+    }
+    
+    // Filter by style (double-check even though backend should filter)
+    if (currentStyle !== 'all') {
+      // Default to 'realistic' if style is undefined (matching backend model default)
+      const agentStyle = agent.style || 'realistic';
+      if (agentStyle !== currentStyle) {
+        return false;
+      }
+    }
+    
+    return true;
   });
 
   return (
@@ -160,6 +185,7 @@ const Agents: React.FC = () => {
                   agent={agent} 
                   onDelete={fetchAgents} 
                   onToggleStatus={() => handleToggleStatus(agent)} 
+                  onDuplicate={() => handleDuplicate(agent)}
                 />
               </div>
                 ))}
