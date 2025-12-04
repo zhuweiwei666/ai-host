@@ -4,9 +4,13 @@ const AgentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   gender: { type: String, enum: ['male', 'female', 'other'], default: 'female' },
   style: { type: String, enum: ['realistic', 'anime'], default: 'realistic' }, // New Style Field
-  avatarUrl: { type: String, default: '' },
-  coverVideoUrl: { type: String, default: '' }, // Video preview on hover
-  privatePhotoUrl: { type: String, default: '' }, // NSFW/Paid Variant
+  avatarUrl: { type: String, default: '' }, // Deprecated: use avatarUrls[0] instead
+  coverVideoUrl: { type: String, default: '' }, // Deprecated: use coverVideoUrls[0] instead
+  privatePhotoUrl: { type: String, default: '' }, // Deprecated: use privatePhotoUrls[0] instead
+  // New: Support multiple media files
+  avatarUrls: { type: [String], default: [] }, // Array of image URLs
+  coverVideoUrls: { type: [String], default: [] }, // Array of video URLs
+  privatePhotoUrls: { type: [String], default: [] }, // Array of NSFW/Paid image URLs
   description: { type: String, default: '' },
   modelName: { type: String, required: true, default: 'grok-4-1-fast-reasoning' },
   temperature: { type: Number, default: 0.7 },
