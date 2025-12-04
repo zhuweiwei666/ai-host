@@ -232,6 +232,15 @@ router.get('/:id', optionalAuth, async (req, res) => {
     
     const agent = await Agent.findById(req.params.id);
     if (!agent) return errors.notFound(res, 'Agent not found');
+    
+    // Debug: 打印从数据库读取的数组数据
+    console.log('[GET /agents/:id] Retrieved arrays:', {
+      avatarUrls: agent.avatarUrls,
+      coverVideoUrls: agent.coverVideoUrls,
+      avatarUrlsLength: agent.avatarUrls?.length,
+      coverVideoUrlsLength: agent.coverVideoUrls?.length,
+    });
+    
     sendSuccess(res, HTTP_STATUS.OK, agent);
   } catch (err) {
     console.error('[GET /agents/:id] Error:', err);
