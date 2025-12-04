@@ -4,6 +4,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { errors } = require('../utils/errorHandler');
 
 /**
  * Require authentication middleware
@@ -27,10 +28,7 @@ const requireAuth = (req, res, next) => {
         return next();
       }
       
-      return res.status(401).json({ 
-        message: 'Authentication required',
-        code: 'UNAUTHORIZED'
-      });
+      return errors.unauthorized(res);
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
@@ -48,24 +46,15 @@ const requireAuth = (req, res, next) => {
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        message: 'Invalid token',
-        code: 'INVALID_TOKEN'
-      });
+      return errors.invalidToken(res);
     }
     
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        message: 'Token expired',
-        code: 'TOKEN_EXPIRED'
-      });
+      return errors.tokenExpired(res);
     }
     
     console.error('Auth middleware error:', error);
-    return res.status(500).json({ 
-      message: 'Authentication error',
-      code: 'AUTH_ERROR'
-    });
+    return errors.internalError(res, 'Authentication error', { error: error.message });
   }
 };
 

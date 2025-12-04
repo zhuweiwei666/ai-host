@@ -4,21 +4,17 @@
  * Must be used after requireAuth middleware
  */
 
+const { errors } = require('../utils/errorHandler');
+
 const requireAdmin = (req, res, next) => {
   // Check if user is authenticated (should be set by requireAuth)
   if (!req.user) {
-    return res.status(401).json({ 
-      message: 'Authentication required',
-      code: 'UNAUTHORIZED'
-    });
+    return errors.unauthorized(res);
   }
 
   // Check if user has admin role
   if (req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      message: 'Admin access required',
-      code: 'FORBIDDEN'
-    });
+    return errors.adminRequired(res);
   }
 
   next();

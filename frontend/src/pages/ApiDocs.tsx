@@ -211,6 +211,96 @@ const ApiDocs: React.FC = () => {
       },
       {
         method: 'POST',
+        path: '/api/users/apple-login',
+        description: '🍎 Apple Sign In登录（iOS上架必须）- 自动注册，新用户赠送100 Coins',
+        auth: 'Public',
+        params: {
+          body: {
+            identityToken: 'string (必填) - Apple返回的JWT identityToken',
+            authorizationCode: 'string (可选) - Apple返回的authorizationCode',
+            user: 'string (可选) - Apple用户标识符（首次登录时）',
+            email: 'string (可选) - 用户邮箱（首次登录时可能有）',
+            fullName: 'object (可选) - { givenName: string, familyName: string }'
+          }
+        },
+        response: {
+          token: 'JWT token（30天有效）',
+          user: {
+            id: 'string',
+            username: 'string',
+            email: 'string 或 null',
+            avatar: 'string',
+            balance: 100
+          },
+          isNew: true
+        },
+        example: {
+          request: {
+            identityToken: 'eyJraWQiOiI4NkQ4OEtmIiwiYWxnIjoiUlMyNTYifQ...',
+            fullName: { givenName: 'John', familyName: 'Doe' }
+          },
+          response: {
+            token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            user: { id: '507f1f77bcf86cd799439011', username: 'JohnDoe', balance: 100 },
+            isNew: true
+          }
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/users/device-token',
+        description: '📱 注册推送通知设备Token',
+        auth: 'Public',
+        params: {
+          body: {
+            deviceToken: 'string (必填) - APNs或FCM设备Token',
+            platform: 'string (必填) - ios 或 android'
+          }
+        },
+        response: { registered: true, userId: 'string 或 null' },
+        example: {
+          request: { deviceToken: 'abc123...xyz', platform: 'ios' },
+          response: { registered: true, userId: '507f1f77bcf86cd799439011' }
+        }
+      },
+      {
+        method: 'DELETE',
+        path: '/api/users/device-token',
+        description: '移除推送通知设备Token',
+        auth: 'Required',
+        params: {
+          body: { deviceToken: 'string (必填) - 要移除的设备Token' }
+        },
+        response: { removed: true }
+      },
+      {
+        method: 'GET',
+        path: '/api/users/app-version',
+        description: '📲 获取App版本信息（用于强制更新检测）',
+        auth: 'Public',
+        params: {
+          query: { platform: 'string (可选) - ios 或 android' }
+        },
+        response: {
+          minVersion: '1.0.0',
+          currentVersion: '1.0.0',
+          forceUpdate: false,
+          updateUrl: 'https://apps.apple.com/app/...',
+          updateMessage: '发现新版本，请更新以获得最佳体验'
+        },
+        example: {
+          request: '?platform=ios',
+          response: {
+            minVersion: '1.0.0',
+            currentVersion: '1.2.0',
+            forceUpdate: false,
+            updateUrl: 'https://apps.apple.com/app/idXXXXXXXXX',
+            updateMessage: '发现新版本，请更新以获得最佳体验'
+          }
+        }
+      },
+      {
+        method: 'POST',
         path: '/api/users/change-password',
         description: '修改当前用户密码',
         auth: 'Required',
@@ -484,6 +574,89 @@ const ApiDocs: React.FC = () => {
           success: true,
           balance: 0,
           message: 'Ad reward received! +50 Coins'
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/wallet/verify-purchase',
+        description: '💰 验证IAP内购并发放金币（iOS/Android）',
+        auth: 'Required',
+        params: {
+          body: {
+            platform: 'string (必填) - ios 或 android',
+            receiptData: 'string (iOS必填) - Base64编码的收据数据',
+            purchaseToken: 'string (Android必填) - 购买Token',
+            productId: 'string (Android必填) - 产品ID',
+            packageName: 'string (Android可选) - 包名'
+          }
+        },
+        response: {
+          verified: true,
+          alreadyProcessed: false,
+          coins: 100,
+          balance: 200,
+          transactionId: 'string',
+          productId: 'com.clingai.coins.100',
+          environment: 'Production 或 Sandbox'
+        },
+        example: {
+          request: {
+            platform: 'ios',
+            receiptData: 'MIITtgYJKoZIhv...'
+          },
+          response: {
+            verified: true,
+            alreadyProcessed: false,
+            coins: 500,
+            balance: 600,
+            transactionId: '1000000123456789',
+            productId: 'com.clingai.coins.500',
+            environment: 'Production'
+          }
+        }
+      },
+      {
+        method: 'GET',
+        path: '/api/wallet/products',
+        description: '获取可购买的IAP产品列表',
+        auth: 'Required',
+        params: {
+          query: { platform: 'string (可选) - ios 或 android' }
+        },
+        response: {
+          products: [
+            { productId: 'com.clingai.coins.100', coins: 100, price: '$0.99', description: '100 AI Coins' },
+            { productId: 'com.clingai.coins.500', coins: 500, price: '$4.99', description: '500 AI Coins' },
+            { productId: 'com.clingai.coins.1000', coins: 1000, price: '$9.99', description: '1000 AI Coins' },
+            { productId: 'com.clingai.coins.5000', coins: 5000, price: '$39.99', description: '5000 AI Coins' }
+          ]
+        }
+      },
+      {
+        method: 'GET',
+        path: '/api/wallet/transactions',
+        description: '获取IAP交易历史',
+        auth: 'Required',
+        params: {
+          query: {
+            limit: 'number (可选) - 每页数量，默认20',
+            page: 'number (可选) - 页码，默认1'
+          }
+        },
+        response: {
+          transactions: [
+            {
+              _id: 'string',
+              platform: 'ios',
+              transactionId: 'string',
+              productId: 'string',
+              coins: 100,
+              environment: 'Production',
+              status: 'completed',
+              createdAt: '2024-01-01T00:00:00.000Z'
+            }
+          ],
+          pagination: { page: 1, limit: 20, total: 50, pages: 3 }
         }
       }
     ],

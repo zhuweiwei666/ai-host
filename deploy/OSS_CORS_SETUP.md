@@ -31,12 +31,13 @@ http://localhost:3000
 **注意：** 每行一个，或者使用通配符 `*`（不推荐，安全性较低）
 
 #### 允许 Methods
-勾选以下方法：
+勾选以下方法（控制台不会提供 OPTIONS）：
 - ✅ GET
 - ✅ PUT
 - ✅ POST
 - ✅ HEAD
-- ✅ OPTIONS（用于预检请求）
+- ✅ DELETE
+- ℹ️ **说明：** OSS 自动响应 OPTIONS 预检，所以界面里不会单独显示该选项
 
 #### 允许 Headers
 ```

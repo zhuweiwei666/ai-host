@@ -78,7 +78,13 @@ loadRoute('/api/chat', './routes/chat');
 loadRoute('/api/oss', './routes/oss');
 loadRoute('/api/voice-models', './routes/voiceModels');
 loadRoute('/api/generate-image', './routes/imageGen');
-loadRoute('/api/generate-video', './routes/videoGen');
+
+const isVideoFeatureEnabled = process.env.ENABLE_VIDEO_FEATURE === 'true';
+if (isVideoFeatureEnabled) {
+  loadRoute('/api/generate-video', './routes/videoGen');
+} else {
+  console.log('⚠️  Video generation route disabled (ENABLE_VIDEO_FEATURE != true)');
+}
 loadRoute('/api/users', './routes/users');
 loadRoute('/api/wallet', './routes/wallet');
 loadRoute('/api/stats', './routes/stats');
@@ -90,24 +96,27 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // 404 Handler
 app.use((req, res) => {
   console.log(`[404] ${req.method} ${req.url}`);
-  res.status(404).json({ message: 'Route not found' });
+  const { errors } = require('./utils/errorHandler');
+  errors.notFound(res, 'Route not found', { path: req.path, method: req.method });
 });
 
 // Global Error Handler Middleware
 app.use((err, req, res, next) => {
   console.error('Global Error Handler:', err);
-  res.status(500).json({ 
-    message: 'Internal Server Error', 
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+  const { errors: errorHandler } = require('./utils/errorHandler');
+  errorHandler.internalError(res, 'Internal Server Error', { 
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
+// 统一端口配置：容器内部使用4000，可通过.env覆盖
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/oss, /api/voice-models, /api/generate-image, /api/generate-video, /api/users, /api/wallet, /api/stats`);
+  console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/oss, /api/voice-models, /api/generate-image, ${isVideoFeatureEnabled ? '/api/generate-video, ' : ''}/api/users, /api/wallet, /api/stats`);
   console.log(`📁 Static uploads at: /uploads`);
   console.log(`✅ Ready to accept requests at /api/* endpoints`);
 });

@@ -8,7 +8,8 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 8000
+# 容器内部端口，与server.js和nginx配置保持一致
+EXPOSE 4000
 
 CMD ["npm", "run", "start"]
 

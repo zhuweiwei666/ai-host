@@ -7,6 +7,7 @@ const UsageLog = require('../models/UsageLog'); // Import UsageLog
 const mongoose = require('mongoose');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
+const { errors } = require('../utils/errorHandler');
 
 // Apply authentication middleware to all routes
 router.use(requireAuth);
@@ -119,10 +120,11 @@ router.get('/agents', requireAdmin, async (req, res) => {
     // Let's keep default ROI sort for consistency if frontend doesn't sort immediately.
     stats.sort((a, b) => b.roi - a.roi);
 
-    res.json(stats);
+    const { sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
+    sendSuccess(res, HTTP_STATUS.OK, stats);
   } catch (err) {
     console.error('Stats Error:', err);
-    res.status(500).json({ message: 'Failed to fetch stats' });
+    errors.internalError(res, 'Failed to fetch stats', { error: err.message });
   }
 });
 

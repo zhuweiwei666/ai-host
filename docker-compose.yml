@@ -15,7 +15,7 @@ services:
     container_name: ai-host-backend
     restart: always
     ports:
-      - "8000:8000"
+      - "8000:4000"  # 宿主机8000 -> 容器4000 (容器内部统一使用4000)
     env_file: ./backend/.env
     depends_on:
       - mongo
@@ -29,6 +29,7 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - backend
 

@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const walletService = require('../services/walletService');
+const appleAuthService = require('../services/appleAuthService');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
@@ -427,6 +428,262 @@ router.post('/google-login', async (req, res) => {
   } catch (err) {
     console.error('Google Login Error:', err);
     errors.internalError(res, 'Server error during Google login', { error: err.message });
+  }
+});
+
+// POST /api/users/apple-login - Login with Apple Sign In (iOS required)
+router.post('/apple-login', async (req, res) => {
+  try {
+    const { identityToken, authorizationCode, user: appleUser, email, fullName } = req.body;
+
+    // 1. Check required parameters
+    if (!identityToken) {
+      return errors.badRequest(res, 'Missing identityToken', { code: 'MISSING_IDENTITY_TOKEN' });
+    }
+
+    // 2. Verify the identity token with Apple
+    let applePayload;
+    try {
+      applePayload = await appleAuthService.verifyIdentityToken(
+        identityToken,
+        process.env.APPLE_BUNDLE_ID // Optional: validate against your bundle ID
+      );
+    } catch (verifyError) {
+      console.error('Apple token verification failed:', verifyError);
+      return errors.unauthorized(res, 'Invalid Apple identity token', { 
+        code: 'INVALID_TOKEN',
+        error: verifyError.message 
+      });
+    }
+
+    const appleId = applePayload.sub; // Apple's unique user ID
+    const appleEmail = applePayload.email || email; // Email might only come on first login
+
+    // 3. Find user by apple_id or email
+    let user = await User.findOne({
+      $or: [
+        { apple_id: appleId },
+        ...(appleEmail ? [{ email: appleEmail }] : [])
+      ]
+    });
+
+    let isNewUser = false;
+
+    if (user) {
+      // 4. User exists: Link Apple ID if not linked
+      if (!user.apple_id) {
+        user.apple_id = appleId;
+      }
+      // Update last login
+      user.lastLoginAt = new Date();
+      await user.save();
+    } else {
+      // 5. User does not exist: Auto-register
+      isNewUser = true;
+      const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+      
+      // Build username from fullName or email
+      let username = 'apple_user';
+      if (fullName) {
+        const givenName = fullName.givenName || '';
+        const familyName = fullName.familyName || '';
+        if (givenName || familyName) {
+          username = `${givenName}${familyName}`.trim() || 'apple_user';
+        }
+      } else if (appleEmail) {
+        username = appleEmail.split('@')[0];
+      }
+      
+      // Ensure username is unique
+      const existingUsername = await User.findOne({ username });
+      if (existingUsername) {
+        username = `${username}_${Math.floor(Math.random() * 10000)}`;
+      }
+
+      user = await User.create({
+        username: username,
+        email: appleEmail || null,
+        password: await bcrypt.hash(randomPassword, 10),
+        apple_id: appleId,
+        avatar: '', // Apple doesn't provide avatar
+        role: 'user',
+        userType: 'channel',
+        platform: 'ios',
+        isActive: true,
+        lastLoginAt: new Date()
+      });
+
+      // Initialize wallet with welcome bonus
+      await walletService.getBalance(user._id.toString());
+      // Give new users 100 coins as welcome bonus
+      await walletService.reward(user._id.toString(), 100, 'welcome_bonus');
+    }
+
+    // 6. Generate Token
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        username: user.username,
+        role: user.role,
+        userType: user.userType
+      },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '30d' }
+    );
+
+    // Get balance
+    const balance = await walletService.getBalance(user._id.toString());
+
+    // Return response
+    sendSuccess(res, isNewUser ? HTTP_STATUS.CREATED : HTTP_STATUS.OK, {
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        balance: balance,
+        isVip: false
+      },
+      isNew: isNewUser
+    });
+
+  } catch (err) {
+    console.error('Apple Login Error:', err);
+    errors.internalError(res, 'Server error during Apple login', { error: err.message });
+  }
+});
+
+// POST /api/users/device-token - Register device token for push notifications
+router.post('/device-token', optionalAuth, async (req, res) => {
+  try {
+    const { deviceToken, platform } = req.body;
+
+    // Validation
+    if (!deviceToken) {
+      return errors.badRequest(res, 'deviceToken is required', { code: 'MISSING_DEVICE_TOKEN' });
+    }
+
+    if (!platform || !['ios', 'android'].includes(platform)) {
+      return errors.badRequest(res, 'platform must be "ios" or "android"', { code: 'INVALID_PLATFORM' });
+    }
+
+    // If user is authenticated, save to their profile
+    if (req.user && req.user.id) {
+      const user = await User.findById(req.user.id);
+      
+      if (user) {
+        // Check if token already exists
+        const existingTokenIndex = user.deviceTokens?.findIndex(
+          dt => dt.token === deviceToken && dt.platform === platform
+        );
+
+        if (existingTokenIndex === -1 || existingTokenIndex === undefined) {
+          // Add new token
+          if (!user.deviceTokens) {
+            user.deviceTokens = [];
+          }
+          user.deviceTokens.push({
+            token: deviceToken,
+            platform: platform,
+            createdAt: new Date()
+          });
+          
+          // Keep only last 5 tokens per platform
+          const platformTokens = user.deviceTokens.filter(dt => dt.platform === platform);
+          if (platformTokens.length > 5) {
+            // Remove oldest tokens
+            const tokensToRemove = platformTokens
+              .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+              .slice(0, platformTokens.length - 5);
+            
+            user.deviceTokens = user.deviceTokens.filter(
+              dt => !tokensToRemove.some(tr => tr.token === dt.token)
+            );
+          }
+          
+          await user.save();
+        }
+
+        return sendSuccess(res, HTTP_STATUS.OK, { 
+          registered: true,
+          userId: user._id
+        });
+      }
+    }
+
+    // If not authenticated, just acknowledge receipt
+    // The token can be linked later when user logs in
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      registered: true,
+      note: 'Token received but not linked to a user. Login to link the token.'
+    });
+
+  } catch (err) {
+    console.error('Device token registration error:', err);
+    errors.internalError(res, 'Failed to register device token', { error: err.message });
+  }
+});
+
+// DELETE /api/users/device-token - Remove device token
+router.delete('/device-token', requireAuth, async (req, res) => {
+  try {
+    const { deviceToken } = req.body;
+    const userId = req.user.id;
+
+    if (!deviceToken) {
+      return errors.badRequest(res, 'deviceToken is required');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return errors.notFound(res, 'User not found');
+    }
+
+    if (user.deviceTokens) {
+      user.deviceTokens = user.deviceTokens.filter(dt => dt.token !== deviceToken);
+      await user.save();
+    }
+
+    sendSuccess(res, HTTP_STATUS.OK, { removed: true });
+  } catch (err) {
+    console.error('Device token removal error:', err);
+    errors.internalError(res, 'Failed to remove device token', { error: err.message });
+  }
+});
+
+// GET /api/users/app-version - Get minimum required app version
+router.get('/app-version', async (req, res) => {
+  try {
+    const { platform } = req.query;
+
+    // These can be stored in database or environment variables
+    const versions = {
+      ios: {
+        minVersion: process.env.IOS_MIN_VERSION || '1.0.0',
+        currentVersion: process.env.IOS_CURRENT_VERSION || '1.0.0',
+        forceUpdate: process.env.IOS_FORCE_UPDATE === 'true',
+        updateUrl: process.env.IOS_UPDATE_URL || 'https://apps.apple.com/app/idXXXXXXXXX',
+        updateMessage: process.env.IOS_UPDATE_MESSAGE || '发现新版本，请更新以获得最佳体验',
+      },
+      android: {
+        minVersion: process.env.ANDROID_MIN_VERSION || '1.0.0',
+        currentVersion: process.env.ANDROID_CURRENT_VERSION || '1.0.0',
+        forceUpdate: process.env.ANDROID_FORCE_UPDATE === 'true',
+        updateUrl: process.env.ANDROID_UPDATE_URL || 'https://play.google.com/store/apps/details?id=com.clingai.app',
+        updateMessage: process.env.ANDROID_UPDATE_MESSAGE || '发现新版本，请更新以获得最佳体验',
+      }
+    };
+
+    if (platform && versions[platform]) {
+      return sendSuccess(res, HTTP_STATUS.OK, versions[platform]);
+    }
+
+    // Return all platforms if no specific platform requested
+    sendSuccess(res, HTTP_STATUS.OK, versions);
+  } catch (err) {
+    console.error('App version check error:', err);
+    errors.internalError(res, 'Failed to get app version info', { error: err.message });
   }
 });
 

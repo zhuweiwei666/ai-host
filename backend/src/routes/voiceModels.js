@@ -3,6 +3,7 @@ const VoiceModel = require('../models/VoiceModel');
 const FishAudioApi = require('../services/fishAudioApi');
 const { fetchVoiceTemplateMetadata } = require('../services/voiceTemplateScraper');
 const fishAudioService = require('../services/fishAudioService'); // For generating audio
+const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ router.post('/sync', async (req, res) => {
     });
 
     if (!items.length) {
-      return res.json({ fetched: 0, upserted: 0, remoteTotal: remoteTotal || 0, truncated });
+      return sendSuccess(res, HTTP_STATUS.OK, { fetched: 0, upserted: 0, remoteTotal: remoteTotal || 0, truncated });
     }
 
     const bulkOps = items.map((item) => ({
@@ -61,7 +62,7 @@ router.post('/sync', async (req, res) => {
 
     const result = await VoiceModel.bulkWrite(bulkOps);
     const upserted = result.upsertedCount || 0;
-    res.json({
+    sendSuccess(res, 200, {
       fetched,
       remoteTotal: remoteTotal ?? fetched,
       upserted,
@@ -71,7 +72,7 @@ router.post('/sync', async (req, res) => {
     });
   } catch (error) {
     console.error('Sync voice models failed:', error.message);
-    res.status(500).json({ message: error.message || '同步模型失败' });
+    errors.internalError(res, error.message || '同步模型失败', { error: error.message });
   }
 });
 
@@ -80,21 +81,21 @@ router.get('/', async (req, res) => {
     const { favoriteOnly } = req.query;
     const filter = favoriteOnly === 'true' ? { isFavorite: true } : {};
     const models = await VoiceModel.find(filter).sort({ isFavorite: -1, updatedAt: -1 });
-    res.json(models);
+    sendSuccess(res, 200, models);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 
 router.post('/extract', async (req, res) => {
   const { sourceUrl } = req.body;
-  if (!sourceUrl) return res.status(400).json({ message: 'URL required' });
+  if (!sourceUrl) return errors.badRequest(res, 'URL required');
   
   try {
     const metadata = await fetchVoiceTemplateMetadata(sourceUrl);
-    res.json(metadata);
+    sendSuccess(res, 200, metadata);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    errors.badRequest(res, error.message);
   }
 });
 
@@ -102,7 +103,7 @@ router.post('/create', async (req, res) => { // Distinct from sync-create
     const { remoteId, title, coverImage, description, tags, gender } = req.body;
     
     if (!remoteId || !title) {
-        return res.status(400).json({ message: 'ID and Title are required' });
+        return errors.badRequest(res, 'ID and Title are required');
     }
 
     try {
@@ -117,7 +118,7 @@ router.post('/create', async (req, res) => { // Distinct from sync-create
             if (gender) existing.gender = gender;
             existing.isFavorite = true;
             await existing.save();
-            return res.json(existing);
+            return sendSuccess(res, 200, existing);
         }
 
         const newModel = await VoiceModel.create({
@@ -129,9 +130,9 @@ router.post('/create', async (req, res) => { // Distinct from sync-create
             gender: gender || '',
             isFavorite: true
         });
-        res.status(201).json(newModel);
+        sendSuccess(res, HTTP_STATUS.CREATED, newModel, 'Voice model created successfully');
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        errors.internalError(res, error.message || 'Operation failed', { error: error.message });
     }
 });
 
@@ -139,11 +140,11 @@ router.post('/:id/preview', async (req, res) => {
   try {
     const model = await VoiceModel.findById(req.params.id);
     if (!model) {
-      return res.status(404).json({ message: '语音模型不存在' });
+      return errors.notFound(res, '语音模型不存在');
     }
 
     if (model.previewAudioUrl) {
-      return res.json({ url: model.previewAudioUrl, cached: true });
+      return sendSuccess(res, 200, { url: model.previewAudioUrl, cached: true });
     }
 
     // Generate preview audio
@@ -153,12 +154,12 @@ router.post('/:id/preview', async (req, res) => {
     if (audioUrl) {
       model.previewAudioUrl = audioUrl;
       await model.save();
-      res.json({ url: audioUrl, cached: false });
+      sendSuccess(res, 200, { url: audioUrl, cached: false });
     } else {
-      res.status(500).json({ message: 'Failed to generate preview audio' });
+      errors.internalError(res, 'Failed to generate preview audio');
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 
@@ -166,13 +167,13 @@ router.delete('/batch', async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ message: 'IDs array required' });
+      return errors.badRequest(res, 'IDs array required');
     }
     
     const result = await VoiceModel.deleteMany({ _id: { $in: ids } });
-    res.json({ message: `Deleted ${result.deletedCount} models` });
+    sendSuccess(res, 200, null, `Deleted ${result.deletedCount} models`);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 
@@ -180,19 +181,19 @@ router.delete('/:id', async (req, res) => {
   try {
     const model = await VoiceModel.findById(req.params.id);
     if (!model) {
-      return res.status(404).json({ message: '语音模型不存在' });
+      return errors.notFound(res, '语音模型不存在');
     }
     await model.deleteOne();
-    res.json({ message: '语音模型已删除' });
+    sendSuccess(res, 200, null, '语音模型已删除');
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 
 router.patch('/:id/favorite', async (req, res) => {
   const { isFavorite } = req.body;
   if (typeof isFavorite !== 'boolean') {
-    return res.status(400).json({ message: 'isFavorite 必须是布尔值' });
+    return errors.badRequest(res, 'isFavorite 必须是布尔值');
   }
 
   try {
@@ -202,11 +203,11 @@ router.patch('/:id/favorite', async (req, res) => {
       { new: true }
     );
     if (!model) {
-      return res.status(404).json({ message: '语音模型不存在' });
+      return errors.notFound(res, '语音模型不存在');
     }
-    res.json(model);
+    sendSuccess(res, 200, model);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 
@@ -218,11 +219,11 @@ router.patch('/:id', async (req, res) => {
       { new: true }
     );
     if (!model) {
-      return res.status(404).json({ message: '语音模型不存在' });
+      return errors.notFound(res, '语音模型不存在');
     }
-    res.json(model);
+    sendSuccess(res, 200, model);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    errors.internalError(res, error.message || 'Operation failed', { error: error.message });
   }
 });
 

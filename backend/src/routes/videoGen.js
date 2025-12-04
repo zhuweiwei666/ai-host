@@ -7,23 +7,34 @@ const Agent = require('../models/Agent');
 const UsageLog = require('../models/UsageLog');
 const costCalculator = require('../utils/costCalculator');
 const { requireAuth } = require('../middleware/auth');
+const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
 // Apply authentication middleware to all routes
 router.use(requireAuth);
+
+const videoFeatureEnabled = process.env.ENABLE_VIDEO_FEATURE === 'true';
+
+if (!videoFeatureEnabled) {
+  router.post('/', (req, res) => {
+    return errors.serviceUnavailable(res, 'Video generation is temporarily disabled');
+  });
+  module.exports = router;
+  return;
+}
 
 // POST /api/generate-video
 router.post('/', async (req, res) => {
   const { prompt, imageUrl, agentId, userId, fastMode } = req.body;
 
   if (!prompt && !imageUrl) {
-    return res.status(400).json({ message: 'Prompt or Image URL required' });
+    return errors.badRequest(res, 'Prompt or Image URL required');
   }
 
   // Get userId from authenticated user or request body
   let safeUserId = userId;
   if (!safeUserId) {
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+      return errors.unauthorized(res);
     }
     safeUserId = req.user.id;
   } 
@@ -54,7 +65,7 @@ router.post('/', async (req, res) => {
     // 3. Strict Validation: We MUST have a source image for Image-to-Video
     if (!sourceImageUrl) {
         console.warn('[VideoGen] No avatar URL found for agent:', agent.name);
-        return res.status(400).json({ message: 'Aborted: Character avatar is required for motion generation. (No Text-to-Video allowed)' });
+        return errors.badRequest(res, 'Aborted: Character avatar is required for motion generation. (No Text-to-Video allowed)');
     }
 
     // 4. Generate Video
@@ -90,7 +101,7 @@ router.post('/', async (req, res) => {
         console.error('Video Log Error:', logErr);
     }
 
-    res.json({ 
+    sendSuccess(res, HTTP_STATUS.OK, { 
       url: videoUrl, 
       balance: await walletService.getBalance(safeUserId),
       intimacy: await relationshipService.getIntimacy(safeUserId, agentId)
@@ -100,9 +111,9 @@ router.post('/', async (req, res) => {
     console.error('Video Gen Error:', error.message);
     
     if (error.message === 'INSUFFICIENT_FUNDS') {
-        return res.status(402).json({ message: 'Insufficient AI Coins', code: 'INSUFFICIENT_FUNDS' });
+        return errors.insufficientFunds(res);
     }
-    res.status(500).json({ message: 'Video generation failed', error: error.message });
+    errors.videoGenError(res, 'Video generation failed', { error: error.message });
   }
 });
 

@@ -40,7 +40,7 @@ elif [ "$HTTP_CODE" = "403" ]; then
     echo ""
     echo "请检查："
     echo "1. 是否在 OSS 控制台的'跨域设置（CORS）'中配置（不是'Bucket 授权策略'）"
-    echo "2. 是否包含了 OPTIONS 方法"
+    echo "2. 是否勾选了所有实际请求方法（GET/PUT/POST/HEAD/DELETE）"
     echo "3. 是否包含了正确的来源（Origin）"
     echo "4. 配置后是否等待了 1-2 分钟"
 else

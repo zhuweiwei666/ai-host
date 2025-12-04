@@ -1,0 +1,81 @@
+==========================================
+  OSS CORS 快速配置（必须完成！）
+==========================================
+
+当前错误：CORS 策略阻止上传
+Bucket: ai-host-uploads
+Region: oss-cn-hangzhou
+需要允许的来源: https://cling-ai.com
+
+==========================================
+步骤 1: 登录阿里云控制台
+==========================================
+1. 访问: https://oss.console.aliyun.com/
+2. 选择 bucket: ai-host-uploads
+3. 点击左侧: 权限管理 -> 跨域设置（CORS）
+
+==========================================
+步骤 2: 创建 CORS 规则
+==========================================
+
+来源（AllowedOrigins）:
+  https://cling-ai.com
+  http://localhost:5173
+  http://localhost:3000
+
+允许 Methods（全部勾选，控制台不会显示 OPTIONS）:
+  ✅ GET
+  ✅ PUT      ← 最重要！
+  ✅ POST
+  ✅ HEAD
+  ✅ DELETE
+（OSS 会自动响应 OPTIONS 预检，不需要单独配置）
+
+允许 Headers:
+  *
+
+暴露 Headers:
+  ETag
+  x-oss-request-id
+  x-oss-next-append-position
+
+缓存时间（秒）:
+  3600
+
+==========================================
+步骤 3: 保存并等待
+==========================================
+1. 点击"确定"保存
+2. 等待 1-2 分钟生效
+3. 刷新前端页面测试
+
+==========================================
+验证配置
+==========================================
+在浏览器控制台运行：
+
+fetch('https://ai-host-uploads.oss-cn-hangzhou.aliyuncs.com/', {
+  method: 'OPTIONS',
+  headers: {
+    'Origin': 'https://cling-ai.com',
+    'Access-Control-Request-Method': 'PUT'
+  }
+}).then(r => {
+  console.log('CORS配置:', {
+    'Allow-Origin': r.headers.get('Access-Control-Allow-Origin'),
+    'Allow-Methods': r.headers.get('Access-Control-Allow-Methods')
+  });
+});
+
+应该返回:
+  Allow-Origin: https://cling-ai.com
+  Allow-Methods: GET,PUT,POST,HEAD,DELETE
+
+==========================================
+如果仍然报错
+==========================================
+1. 检查配置是否已保存（刷新控制台页面）
+2. 等待更长时间（最多 5 分钟）
+3. 清除浏览器缓存
+4. 检查 Origin 是否完全匹配（包括 https://）
+

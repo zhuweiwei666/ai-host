@@ -30,12 +30,13 @@ from origin 'http://47.245.121.93' has been blocked by CORS policy
    ```
    *注意：每行一个，或者使用 `*`（不推荐）*
 
-   **允许 Methods：**
+   **允许 Methods（控制台不会列出 OPTIONS）：**
    - ✅ GET
    - ✅ PUT
    - ✅ POST
    - ✅ HEAD
-   - ✅ OPTIONS（重要！用于预检请求）
+   - ✅ DELETE
+   - ℹ️ OSS 会自动响应 OPTIONS 预检，所以界面里不会单独显示该选项
 
    **允许 Headers：**
    ```
@@ -87,7 +88,7 @@ cat > /tmp/cors.json << 'EOF'
   "CORSRule": [
     {
       "AllowedOrigin": ["http://47.245.121.93", "http://localhost:5173", "http://localhost:3000"],
-      "AllowedMethod": ["GET", "PUT", "POST", "HEAD", "OPTIONS"],
+      "AllowedMethod": ["GET", "PUT", "POST", "HEAD", "DELETE"],
       "AllowedHeader": ["*"],
       "ExposeHeader": ["ETag", "x-oss-request-id"],
       "MaxAgeSeconds": 3600
@@ -117,7 +118,7 @@ curl -X OPTIONS \
 
 # 应该返回包含以下 header 的响应：
 # Access-Control-Allow-Origin: http://47.245.121.93
-# Access-Control-Allow-Methods: GET,PUT,POST,HEAD,OPTIONS
+# Access-Control-Allow-Methods: GET,PUT,POST,HEAD,DELETE
 # Access-Control-Allow-Headers: *
 ```
 

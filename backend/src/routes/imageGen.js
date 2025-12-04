@@ -22,14 +22,14 @@ router.post('/', async (req, res) => {
   const { description, count, width, height, provider, agentId, userId, useAvatar, skipBalanceCheck, useImg2Img } = req.body;
 
   if (!description) {
-    return res.status(400).json({ message: 'Description is required' });
+    return errors.badRequest(res, 'Description is required');
   }
 
   // Get userId from authenticated user or request body
   let safeUserId = userId;
   if (!safeUserId) {
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: 'Authentication required', code: 'UNAUTHORIZED' });
+      return errors.unauthorized(res);
     }
     safeUserId = req.user.id;
   }
@@ -153,7 +153,8 @@ router.post('/', async (req, res) => {
     
     const finalIntimacy = await relationshipService.getIntimacy(safeUserId, agentId);
     
-    res.json({ 
+    const { sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
+    sendSuccess(res, HTTP_STATUS.OK, { 
       url: results[0].url, 
       remoteUrl: results[0].remoteUrl,
       urls: results.map(r => r.url),
@@ -164,9 +165,9 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Image Gen Error:', error.message);
     if (error.message === 'INSUFFICIENT_FUNDS') {
-        return res.status(402).json({ message: 'Insufficient AI Coins', code: 'INSUFFICIENT_FUNDS' });
+        return errors.insufficientFunds(res);
     }
-    res.status(500).json({ message: error.message || 'Failed to generate image' });
+    errors.imageGenError(res, error.message || 'Failed to generate image', { error: error.message });
   }
 });
 
