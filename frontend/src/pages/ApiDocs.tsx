@@ -177,7 +177,83 @@ const ApiDocs: React.FC = () => {
         path: '/api/users/init-admin',
         description: '初始化管理员用户（如果不存在）',
         auth: 'Public',
-        response: { _id: 'string', username: 'admin', role: 'admin' }
+        params: {
+          body: {
+            username: 'string (可选) - 默认 admin',
+            password: 'string (可选) - 默认 admin123'
+          }
+        },
+        response: { _id: 'string', username: 'admin', role: 'admin', isNew: true }
+      },
+      {
+        method: 'POST',
+        path: '/api/users/google-login',
+        description: 'Google账号登录（自动注册）',
+        auth: 'Public',
+        params: {
+          body: {
+            google_id: 'string (必填) - Google用户ID',
+            email: 'string (必填) - 邮箱',
+            name: 'string (可选) - 昵称',
+            picture: 'string (可选) - 头像URL'
+          }
+        },
+        response: {
+          token: 'JWT token',
+          user: {
+            id: 'string',
+            username: 'string',
+            email: 'string',
+            avatar: 'string',
+            balance: 0
+          }
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/users/change-password',
+        description: '修改当前用户密码',
+        auth: 'Required',
+        params: {
+          body: {
+            oldPassword: 'string (必填) - 旧密码',
+            newPassword: 'string (必填) - 新密码（至少6位）'
+          }
+        },
+        response: { message: '密码修改成功' }
+      },
+      {
+        method: 'POST',
+        path: '/api/users/create-admin',
+        description: '创建新管理员账号（管理员权限）',
+        auth: 'Admin',
+        params: {
+          body: {
+            username: 'string (必填) - 用户名',
+            password: 'string (必填) - 密码（至少6位）',
+            email: 'string (可选) - 邮箱'
+          }
+        },
+        response: { _id: 'string', username: 'string', role: 'admin' }
+      },
+      {
+        method: 'GET',
+        path: '/api/users/admins',
+        description: '获取管理员列表（管理员权限）',
+        auth: 'Admin',
+        response: [
+          { _id: 'string', username: 'string', email: 'string', role: 'admin' }
+        ]
+      },
+      {
+        method: 'DELETE',
+        path: '/api/users/admins/:id',
+        description: '删除管理员（管理员权限，不能删除自己）',
+        auth: 'Admin',
+        params: {
+          path: { id: 'string - 管理员ID' }
+        },
+        response: { message: '管理员已删除' }
       }
     ],
     agents: [
@@ -227,10 +303,31 @@ const ApiDocs: React.FC = () => {
             style: 'string (可选) - realistic 或 anime',
             description: 'string (可选)',
             modelName: 'string (可选)',
-            avatarUrl: 'string (可选)',
+            avatarUrl: 'string (可选) - 单个头像URL',
+            avatarUrls: 'string[] (可选) - 多个头像URL数组',
+            coverVideoUrl: 'string (可选) - 单个视频URL',
+            coverVideoUrls: 'string[] (可选) - 多个视频URL数组',
+            privatePhotoUrls: 'string[] (可选) - 私密图片URL数组',
+            voiceId: 'string (可选) - Fish Audio Voice ID',
+            corePrompt: 'string (可选) - 核心提示词',
+            stage1Prompt: 'string (可选) - Stage1提示词',
+            stage2Prompt: 'string (可选) - Stage2提示词',
+            stage3Prompt: 'string (可选) - Stage3提示词',
+            systemPrompt: 'string (可选) - 系统提示词',
+            status: 'string (可选) - online 或 offline'
           }
         },
-        response: { _id: 'string', name: 'string' }
+        response: { _id: 'string', name: 'string', avatarUrls: ['string'], coverVideoUrls: ['string'] }
+      },
+      {
+        method: 'POST',
+        path: '/api/agents/:id/duplicate',
+        description: '复制AI主播（管理员权限）',
+        auth: 'Admin',
+        params: {
+          path: { id: 'string - 主播ID' }
+        },
+        response: { _id: 'string', name: 'string (副本)' }
       },
       {
         method: 'PUT',
@@ -239,9 +336,15 @@ const ApiDocs: React.FC = () => {
         auth: 'Admin',
         params: {
           path: { id: 'string - 主播ID' },
-          body: { name: 'string' }
+          body: {
+            name: 'string (可选)',
+            avatarUrls: 'string[] (可选) - 多个头像URL数组',
+            coverVideoUrls: 'string[] (可选) - 多个视频URL数组',
+            privatePhotoUrls: 'string[] (可选) - 私密图片URL数组',
+            updateGlobalCore: 'boolean (可选) - 是否将提示词应用到同模型所有主播'
+          }
         },
-        response: { _id: 'string', name: 'string' }
+        response: { _id: 'string', name: 'string', avatarUrls: ['string'], coverVideoUrls: ['string'] }
       },
       {
         method: 'DELETE',
@@ -387,8 +490,20 @@ const ApiDocs: React.FC = () => {
     oss: [
       {
         method: 'GET',
+        path: '/api/oss/config',
+        description: '获取存储配置信息',
+        auth: 'Public',
+        response: {
+          type: 'r2 或 oss',
+          bucket: 'string',
+          basePath: 'string',
+          publicUrl: 'string (R2) 或 endpoint (OSS)'
+        }
+      },
+      {
+        method: 'GET',
         path: '/api/oss/sts',
-        description: '获取OSS临时上传凭证',
+        description: '获取OSS临时上传凭证（仅OSS，R2不支持）',
         auth: 'Public',
         response: {
           accessKeyId: 'string',
@@ -399,6 +514,36 @@ const ApiDocs: React.FC = () => {
           region: 'string',
           endpoint: 'string',
           basePath: 'string'
+        }
+      },
+      {
+        method: 'POST',
+        path: '/api/oss/upload',
+        description: '文件上传（支持R2和OSS，推荐使用）',
+        auth: 'Public',
+        params: {
+          query: {
+            folder: 'string (可选) - 上传目录，默认uploads'
+          },
+          body: {
+            file: 'File (必填) - 文件，最大500MB，使用multipart/form-data'
+          }
+        },
+        response: {
+          url: '文件访问URL',
+          key: '文件路径',
+          name: '文件名',
+          storageType: 'r2 或 oss'
+        },
+        example: {
+          request: {
+            '说明': '使用 multipart/form-data 上传文件，字段名为 file'
+          },
+          response: {
+            url: 'https://pub-xxx.r2.dev/uploads/2025-12-04/uuid.jpg',
+            key: 'uploads/2025-12-04/uuid.jpg',
+            storageType: 'r2'
+          }
         }
       }
     ],
@@ -551,7 +696,7 @@ const ApiDocs: React.FC = () => {
     { id: 'image', name: '图片生成', icon: '🖼️' },
     { id: 'video', name: '视频生成', icon: '🎬' },
     { id: 'wallet', name: '钱包', icon: '💰' },
-    { id: 'oss', name: 'OSS存储', icon: '☁️' },
+    { id: 'oss', name: '文件存储', icon: '☁️' },
     { id: 'voice', name: '语音模型', icon: '🎤' },
     { id: 'stats', name: '数据统计', icon: '📊' }
   ];
