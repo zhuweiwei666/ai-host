@@ -59,14 +59,21 @@ router.post('/', async (req, res) => {
       return errors.notFound(res, 'AI 主播不存在');
     }
 
-    // 2. 随机选择一张图片作为参考（如果有多张的话）
+    // 2. 顺序循环选择图片（第1次用第1张，第2次用第2张...）
     let referenceImage = agent.avatarUrl;
     
     if (agent.avatarUrls && agent.avatarUrls.length > 0) {
-      // 随机选择一张图片
-      const randomIndex = Math.floor(Math.random() * agent.avatarUrls.length);
-      referenceImage = agent.avatarUrls[randomIndex];
-      console.log(`[ImageGen] 随机选择第 ${randomIndex + 1}/${agent.avatarUrls.length} 张图片`);
+      // 查询该用户对该主播的生图次数
+      const imageCount = await UsageLog.countDocuments({ 
+        userId: safeUserId, 
+        agentId, 
+        type: 'image' 
+      });
+      
+      // 取模循环
+      const imageIndex = imageCount % agent.avatarUrls.length;
+      referenceImage = agent.avatarUrls[imageIndex];
+      console.log(`[ImageGen] 顺序选择第 ${imageIndex + 1}/${agent.avatarUrls.length} 张图片 (已生成 ${imageCount} 次)`);
     }
 
     if (!referenceImage || !referenceImage.startsWith('http')) {
