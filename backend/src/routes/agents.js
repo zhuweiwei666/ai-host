@@ -152,9 +152,6 @@ router.post('/:id/duplicate', requireAuth, requireAdmin, async (req, res) => {
 // PUT /api/agents/:id - Update agent (Admin only)
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const agent = await Agent.findById(req.params.id);
-    if (!agent) return errors.notFound(res, 'Agent not found');
-
     const { updateGlobalCore, ...updateData } = req.body;
 
     // Debug: 打印接收到的数组数据
@@ -167,38 +164,32 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     });
 
     // Handle global update for corePrompt
-    if (updateGlobalCore && updateData.corePrompt && agent.modelName) {
-      await Agent.updateMany(
-        { modelName: agent.modelName },
-        { $set: { 
-            corePrompt: updateData.corePrompt,
-            stage1Prompt: updateData.stage1Prompt,
-            stage2Prompt: updateData.stage2Prompt,
-            stage3Prompt: updateData.stage3Prompt
-          } 
-        }
-      );
+    if (updateGlobalCore && updateData.corePrompt) {
+      const existingAgent = await Agent.findById(req.params.id);
+      if (existingAgent && existingAgent.modelName) {
+        await Agent.updateMany(
+          { modelName: existingAgent.modelName },
+          { $set: { 
+              corePrompt: updateData.corePrompt,
+              stage1Prompt: updateData.stage1Prompt,
+              stage2Prompt: updateData.stage2Prompt,
+              stage3Prompt: updateData.stage3Prompt
+            } 
+          }
+        );
+      }
     }
 
-    // 确保数组字段正确更新，并使用 markModified 通知 Mongoose
-    if (updateData.avatarUrls !== undefined) {
-      agent.avatarUrls = updateData.avatarUrls;
-      agent.markModified('avatarUrls');
-    }
-    if (updateData.coverVideoUrls !== undefined) {
-      agent.coverVideoUrls = updateData.coverVideoUrls;
-      agent.markModified('coverVideoUrls');
-    }
-    if (updateData.privatePhotoUrls !== undefined) {
-      agent.privatePhotoUrls = updateData.privatePhotoUrls;
-      agent.markModified('privatePhotoUrls');
-    }
+    // 使用 findByIdAndUpdate 直接更新数据库（绕过 Mongoose 缓存）
+    const updatedAgent = await Agent.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
 
-    // 更新其他字段（排除数组字段避免覆盖）
-    const { avatarUrls, coverVideoUrls, privatePhotoUrls, ...otherData } = updateData;
-    Object.assign(agent, otherData);
-    
-    const updatedAgent = await agent.save();
+    if (!updatedAgent) {
+      return errors.notFound(res, 'Agent not found');
+    }
     
     // Debug: 打印保存后的数组数据
     console.log('[PUT /agents/:id] Saved arrays:', {
@@ -211,7 +202,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     sendSuccess(res, HTTP_STATUS.OK, updatedAgent);
   } catch (err) {
     console.error('[PUT /agents/:id] Error:', err);
-    errors.badRequest(res, err.message);
+    errors.badRequest(res, err.message || 'Update failed');
   }
 });
 
