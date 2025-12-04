@@ -4,6 +4,7 @@ const imageGenerationService = require('../services/imageGenerationService');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const Agent = require('../models/Agent');
+const Message = require('../models/Message');
 const UsageLog = require('../models/UsageLog');
 const costCalculator = require('../utils/costCalculator');
 const { requireAuth } = require('../middleware/auth');
@@ -104,7 +105,20 @@ router.post('/', async (req, res) => {
       style: agent.style || 'realistic'
     });
 
-    // 5. 记录使用日志 & 增加亲密度
+    // 5. 更新最近的 assistant 消息的 imageUrl
+    const imageUrl = results[0].url;
+    try {
+      await Message.findOneAndUpdate(
+        { agentId, role: 'assistant' },
+        { imageUrl },
+        { sort: { createdAt: -1 } }
+      );
+      console.log('[ImageGen] 已更新消息 imageUrl:', imageUrl.substring(0, 50) + '...');
+    } catch (msgErr) {
+      console.error('[ImageGen] 更新消息 imageUrl 失败:', msgErr.message);
+    }
+
+    // 7. 记录使用日志 & 增加亲密度
     try {
       await relationshipService.updateIntimacy(safeUserId, agentId, 5);
       
@@ -122,7 +136,7 @@ router.post('/', async (req, res) => {
       console.error('[ImageGen] 日志记录失败:', logErr.message);
     }
 
-    // 6. 返回结果
+    // 8. 返回结果
     const finalIntimacy = await relationshipService.getIntimacy(safeUserId, agentId);
     const balance = await walletService.getBalance(safeUserId);
 
