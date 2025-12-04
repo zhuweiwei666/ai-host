@@ -11,6 +11,7 @@ import {
 } from '../api';
 import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
+import DraggableMediaList from '../components/DraggableMediaList';
 import { normalizeImageUrl } from '../utils/imageUrl';
 
 const CORE_PROMPT_TEMPLATE = `**[核心人设协议]**
@@ -799,10 +800,10 @@ const EditAgent: React.FC = () => {
               )}
               </div>
 
-              {/* Right Column: 主播相册 */}
+              {/* Right Column: 主播相册 (可拖动排序) */}
               <div className="flex flex-col gap-4">
                   <h3 className="text-sm font-bold text-gray-900">主播相册</h3>
-                  <p className="text-xs text-gray-500">显示所有上传的图片和视频</p>
+                  <p className="text-xs text-gray-500">视频和首帧图已绑定，拖动可调整顺序</p>
 
                   {/* 统计信息 */}
                   <div className="flex gap-4 text-xs text-gray-600 mb-2">
@@ -811,102 +812,61 @@ const EditAgent: React.FC = () => {
                     <span>私有图片: {formData.privatePhotoUrls?.length || 0} 张</span>
                   </div>
 
-                  {/* 相册网格展示 */}
-                  {((formData.avatarUrls && formData.avatarUrls.length > 0) || 
-                    (formData.coverVideoUrls && formData.coverVideoUrls.length > 0) || 
-                    (formData.privatePhotoUrls && formData.privatePhotoUrls.length > 0)) ? (
-                    <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto p-2 border border-gray-200 rounded-lg">
-                      {/* 显示所有图片 */}
-                      {formData.avatarUrls?.map((url, idx) => (
-                        <div key={`img-${idx}`} className="relative group">
+                  {/* 可拖动排序的媒体列表 */}
+                  <DraggableMediaList
+                    imageUrls={formData.avatarUrls || []}
+                    videoUrls={formData.coverVideoUrls || []}
+                    onReorder={(newImageUrls, newVideoUrls) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        avatarUrls: newImageUrls,
+                        coverVideoUrls: newVideoUrls,
+                        avatarUrl: newImageUrls[0] || prev.avatarUrl,
+                        coverVideoUrl: newVideoUrls[0] || prev.coverVideoUrl,
+                      }));
+                    }}
+                    onDelete={(index) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        avatarUrls: prev.avatarUrls?.filter((_, i) => i !== index) || [],
+                        coverVideoUrls: prev.coverVideoUrls?.filter((_, i) => i !== index) || [],
+                        avatarUrl: index === 0 && prev.avatarUrls?.[1] ? prev.avatarUrls[1] : prev.avatarUrl,
+                        coverVideoUrl: index === 0 && prev.coverVideoUrls?.[1] ? prev.coverVideoUrls[1] : prev.coverVideoUrl,
+                      }));
+                    }}
+                    onPreview={setPreviewImage}
+                  />
+
+                  {/* 私有图片单独显示 */}
+                  {formData.privatePhotoUrls && formData.privatePhotoUrls.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">私有图片</h4>
+                      <div className="grid grid-cols-4 gap-2">
+                        {formData.privatePhotoUrls.map((url, idx) => (
+                          <div key={`private-${idx}`} className="relative group">
                             <img 
-                            src={normalizeImageUrl(url)} 
-                            alt={`图片 ${idx + 1}`}
-                            className="w-full h-24 rounded-md object-cover border-2 border-gray-300 cursor-pointer hover:border-indigo-500"
-                            onClick={() => setPreviewImage(normalizeImageUrl(url))}
-                            onDoubleClick={() => setFormData(prev => ({ ...prev, avatarUrl: url }))}
+                              src={normalizeImageUrl(url)} 
+                              alt={`私有图片 ${idx + 1}`}
+                              className="w-full h-16 rounded-md object-cover border-2 border-pink-300 cursor-pointer hover:border-pink-500"
+                              onClick={() => setPreviewImage(normalizeImageUrl(url))}
                             />
-                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-0.5">图片</div>
                             <button
-                                type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFormData(prev => ({
-                                ...prev,
-                                avatarUrls: prev.avatarUrls?.filter((_, i) => i !== idx) || [],
-                                avatarUrl: idx === 0 && prev.avatarUrls?.[1] ? prev.avatarUrls[1] : (prev.avatarUrl === url ? '' : prev.avatarUrl),
-                              }));
-                            }}
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="删除"
-                          >
-                            ×
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFormData(prev => ({
+                                  ...prev,
+                                  privatePhotoUrls: prev.privatePhotoUrls?.filter((_, i) => i !== idx) || [],
+                                }));
+                              }}
+                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="删除"
+                            >
+                              ×
                             </button>
-                        </div>
-                      ))}
-                      
-                      {/* 显示所有视频 */}
-                      {formData.coverVideoUrls?.map((url, idx) => (
-                        <div key={`video-${idx}`} className="relative group">
-                          <video 
-                            src={url}
-                            className="w-full h-24 rounded-md object-cover border-2 border-blue-300 cursor-pointer hover:border-blue-500"
-                            muted
-                            onMouseEnter={(e) => e.currentTarget.play()}
-                            onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
-                            onClick={() => window.open(url, '_blank')}
-                          />
-                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs text-center py-0.5">视频</div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFormData(prev => ({
-                                ...prev,
-                                coverVideoUrls: prev.coverVideoUrls?.filter((_, i) => i !== idx) || [],
-                                coverVideoUrl: idx === 0 && prev.coverVideoUrls?.[1] ? prev.coverVideoUrls[1] : (prev.coverVideoUrl === url ? '' : prev.coverVideoUrl),
-                              }));
-                            }}
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="删除"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      
-                      {/* 显示所有私有图片 */}
-                      {formData.privatePhotoUrls?.map((url, idx) => (
-                        <div key={`private-${idx}`} className="relative group">
-                          <img 
-                            src={normalizeImageUrl(url)} 
-                            alt={`私有图片 ${idx + 1}`}
-                            className="w-full h-24 rounded-md object-cover border-2 border-pink-300 cursor-pointer hover:border-pink-500"
-                            onClick={() => setPreviewImage(normalizeImageUrl(url))}
-                            onDoubleClick={() => setFormData(prev => ({ ...prev, privatePhotoUrl: url }))}
-                          />
-                          <div className="absolute bottom-0 left-0 right-0 bg-pink-600 bg-opacity-75 text-white text-xs text-center py-0.5">私有</div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFormData(prev => ({
-                                ...prev,
-                                privatePhotoUrls: prev.privatePhotoUrls?.filter((_, i) => i !== idx) || [],
-                                privatePhotoUrl: idx === 0 && prev.privatePhotoUrls?.[1] ? prev.privatePhotoUrls[1] : (prev.privatePhotoUrl === url ? '' : prev.privatePhotoUrl),
-                              }));
-                            }}
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="删除"
-                          >
-                            ×
-                        </button>
-                    </div>
-                      ))}
-                  </div>
-                  ) : (
-                    <div className="h-48 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-dashed border-gray-300">
-                      <span>暂无媒体文件</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
               </div>
