@@ -400,8 +400,8 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
             }
         }
 
-    if (match) {
-          console.log('--- Image Tag Detected (or Implicit) ---');
+        if (match) {
+            console.log('--- Image Tag Detected (or Implicit) ---');
           console.log(`[Chat] Attempting to deduct image cost for user ${userId}`);
       
       // Check balance for Image (Cost: 10)
