@@ -7,6 +7,7 @@ const path = require('path');
 const { optionalAuth } = require('../middleware/auth');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
+const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
 // Helper function to check MongoDB connection
 const checkDBConnection = () => {
@@ -36,23 +37,32 @@ router.get('/', optionalAuth, async (req, res) => {
       query.status = status;
     }
     if (style && style !== 'all') {
+      // Handle default value: if style is 'realistic', also include records with undefined/null style
+      // (since Mongoose default is 'realistic' but doesn't apply to existing documents)
+      if (style === 'realistic') {
+        query.$or = [
+          { style: 'realistic' },
+          { style: { $exists: false } },
+          { style: null }
+        ];
+      } else {
       query.style = style;
+      }
     }
     const agents = await Agent.find(query).sort({ createdAt: -1 });
-    res.json(agents);
+    const { sendSuccess } = require('../utils/errorHandler');
+    sendSuccess(res, 200, agents);
   } catch (err) {
     console.error('[GET /agents] Error:', err);
     console.error('[GET /agents] Error stack:', err.stack);
     
     // Return more detailed error in development, simpler message in production
     const isDev = process.env.NODE_ENV === 'development';
-    res.status(500).json({ 
-      message: err.message || 'Failed to fetch agents',
+    errors.internalError(res, err.message || 'Failed to fetch agents', { 
+      error: err.message,
       code: err.code || 'INTERNAL_ERROR',
-      ...(isDev && { 
-        stack: err.stack,
-        connectionState: mongoose.connection.readyState 
-      })
+      stack: isDev ? err.stack : undefined,
+      connectionState: isDev ? mongoose.connection.readyState : undefined
     });
   }
 });
@@ -77,22 +87,65 @@ router.post('/scrape', requireAuth, requireAdmin, async (req, res) => {
       console.log(`[Scraper] Process exited with code ${code}`);
     });
 
-    res.json({ message: 'Scraping started in background. Check logs or refresh agent list in a few minutes.' });
+    sendSuccess(res, HTTP_STATUS.OK, { message: 'Scraping started in background. Check logs or refresh agent list in a few minutes.' });
 
   } catch (err) {
     console.error('Scrape API Error:', err);
-    res.status(500).json({ message: 'Failed to start scraper' });
+    errors.internalError(res, 'Failed to start scraper', { error: err.message });
   }
 });
 
 // POST /api/agents - Create agent (Admin only)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const agent = new Agent(req.body);
   try {
+    // Debug: 打印接收到的数组数据
+    console.log('[POST /agents] Received arrays:', {
+      avatarUrls: req.body.avatarUrls,
+      coverVideoUrls: req.body.coverVideoUrls,
+      privatePhotoUrls: req.body.privatePhotoUrls,
+      avatarUrlsLength: req.body.avatarUrls?.length,
+      coverVideoUrlsLength: req.body.coverVideoUrls?.length,
+    });
+
+    const agent = new Agent(req.body);
     const newAgent = await agent.save();
-    res.status(201).json(newAgent);
+    
+    // Debug: 打印保存后的数组数据
+    console.log('[POST /agents] Saved arrays:', {
+      avatarUrls: newAgent.avatarUrls,
+      coverVideoUrls: newAgent.coverVideoUrls,
+      avatarUrlsLength: newAgent.avatarUrls?.length,
+      coverVideoUrlsLength: newAgent.coverVideoUrls?.length,
+    });
+    
+    sendSuccess(res, HTTP_STATUS.CREATED, newAgent);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error('[POST /agents] Error:', err);
+    errors.badRequest(res, err.message);
+  }
+});
+
+// POST /api/agents/:id/duplicate - Duplicate agent (Admin only) - Must be before /:id route
+router.post('/:id/duplicate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) return errors.notFound(res, 'Agent not found');
+
+    // Create a copy of the agent
+    const agentData = agent.toObject();
+    delete agentData._id;
+    delete agentData.createdAt;
+    delete agentData.updatedAt;
+    
+    // Add " (副本)" suffix to the name
+    agentData.name = `${agentData.name} (副本)`;
+
+    const duplicatedAgent = new Agent(agentData);
+    const newAgent = await duplicatedAgent.save();
+    sendSuccess(res, HTTP_STATUS.CREATED, newAgent);
+  } catch (err) {
+    console.error('[POST /agents/:id/duplicate] Error:', err);
+    errors.internalError(res, err.message || 'Failed to duplicate agent', { error: err.message });
   }
 });
 
@@ -100,13 +153,21 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const agent = await Agent.findById(req.params.id);
-    if (!agent) return res.status(404).json({ message: 'Agent not found' });
+    if (!agent) return errors.notFound(res, 'Agent not found');
 
     const { updateGlobalCore, ...updateData } = req.body;
 
+    // Debug: 打印接收到的数组数据
+    console.log('[PUT /agents/:id] Received arrays:', {
+      avatarUrls: updateData.avatarUrls,
+      coverVideoUrls: updateData.coverVideoUrls,
+      privatePhotoUrls: updateData.privatePhotoUrls,
+      avatarUrlsLength: updateData.avatarUrls?.length,
+      coverVideoUrlsLength: updateData.coverVideoUrls?.length,
+    });
+
     // Handle global update for corePrompt
     if (updateGlobalCore && updateData.corePrompt && agent.modelName) {
-      // Update all agents with the same model name
       await Agent.updateMany(
         { modelName: agent.modelName },
         { $set: { 
@@ -119,11 +180,34 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       );
     }
 
+    // 确保数组字段正确更新
+    if (updateData.avatarUrls !== undefined) {
+      agent.avatarUrls = updateData.avatarUrls;
+    }
+    if (updateData.coverVideoUrls !== undefined) {
+      agent.coverVideoUrls = updateData.coverVideoUrls;
+    }
+    if (updateData.privatePhotoUrls !== undefined) {
+      agent.privatePhotoUrls = updateData.privatePhotoUrls;
+    }
+
+    // 更新其他字段
     Object.assign(agent, updateData);
+    
     const updatedAgent = await agent.save();
-    res.json(updatedAgent);
+    
+    // Debug: 打印保存后的数组数据
+    console.log('[PUT /agents/:id] Saved arrays:', {
+      avatarUrls: updatedAgent.avatarUrls,
+      coverVideoUrls: updatedAgent.coverVideoUrls,
+      avatarUrlsLength: updatedAgent.avatarUrls?.length,
+      coverVideoUrlsLength: updatedAgent.coverVideoUrls?.length,
+    });
+    
+    sendSuccess(res, HTTP_STATUS.OK, updatedAgent);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error('[PUT /agents/:id] Error:', err);
+    errors.badRequest(res, err.message);
   }
 });
 
@@ -131,12 +215,12 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const agent = await Agent.findById(req.params.id);
-    if (!agent) return res.status(404).json({ message: 'Agent not found' });
+    if (!agent) return errors.notFound(res, 'Agent not found');
 
     await agent.deleteOne();
-    res.json({ message: 'Agent deleted' });
+    sendSuccess(res, 200, null, 'Agent deleted');
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    errors.internalError(res, err.message || 'Operation failed', { error: err.message });
   }
 });
 
@@ -147,13 +231,14 @@ router.get('/:id', optionalAuth, async (req, res) => {
     checkDBConnection();
     
     const agent = await Agent.findById(req.params.id);
-    if (!agent) return res.status(404).json({ message: 'Agent not found' });
-    res.json(agent);
+    if (!agent) return errors.notFound(res, 'Agent not found');
+    sendSuccess(res, HTTP_STATUS.OK, agent);
   } catch (err) {
     console.error('[GET /agents/:id] Error:', err);
-    res.status(500).json({ 
-      message: err.message || 'Failed to fetch agent',
-      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    const isDev = process.env.NODE_ENV === 'development';
+    errors.internalError(res, err.message || 'Failed to fetch agent', { 
+      error: err.message,
+      stack: isDev ? err.stack : undefined
     });
   }
 });
