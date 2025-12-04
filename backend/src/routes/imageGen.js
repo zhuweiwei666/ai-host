@@ -59,9 +59,15 @@ router.post('/', async (req, res) => {
       return errors.notFound(res, 'AI 主播不存在');
     }
 
+    // 2. 获取封面图作为参考
+    const referenceImage = (agent.avatarUrls && agent.avatarUrls.length > 0) 
+      ? agent.avatarUrls[0] 
+      : agent.avatarUrl;
+
     console.log(`[ImageGen] 用户 ${safeUserId} 请求生成图片`, {
       agent: agent.name,
       style: agent.style,
+      hasReferenceImage: !!referenceImage,
       description: description.substring(0, 30) + '...'
     });
 
@@ -73,16 +79,15 @@ router.post('/', async (req, res) => {
     }
 
     // 4. 生成图片
-    // 使用 Agent 的描述作为角色特征（发色、眼睛、服装等）
     const characterDescription = agent.description || agent.name;
     
     const results = await imageGenerationService.generate(description, {
+      referenceImage,  // 封面图作为参考，保持人物一致性
       characterDescription,
       count,
       width,
       height,
-      style: agent.style || 'realistic',
-      model: 'pro'  // 使用最强模型
+      style: agent.style || 'realistic'
     });
 
     // 5. 记录使用日志 & 增加亲密度
