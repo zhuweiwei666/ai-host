@@ -1,11 +1,16 @@
 /**
- * Normalize image URLs to ensure they use OSS URLs instead of local server paths
- * @param url - Image URL (can be relative path like /uploads/xxx.jpg or full OSS URL)
+ * Normalize image URLs to ensure they can be loaded correctly
+ * @param url - Image URL (can be relative path like /uploads/xxx.jpg or full URL)
  * @param placeholder - Placeholder URL to use if URL is invalid (default: placeholder image)
- * @returns Normalized URL (OSS URL or full URL)
+ * @returns Normalized URL
  */
 export function normalizeImageUrl(url: string | undefined | null, placeholder: string = 'https://via.placeholder.com/64'): string {
   if (!url) {
+    return placeholder;
+  }
+
+  // Skip loading placeholder
+  if (url === 'loading_placeholder') {
     return placeholder;
   }
 
@@ -14,30 +19,21 @@ export function normalizeImageUrl(url: string | undefined | null, placeholder: s
     return url;
   }
 
-  // If it's a relative path starting with /uploads/, it's an old local file
-  // These should have been migrated to OSS, but if not, we can't load them
-  // Return placeholder to avoid 500 errors
+  // If it's a relative path starting with /uploads/, prepend API base URL
   if (url.startsWith('/uploads/')) {
-    console.warn('[Image URL] Found old local path (should be migrated to OSS):', url);
-    return placeholder;
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://www.cling-ai.com';
+    return `${apiBase}${url}`;
   }
 
-  // If it's a server IP path (old format), also return placeholder
-  if (url.includes('47.245.121.93/uploads/')) {
-    console.warn('[Image URL] Found server IP path (should be migrated to OSS):', url);
-    return placeholder;
-  }
-
-  // If it's a relative path without /uploads/, assume it's already an OSS path
-  // OSS URLs are typically full URLs, so this shouldn't happen, but handle it
+  // For any other relative path, prepend API base URL
   return url;
 }
 
 /**
- * Check if a URL is a local server path that should be migrated to OSS
+ * Check if a URL is a local server path
  */
 export function isLocalPath(url: string | undefined | null): boolean {
   if (!url) return false;
-  return url.startsWith('/uploads/') || url.includes('47.245.121.93/uploads/');
+  return url.startsWith('/uploads/');
 }
 
