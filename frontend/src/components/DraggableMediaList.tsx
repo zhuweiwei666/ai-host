@@ -1,63 +1,35 @@
 import React from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  horizontalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { normalizeImageUrl } from '../utils/imageUrl';
 
 interface MediaPair {
-  id: string;
   imageUrl: string;
   videoUrl: string;
 }
 
-interface SortableMediaItemProps {
+interface MediaItemProps {
   pair: MediaPair;
   index: number;
-  onDelete: (index: number) => void;
+  total: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
   onPreview: (url: string) => void;
 }
 
-const SortableMediaItem: React.FC<SortableMediaItemProps> = ({ pair, index, onDelete, onPreview }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: pair.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-  };
+const MediaItem: React.FC<MediaItemProps> = ({ 
+  pair, 
+  index, 
+  total, 
+  onMoveUp, 
+  onMoveDown, 
+  onDelete, 
+  onPreview 
+}) => {
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative flex flex-col gap-2 p-2 rounded-lg border-2 ${
-        isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white'
-      } cursor-grab active:cursor-grabbing`}
-      {...attributes}
-      {...listeners}
-    >
+    <div className="relative flex flex-col gap-2 p-2 rounded-lg border-2 border-gray-200 bg-white">
       {/* 序号标签 */}
       <div className="absolute -top-2 -left-2 bg-indigo-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center z-10">
         {index + 1}
@@ -66,11 +38,7 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({ pair, index, onDe
       {/* 删除按钮 */}
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(index);
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
+        onClick={onDelete}
         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 z-10"
         title="删除"
       >
@@ -78,16 +46,12 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({ pair, index, onDe
       </button>
 
       {/* 图片预览 */}
-      <div className="relative group">
+      <div className="relative">
         <img
           src={normalizeImageUrl(pair.imageUrl)}
           alt={`图片 ${index + 1}`}
-          className="w-20 h-20 rounded-md object-cover border border-gray-300"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPreview(normalizeImageUrl(pair.imageUrl));
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
+          className="w-20 h-20 rounded-md object-cover border border-gray-300 cursor-pointer hover:opacity-80"
+          onClick={() => onPreview(normalizeImageUrl(pair.imageUrl))}
           onError={(e) => {
             (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80?text=No+Image';
           }}
@@ -98,7 +62,7 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({ pair, index, onDe
       </div>
 
       {/* 视频预览 */}
-      <div className="relative group">
+      <div className="relative">
         <video
           src={pair.videoUrl}
           className="w-20 h-20 rounded-md object-cover border border-blue-300"
@@ -108,11 +72,40 @@ const SortableMediaItem: React.FC<SortableMediaItemProps> = ({ pair, index, onDe
             e.currentTarget.pause();
             e.currentTarget.currentTime = 0;
           }}
-          onPointerDown={(e) => e.stopPropagation()}
         />
         <div className="absolute bottom-0 left-0 right-0 bg-blue-600 bg-opacity-75 text-white text-xs text-center py-0.5 rounded-b-md">
           视频
         </div>
+      </div>
+
+      {/* 上下移动按钮 */}
+      <div className="flex justify-center gap-1 mt-1">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={isFirst}
+          className={`w-8 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors ${
+            isFirst 
+              ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+              : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
+          }`}
+          title="上移"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={isLast}
+          className={`w-8 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors ${
+            isLast 
+              ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+              : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
+          }`}
+          title="下移"
+        >
+          ↓
+        </button>
       </div>
     </div>
   );
@@ -133,44 +126,34 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   onDelete,
   onPreview,
 }) => {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // 需要移动 5px 才开始拖动，避免点击误触
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   // 创建配对数据（图片和视频一一对应）
   const pairs: MediaPair[] = [];
   const maxLength = Math.max(imageUrls.length, videoUrls.length);
   
   for (let i = 0; i < maxLength; i++) {
     pairs.push({
-      id: `pair-${i}`,
       imageUrl: imageUrls[i] || '',
       videoUrl: videoUrls[i] || '',
     });
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
+  const handleSwap = (indexA: number, indexB: number) => {
+    if (indexB < 0 || indexB >= pairs.length) return;
 
-    if (over && active.id !== over.id) {
-      const oldIndex = pairs.findIndex((p) => p.id === active.id);
-      const newIndex = pairs.findIndex((p) => p.id === over.id);
+    const newImageUrls = [...imageUrls];
+    const newVideoUrls = [...videoUrls];
 
-      const newPairs = arrayMove(pairs, oldIndex, newIndex);
-      
-      // 提取重排后的 URL 数组
-      const newImageUrls = newPairs.map((p) => p.imageUrl).filter(Boolean);
-      const newVideoUrls = newPairs.map((p) => p.videoUrl).filter(Boolean);
-
-      onReorder(newImageUrls, newVideoUrls);
+    // 交换图片
+    if (newImageUrls[indexA] !== undefined && newImageUrls[indexB] !== undefined) {
+      [newImageUrls[indexA], newImageUrls[indexB]] = [newImageUrls[indexB], newImageUrls[indexA]];
     }
+
+    // 交换视频
+    if (newVideoUrls[indexA] !== undefined && newVideoUrls[indexB] !== undefined) {
+      [newVideoUrls[indexA], newVideoUrls[indexB]] = [newVideoUrls[indexB], newVideoUrls[indexA]];
+    }
+
+    onReorder(newImageUrls, newVideoUrls);
   };
 
   if (pairs.length === 0) {
@@ -184,38 +167,29 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm text-gray-600">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-500" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-        </svg>
-        <span>拖动排序（视频和首帧图自动同步）</span>
+        <span>点击 ↑↓ 按钮调整顺序（视频和首帧图自动同步）</span>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={pairs.map((p) => p.id)} strategy={horizontalListSortingStrategy}>
-          <div className="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[150px]">
-            {pairs.map((pair, index) => (
-              <SortableMediaItem
-                key={pair.id}
-                pair={pair}
-                index={index}
-                onDelete={onDelete}
-                onPreview={onPreview}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[150px]">
+        {pairs.map((pair, index) => (
+          <MediaItem
+            key={index}
+            pair={pair}
+            index={index}
+            total={pairs.length}
+            onMoveUp={() => handleSwap(index, index - 1)}
+            onMoveDown={() => handleSwap(index, index + 1)}
+            onDelete={() => onDelete(index)}
+            onPreview={onPreview}
+          />
+        ))}
+      </div>
 
       <p className="text-xs text-gray-500">
-        💡 提示：拖动任意一对（图片+视频）即可调整顺序，两者会保持绑定关系
+        💡 提示：点击 ↑ 上移，点击 ↓ 下移，图片和视频会一起移动
       </p>
     </div>
   );
 };
 
 export default DraggableMediaList;
-
