@@ -722,6 +722,21 @@ router.post('/init-admin', optionalAuth, async (req, res) => {
         userType: 'operator',
         platform: 'admin'
       });
+    } else if (admin.role === 'admin') {
+      // Fix legacy admin users with wrong userType/platform
+      let needsUpdate = false;
+      if (admin.userType !== 'operator') {
+        admin.userType = 'operator';
+        needsUpdate = true;
+      }
+      if (admin.platform !== 'admin') {
+        admin.platform = 'admin';
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        await admin.save();
+        console.log(`[init-admin] Fixed legacy admin user: ${username}`);
+      }
       isNewAdmin = true;
       
       // Initialize wallet for admin
@@ -765,19 +780,22 @@ router.get('/', async (req, res) => {
       return errors.adminRequired(res);
     }
     
-    // Build query
+    // Build query with proper filtering
     const query = {};
-    if (req.query.userType) {
+    if (req.query.userType && req.query.userType !== 'all') {
       query.userType = req.query.userType;
     }
-    if (req.query.platform) {
+    if (req.query.platform && req.query.platform !== 'all') {
       query.platform = req.query.platform;
     }
     if (req.query.isActive !== undefined) {
       query.isActive = req.query.isActive === 'true';
     }
     
+    console.log('[GET /users] Query params:', req.query, '-> MongoDB query:', query);
+    
     const users = await User.find(query).sort({ createdAt: -1 });
+    console.log(`[GET /users] Found ${users.length} users`);
     
     // Enhance with balance info (exclude password)
     const usersWithBalance = await Promise.all(users.map(async (u) => {
