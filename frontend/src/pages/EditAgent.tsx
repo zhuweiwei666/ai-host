@@ -159,6 +159,11 @@ const EditAgent: React.FC = () => {
           privatePhotoUrls: agentData.privatePhotoUrls?.length > 0 
             ? agentData.privatePhotoUrls 
             : (agentData.privatePhotoUrl ? [agentData.privatePhotoUrl] : []),
+          // 如果 stage prompt 为空，填充默认模板
+          corePrompt: agentData.corePrompt || CORE_PROMPT_TEMPLATE,
+          stage1Prompt: agentData.stage1Prompt || DEFAULT_STAGE_PROMPTS.stage1,
+          stage2Prompt: agentData.stage2Prompt || DEFAULT_STAGE_PROMPTS.stage2,
+          stage3Prompt: agentData.stage3Prompt || DEFAULT_STAGE_PROMPTS.stage3,
         };
         
         setFormData(normalizedData);
