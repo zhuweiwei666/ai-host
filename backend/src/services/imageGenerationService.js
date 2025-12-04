@@ -20,7 +20,7 @@ class ImageGenerationService {
    * @param {number} options.count - 生成数量，默认 1
    * @param {number} options.width - 宽度，默认 768
    * @param {number} options.height - 高度，默认 1152
-   * @param {number} options.strength - Img2Img 强度，0-1，默认 0.65（保留更多原图特征）
+   * @param {number} options.strength - Img2Img 强度，0-1，默认 0.85（让文案更有效果）
    * @param {string} options.style - 风格：realistic 或 anime
    */
   async generate(prompt, options = {}) {
@@ -29,7 +29,7 @@ class ImageGenerationService {
       count = 1, 
       width = 768, 
       height = 1152,
-      strength = 0.65,
+      strength = 0.85,  // 提高到 0.85，让用户文案有更大影响
       style = 'realistic'
     } = options;
 

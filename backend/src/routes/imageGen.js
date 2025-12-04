@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
     agentId, 
     description, 
     count = 1, 
-    strength = 0.65,
+    strength = 0.85,  // 提高强度，让用户文案更有效果
     width = 768,
     height = 1152,
     skipBalanceCheck = false,
