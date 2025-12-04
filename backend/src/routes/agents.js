@@ -180,19 +180,23 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       );
     }
 
-    // 确保数组字段正确更新
+    // 确保数组字段正确更新，并使用 markModified 通知 Mongoose
     if (updateData.avatarUrls !== undefined) {
       agent.avatarUrls = updateData.avatarUrls;
+      agent.markModified('avatarUrls');
     }
     if (updateData.coverVideoUrls !== undefined) {
       agent.coverVideoUrls = updateData.coverVideoUrls;
+      agent.markModified('coverVideoUrls');
     }
     if (updateData.privatePhotoUrls !== undefined) {
       agent.privatePhotoUrls = updateData.privatePhotoUrls;
+      agent.markModified('privatePhotoUrls');
     }
 
-    // 更新其他字段
-    Object.assign(agent, updateData);
+    // 更新其他字段（排除数组字段避免覆盖）
+    const { avatarUrls, coverVideoUrls, privatePhotoUrls, ...otherData } = updateData;
+    Object.assign(agent, otherData);
     
     const updatedAgent = await agent.save();
     
