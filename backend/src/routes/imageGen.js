@@ -9,166 +9,128 @@ const costCalculator = require('../utils/costCalculator');
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
-// Apply authentication middleware to all routes
+// 认证中间件
 router.use(requireAuth);
 
-// Debug middleware
-router.use((req, res, next) => {
-  console.log(`[ImageGen] ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-// POST /api/generate-image
+/**
+ * POST /api/generate-image
+ * 
+ * 简化后的生图逻辑：
+ * 1. 获取 AI 主播的封面图 (avatarUrl)
+ * 2. 结合用户发送的文案 (description)
+ * 3. 使用 Img2Img 生成新图片
+ * 
+ * 请求体:
+ * - agentId: AI 主播 ID（必需）
+ * - description: 用户文案（必需）
+ * - count: 生成数量（默认 1）
+ * - strength: 生成强度 0-1（默认 0.65，值越小越接近原图）
+ * - skipBalanceCheck: 跳过余额检查（管理员使用）
+ */
 router.post('/', async (req, res) => {
-  const { description, count, width, height, provider, agentId, userId, useAvatar, skipBalanceCheck, useImg2Img } = req.body;
+  const { 
+    agentId, 
+    description, 
+    count = 1, 
+    strength = 0.65,
+    width = 768,
+    height = 1152,
+    skipBalanceCheck = false,
+    userId 
+  } = req.body;
 
+  // 验证必需参数
+  if (!agentId) {
+    return errors.badRequest(res, 'agentId 是必需的');
+  }
   if (!description) {
-    return errors.badRequest(res, 'Description is required');
+    return errors.badRequest(res, 'description 是必需的');
   }
 
-  // Get userId from authenticated user or request body
-  let safeUserId = userId;
+  // 获取用户 ID
+  const safeUserId = userId || req.user?.id;
   if (!safeUserId) {
-    if (!req.user || !req.user.id) {
-      return errors.unauthorized(res);
-    }
-    safeUserId = req.user.id;
+    return errors.unauthorized(res);
   }
 
   try {
-    let agent = null;
-    if (agentId) {
-      agent = await Agent.findById(agentId);
+    // 1. 获取 AI 主播信息
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return errors.notFound(res, 'AI 主播不存在');
     }
 
-    // 1. Deduct Balance (Cost: 10 Coins)
-    // Skip if admin operation (skipBalanceCheck is true)
+    // 2. 获取封面图（优先用数组的第一张，兼容旧字段）
+    const coverImage = (agent.avatarUrls && agent.avatarUrls.length > 0) 
+      ? agent.avatarUrls[0] 
+      : agent.avatarUrl;
+
+    if (!coverImage || !coverImage.startsWith('http')) {
+      return errors.badRequest(res, 'AI 主播没有有效的封面图');
+    }
+
+    console.log(`[ImageGen] 用户 ${safeUserId} 请求生成图片`, {
+      agent: agent.name,
+      coverImage: coverImage.substring(0, 50) + '...',
+      description: description.substring(0, 30) + '...'
+    });
+
+    // 3. 扣费（10 金币/张）
     if (!skipBalanceCheck) {
-        const COST_COINS = 10;
-        await walletService.consume(safeUserId, COST_COINS, 'ai_image', agentId);
+      const COST_PER_IMAGE = 10;
+      const totalCost = COST_PER_IMAGE * count;
+      await walletService.consume(safeUserId, totalCost, 'ai_image', agentId);
     }
 
-    // 2. Prepare Prompt & Options
-    // Use agent details if available
-    let finalPrompt = description;
-    
-    // If generating Nude (detected by keywords), ensure prompt is explicit for base generation
-    const isNudeGen = description.toLowerCase().includes('nude') || description.toLowerCase().includes('naked');
-    
-    // Determine Style
-    const isAnimeStyle = agent && agent.style === 'anime';
-    const isRealisticStyle = !agent || agent.style === 'realistic'; // Default to realistic
+    // 4. 生成图片
+    const results = await imageGenerationService.generate(description, {
+      referenceImage: coverImage,
+      count,
+      width,
+      height,
+      strength,
+      style: agent.style || 'realistic'
+    });
 
-    if (agent) {
-        const realismKeywords = "RAW PHOTO, photorealistic, 8k uhd, dslr, soft lighting, film grain, Fujifilm XT3";
-        const animeKeywords = "anime style, 2d, illustration, vibrant colors, studio ghibli style, makoto shinkai style, masterpiece, best quality";
-        
-        let styleKeywords = "";
-        if (isAnimeStyle) {
-             styleKeywords = animeKeywords;
-        } else {
-             styleKeywords = realismKeywords;
-        }
-        
-        // If Nude, we prioritize body description.
-        if (isNudeGen) {
-             // CRITICAL FIX: DO NOT include agent.description here. 
-             // The agent description likely contains clothing details (e.g. "wearing a dress") 
-             // which contradicts the "naked" instruction and confuses the AI.
-             // We only use the incoming 'description' (which comes from frontend's nudePrompt)
-             // plus our forceful Nude keywords.
-             finalPrompt = `${styleKeywords}, ${description}, completely naked, wearing nothing, no clothes, no lingerie, no bikini, full body shot, wide angle, head to toe visible, detailed skin texture, detailed genitalia, anatomically correct`;
-        } else {
-             finalPrompt = `${styleKeywords}, ${agent.description} (${agent.gender}), ${description}`;
-        }
-    } else {
-        // No agent context
-        const isAnimeInput = description.toLowerCase().match(/anime|manga|cartoon|illustration|2d|sketch|painting/);
-        if (isAnimeInput) {
-             finalPrompt = `${description}, detailed, 8k, masterpiece, anime style`;
-        } else {
-             finalPrompt = `A high quality photo of ${description}, detailed, 8k, realistic, raw photo`;
-        }
-    }
-
-    const genOptions = { 
-      count: count || 1, 
-      width: width || 768, 
-      height: height || 1152,
-      provider: provider || 'fal',
-      model: 'flux/dev'
-    };
-
-    // Face Swap / Consistency
-    // Allow explicit faceImageUrl from body (for EditAgent preview) OR fallback to agent's saved avatar
-    // Check Intimacy to decide which avatar to use as reference if not explicit
-    let sourceFaceUrl = req.body.faceImageUrl;
-    if (!sourceFaceUrl && useAvatar && agent) {
-        const intimacy = await relationshipService.getIntimacy(safeUserId, agentId);
-        const threshold = agent.stage2Threshold || 60;
-        
-        if (intimacy > threshold && agent.privatePhotoUrl && agent.privatePhotoUrl.startsWith('http')) {
-             sourceFaceUrl = agent.privatePhotoUrl;
-        } else {
-             sourceFaceUrl = agent.avatarUrl;
-        }
-    }
-
-    if (sourceFaceUrl && sourceFaceUrl.startsWith('http')) {
-        genOptions.faceImageUrl = sourceFaceUrl;
-        // If client explicitly requested useImg2Img (e.g. from EditAgent for Nude Gen), honor it.
-        // Otherwise default to true for consistency.
-        if (typeof useImg2Img !== 'undefined') {
-             genOptions.useImg2Img = useImg2Img;
-        } else {
-             genOptions.useImg2Img = true;
-        }
-    }
-
-    // 3. Generate
-    const results = await imageGenerationService.generate(finalPrompt, genOptions);
-    
-    // 4. Log Usage & Increase Intimacy
+    // 5. 记录使用日志 & 增加亲密度
     try {
-        // Bonus Intimacy for paid Image Gen (+5)
-        // Note: If skipBalanceCheck is true (admin), we might skip intimacy or keep it? 
-        // Usually admin actions don't need intimacy tracking, but safe to just add it or ignore.
-        // Let's add it for consistent testing experience.
-        await relationshipService.updateIntimacy(safeUserId, agentId, 5);
-
-        const costUSD = costCalculator.calculateImage('flux/dev', 1);
-        await UsageLog.create({
-            agentId: agentId || null,
-            userId: safeUserId,
-            type: 'image',
-            provider: 'fal',
-            model: 'flux/dev',
-            inputUnits: 0,
-            outputUnits: 1,
-            cost: costUSD
-        });
+      await relationshipService.updateIntimacy(safeUserId, agentId, 5);
+      
+      await UsageLog.create({
+        agentId,
+        userId: safeUserId,
+        type: 'image',
+        provider: 'fal',
+        model: 'flux/dev/image-to-image',
+        inputUnits: 0,
+        outputUnits: count,
+        cost: costCalculator.calculateImage('flux/dev', count)
+      });
     } catch (logErr) {
-        console.error('Image Log Error:', logErr);
+      console.error('[ImageGen] 日志记录失败:', logErr.message);
     }
 
-    
+    // 6. 返回结果
     const finalIntimacy = await relationshipService.getIntimacy(safeUserId, agentId);
-    
-    const { sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
-    sendSuccess(res, HTTP_STATUS.OK, { 
-      url: results[0].url, 
-      remoteUrl: results[0].remoteUrl,
+    const balance = await walletService.getBalance(safeUserId);
+
+    sendSuccess(res, HTTP_STATUS.OK, {
+      url: results[0].url,
       urls: results.map(r => r.url),
-      balance: await walletService.getBalance(safeUserId),
+      balance,
       intimacy: finalIntimacy
     });
 
   } catch (error) {
-    console.error('Image Gen Error:', error.message);
+    console.error('[ImageGen] 生成失败:', error.message);
+    
     if (error.message === 'INSUFFICIENT_FUNDS') {
-        return errors.insufficientFunds(res);
+      return errors.insufficientFunds(res);
     }
-    errors.imageGenError(res, error.message || 'Failed to generate image', { error: error.message });
+    
+    errors.imageGenError(res, error.message || '图片生成失败', { 
+      error: error.message 
+    });
   }
 });
 
