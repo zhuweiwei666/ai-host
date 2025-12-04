@@ -251,13 +251,14 @@ router.post('/', async (req, res) => {
     const identityHeader = `You are ${agent.name}.`;
     const description = agent.description ? `Description: ${agent.description}` : "";
     
-    // Combine all parts: Identity -> Description -> Core Protocol -> Custom System Prompt -> Stage -> Image Rule
-    // This ensures the agent knows its name and persona even if the Core Protocol is generic.
+    // 使用新的核心协议（如果 agent 没有自定义的话）
+    const corePrompt = agent.corePrompt || CORE_PROMPT_TEMPLATE;
+    
+    // Combine all parts: Identity -> Description -> Core Protocol -> Stage -> Image Rule
     const components = [
         identityHeader,
         description,
-        agent.corePrompt, 
-        agent.systemPrompt
+        corePrompt
     ].filter(Boolean);
 
     const baseIdentity = components.join('\n\n');
