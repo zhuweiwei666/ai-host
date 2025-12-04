@@ -499,13 +499,11 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
             if (isNSFWStage && privateUrl) {
                  console.log('[Chat] Using Private/NSFW Photo for reference');
-                 genOptions.faceImageUrl = privateUrl;
-                 genOptions.useImg2Img = true; // Use Img2Img because reference is NSFW
+                 genOptions.referenceImage = privateUrl;
                  hasSourceImage = true;
             } else if (publicUrl) {
                  console.log('[Chat] Using Public Avatar for reference');
-                 genOptions.faceImageUrl = publicUrl;
-                 genOptions.useImg2Img = true; // Always use Img2Img to maintain character consistency
+                 genOptions.referenceImage = publicUrl;
                  hasSourceImage = true;
             }
 
