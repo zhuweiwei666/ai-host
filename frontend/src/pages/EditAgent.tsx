@@ -113,7 +113,23 @@ const EditAgent: React.FC = () => {
         // axios 响应结构: response.data = { success: true, data: {...} }
         const responseData = res.data as any;
         const agentData = responseData?.data || responseData;
-        setFormData(agentData);
+        
+        // 确保数组字段有默认值，并从单个 URL 字段迁移数据
+        const normalizedData = {
+          ...agentData,
+          // 如果数组字段为空但单个字段有值，则迁移数据
+          avatarUrls: agentData.avatarUrls?.length > 0 
+            ? agentData.avatarUrls 
+            : (agentData.avatarUrl ? [agentData.avatarUrl] : []),
+          coverVideoUrls: agentData.coverVideoUrls?.length > 0 
+            ? agentData.coverVideoUrls 
+            : (agentData.coverVideoUrl ? [agentData.coverVideoUrl] : []),
+          privatePhotoUrls: agentData.privatePhotoUrls?.length > 0 
+            ? agentData.privatePhotoUrls 
+            : (agentData.privatePhotoUrl ? [agentData.privatePhotoUrl] : []),
+        };
+        
+        setFormData(normalizedData);
         setDataLoaded(true);
       }).catch(console.error);
     }
