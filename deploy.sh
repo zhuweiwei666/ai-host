@@ -28,6 +28,7 @@ deploy_frontend() {
     docker build -t ai-host-frontend ./frontend
     docker run -d --name ai-host-frontend \
         -p 80:80 -p 443:443 \
+        -v /root/ai-host/frontend/ssl:/etc/nginx/ssl:ro \
         --network ai-host_default \
         --restart unless-stopped \
         ai-host-frontend
