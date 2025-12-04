@@ -59,15 +59,24 @@ router.post('/', async (req, res) => {
       return errors.notFound(res, 'AI 主播不存在');
     }
 
-    // 2. 获取封面图作为参考
-    const referenceImage = (agent.avatarUrls && agent.avatarUrls.length > 0) 
-      ? agent.avatarUrls[0] 
-      : agent.avatarUrl;
+    // 2. 随机选择一张图片作为参考（如果有多张的话）
+    let referenceImage = agent.avatarUrl;
+    
+    if (agent.avatarUrls && agent.avatarUrls.length > 0) {
+      // 随机选择一张图片
+      const randomIndex = Math.floor(Math.random() * agent.avatarUrls.length);
+      referenceImage = agent.avatarUrls[randomIndex];
+      console.log(`[ImageGen] 随机选择第 ${randomIndex + 1}/${agent.avatarUrls.length} 张图片`);
+    }
+
+    if (!referenceImage || !referenceImage.startsWith('http')) {
+      return errors.badRequest(res, 'AI 主播没有可用的图片');
+    }
 
     console.log(`[ImageGen] 用户 ${safeUserId} 请求生成图片`, {
       agent: agent.name,
       style: agent.style,
-      hasReferenceImage: !!referenceImage,
+      referenceImage: referenceImage.substring(0, 50) + '...',
       description: description.substring(0, 30) + '...'
     });
 
@@ -78,15 +87,13 @@ router.post('/', async (req, res) => {
       await walletService.consume(safeUserId, totalCost, 'ai_image', agentId);
     }
 
-    // 4. 生成图片
-    const characterDescription = agent.description || agent.name;
-    
+    // 4. 生成图片（Img2Img 方案）
     const results = await imageGenerationService.generate(description, {
-      referenceImage,  // 封面图作为参考，保持人物一致性
-      characterDescription,
+      referenceImage,
       count,
       width,
       height,
+      strength: 0.75,  // 平衡一致性和变化
       style: agent.style || 'realistic'
     });
 

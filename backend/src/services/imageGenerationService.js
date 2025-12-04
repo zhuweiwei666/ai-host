@@ -3,9 +3,11 @@ const crypto = require('crypto');
 const { downloadAndUploadToOSS } = require('../utils/ossUpload');
 
 /**
- * 图片生成服务 v4
+ * 图片生成服务
  * 
- * 策略：使用 PuLID（专门保持人物一致性）+ Flux Pro 回退
+ * 方案：Flux Dev Img2Img
+ * - 使用主播图片作为参考，生成新图片
+ * - 如果有多张图片，随机选择一张
  */
 class ImageGenerationService {
   constructor() {
@@ -17,19 +19,19 @@ class ImageGenerationService {
    * @param {string} prompt - 用户文案
    * @param {object} options - 选项
    * @param {string} options.referenceImage - 参考图 URL
-   * @param {string} options.characterDescription - 角色描述
    * @param {number} options.count - 生成数量
    * @param {number} options.width - 宽度
    * @param {number} options.height - 高度
+   * @param {number} options.strength - 变化强度 0-1
    * @param {string} options.style - 风格
    */
   async generate(prompt, options = {}) {
     const { 
       referenceImage,
-      characterDescription = '',
       count = 1, 
       width = 768, 
       height = 1152,
+      strength = 0.75,
       style = 'realistic'
     } = options;
 
@@ -37,41 +39,32 @@ class ImageGenerationService {
       throw new Error('IMAGE_GEN_API_KEY (Fal.ai) is not configured');
     }
 
-    console.log(`[ImageGen] 开始生成图片`, {
-      prompt: prompt.substring(0, 50) + '...',
-      hasReferenceImage: !!referenceImage,
-      style,
-      size: `${width}x${height}`,
-      count
+    if (!referenceImage) {
+      throw new Error('参考图是必需的');
+    }
+
+    console.log(`[ImageGen] Flux Img2Img 开始`, {
+      prompt: prompt.substring(0, 40) + '...',
+      referenceImage: referenceImage.substring(0, 50) + '...',
+      strength,
+      size: `${width}x${height}`
     });
 
     // 构建 prompt
-    let finalPrompt = '';
+    let finalPrompt = prompt;
     if (style === 'anime') {
-      finalPrompt = `masterpiece, best quality, anime illustration, ${characterDescription}, ${prompt}, detailed, vibrant colors`;
+      finalPrompt = `anime style, ${prompt}, masterpiece, best quality`;
     } else {
-      finalPrompt = `photorealistic, RAW PHOTO, ${characterDescription}, ${prompt}, 8k uhd, detailed`;
+      finalPrompt = `photorealistic, ${prompt}, 8k, detailed`;
     }
 
-    let imageUrls;
-
-    // 如果有参考图，使用 PuLID 保持人物一致性
-    if (referenceImage && referenceImage.startsWith('http')) {
-      try {
-        imageUrls = await this.generateWithPuLID(finalPrompt, {
-          referenceImage,
-          count,
-          width,
-          height
-        });
-      } catch (pulidError) {
-        console.error('[ImageGen] PuLID 失败，回退到 Flux Pro:', pulidError.message);
-        imageUrls = await this.generateWithFluxPro(finalPrompt, { count, width, height });
-      }
-    } else {
-      // 没有参考图，直接用 Flux Pro
-      imageUrls = await this.generateWithFluxPro(finalPrompt, { count, width, height });
-    }
+    const imageUrls = await this.generateWithImg2Img(finalPrompt, {
+      imageUrl: referenceImage,
+      count,
+      width,
+      height,
+      strength
+    });
 
     // 上传到 R2
     const results = await Promise.all(imageUrls.map(async (remoteUrl) => {
@@ -82,87 +75,32 @@ class ImageGenerationService {
           'image/png'
         );
         return { url: storageUrl, remoteUrl };
-      } catch (uploadError) {
-        console.error('[ImageGen] 上传失败:', uploadError.message);
+      } catch (err) {
+        console.error('[ImageGen] 上传失败:', err.message);
         return { url: remoteUrl, remoteUrl };
       }
     }));
 
-    console.log(`[ImageGen] 生成完成，共 ${results.length} 张图片`);
+    console.log(`[ImageGen] 完成，共 ${results.length} 张`);
     return results;
   }
 
   /**
-   * 使用 PuLID 生成（保持人物一致性）
-   * https://fal.ai/models/fal-ai/pulid
+   * Flux Dev Img2Img
    */
-  async generateWithPuLID(prompt, { referenceImage, count, width, height }) {
-    const endpoint = 'https://fal.run/fal-ai/pulid';
+  async generateWithImg2Img(prompt, { imageUrl, count, width, height, strength }) {
+    const endpoint = 'https://fal.run/fal-ai/flux/dev/image-to-image';
 
-    console.log(`[ImageGen] 调用 PuLID:`, { endpoint, size: `${width}x${height}` });
+    console.log(`[ImageGen] 调用 Flux Img2Img, strength=${strength}`);
 
     const makeRequest = async () => {
       const payload = {
-        prompt: prompt,
-        reference_images: [referenceImage],
-        negative_prompt: "blurry, low quality, distorted, deformed, ugly, bad anatomy",
-        image_size: { width, height },
-        num_inference_steps: 30,
-        guidance_scale: 7,
-        id_weight: 1.0,  // 人物一致性权重
-        enable_safety_checker: false
-      };
-
-      try {
-        const response = await axios.post(endpoint, payload, {
-          headers: {
-            'Authorization': `Key ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 180000
-        });
-
-        if (response.data.images && response.data.images.length > 0) {
-          return response.data.images[0].url;
-        }
-        if (response.data.image) {
-          return response.data.image.url;
-        }
-
-        if (response.data.request_id) {
-          return await this.pollResult(response.data.request_id);
-        }
-
-        throw new Error('PuLID 返回格式异常');
-      } catch (error) {
-        console.error('[ImageGen] PuLID 错误:', {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.message
-        });
-        throw error;
-      }
-    };
-
-    const requests = Array(count).fill(null).map(() => makeRequest());
-    return Promise.all(requests);
-  }
-
-  /**
-   * 使用 Flux Pro v1.1
-   */
-  async generateWithFluxPro(prompt, { count, width, height }) {
-    const endpoint = 'https://fal.run/fal-ai/flux-pro/v1.1';
-
-    console.log(`[ImageGen] 调用 Flux Pro v1.1`);
-
-    const makeRequest = async () => {
-      const payload = {
-        prompt: prompt,
+        prompt,
+        image_url: imageUrl,
+        strength,
         image_size: { width, height },
         num_inference_steps: 28,
         guidance_scale: 3.5,
-        safety_tolerance: "6",
         enable_safety_checker: false
       };
 
@@ -172,7 +110,7 @@ class ImageGenerationService {
             'Authorization': `Key ${this.apiKey}`,
             'Content-Type': 'application/json',
           },
-          timeout: 120000
+          timeout: 60000  // 60秒超时
         });
 
         if (response.data.images && response.data.images.length > 0) {
@@ -183,9 +121,9 @@ class ImageGenerationService {
           return await this.pollResult(response.data.request_id);
         }
 
-        throw new Error('Flux Pro 返回格式异常');
+        throw new Error('返回格式异常');
       } catch (error) {
-        console.error('[ImageGen] Flux Pro 错误:', error.message);
+        console.error('[ImageGen] 错误:', error.response?.data || error.message);
         throw error;
       }
     };
@@ -197,7 +135,7 @@ class ImageGenerationService {
   /**
    * 轮询结果
    */
-  async pollResult(requestId, maxAttempts = 60) {
+  async pollResult(requestId, maxAttempts = 30) {
     const statusUrl = `https://queue.fal.run/requests/${requestId}/status`;
     const resultUrl = `https://queue.fal.run/requests/${requestId}`;
 
@@ -213,25 +151,20 @@ class ImageGenerationService {
           const result = await axios.get(resultUrl, {
             headers: { 'Authorization': `Key ${this.apiKey}` }
           });
-          
-          if (result.data.images && result.data.images.length > 0) {
+          if (result.data.images?.length > 0) {
             return result.data.images[0].url;
           }
-          if (result.data.image) {
-            return result.data.image.url;
-          }
-          throw new Error('No image in result');
         }
 
         if (statusRes.data.status === 'FAILED') {
-          throw new Error('生成失败: ' + (statusRes.data.error || 'Unknown'));
+          throw new Error('生成失败');
         }
-      } catch (pollError) {
-        if (i === maxAttempts - 1) throw pollError;
+      } catch (err) {
+        if (i === maxAttempts - 1) throw err;
       }
     }
 
-    throw new Error('生成超时');
+    throw new Error('超时');
   }
 }
 
