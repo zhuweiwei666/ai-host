@@ -7,6 +7,41 @@ const axios = require('axios');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
+/**
+ * 从 Fish Audio URL 提取 Voice ID
+ * 支持格式：
+ * - https://fish.audio/m/{voiceId}
+ * - https://fish.audio/zh-CN/m/{voiceId}
+ * - 直接传入 voiceId
+ */
+const fetchVoiceTemplateMetadata = async (sourceUrl) => {
+  if (!sourceUrl) {
+    throw new Error('请提供 Fish Audio 链接');
+  }
+
+  let voiceId = sourceUrl.trim();
+
+  // 如果是完整URL，提取voiceId
+  if (sourceUrl.includes('fish.audio')) {
+    // 匹配 /m/{voiceId} 模式
+    const match = sourceUrl.match(/\/m\/([a-zA-Z0-9]+)/);
+    if (match && match[1]) {
+      voiceId = match[1];
+    } else {
+      throw new Error('无法从链接中提取 Voice ID，请检查链接格式');
+    }
+  }
+
+  // 验证 voiceId 格式（应该是 32 位十六进制）
+  if (!/^[a-zA-Z0-9]{20,40}$/.test(voiceId)) {
+    throw new Error('无效的 Voice ID 格式');
+  }
+
+  return { voiceId };
+};
+
+module.exports = { fetchVoiceTemplateMetadata };
+
 // Connect to MongoDB
 const connectDB = async () => {
   try {
