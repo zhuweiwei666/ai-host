@@ -180,11 +180,24 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       }
     }
 
-    // 使用 findByIdAndUpdate 直接更新数据库（绕过 Mongoose 缓存）
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateData },
-      { new: true, runValidators: true }
+    // 使用 findOneAndUpdate 直接更新数据库
+    // 使用 upsert: false 和 strict: false 确保可以添加新字段
+    const updatedAgent = await Agent.findOneAndUpdate(
+      { _id: req.params.id },
+      { 
+        $set: {
+          ...updateData,
+          // 确保数组字段被正确设置（即使是空数组）
+          avatarUrls: updateData.avatarUrls || [],
+          coverVideoUrls: updateData.coverVideoUrls || [],
+          privatePhotoUrls: updateData.privatePhotoUrls || [],
+        }
+      },
+      { 
+        new: true, 
+        runValidators: true,
+        strict: false  // 允许添加 schema 中未定义的字段
+      }
     );
 
     if (!updatedAgent) {
