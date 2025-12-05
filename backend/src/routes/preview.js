@@ -16,7 +16,15 @@ const express = require('express');
 const router = express.Router();
 const Agent = require('../models/Agent');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+
+// 管理员检查中间件
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return errors.forbidden(res, 'Admin access required');
+  }
+  next();
+};
 
 /**
  * GET /api/preview/videos/:agentId
