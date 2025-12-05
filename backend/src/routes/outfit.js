@@ -16,6 +16,7 @@ const UserProfile = require('../models/UserProfile');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const imageGenerationService = require('../services/imageGenerationService');
+const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // GET /api/outfit/list/:agentId - 获取 AI 主播的所有衣服/场景（含解锁状态）
@@ -130,6 +131,15 @@ router.post('/unlock', async (req, res) => {
             { $addToSet: { unlockedOutfits: outfitId } },
             { upsert: true }
           );
+          
+          // 🔔 事件埋点：亲密度解锁私房照
+          eventCollector.trackOutfitUnlocked(userId, agentId, {
+            outfitId: outfit._id,
+            level: outfit.level,
+            method: 'intimacy',
+            cost: 0
+          }).catch(err => console.error('[Event] Outfit unlock error:', err.message));
+          
           return sendSuccess(res, HTTP_STATUS.OK, {
             success: true,
             outfit: outfit.toObject(),
@@ -160,6 +170,14 @@ router.post('/unlock', async (req, res) => {
     
     // 7. 获取最新余额
     const newBalance = await walletService.getBalance(userId);
+    
+    // 🔔 事件埋点：解锁私房照
+    eventCollector.trackOutfitUnlocked(userId, agentId, {
+      outfitId: outfit._id,
+      level: outfit.level,
+      method: 'coins',
+      cost: outfit.unlockValue
+    }).catch(err => console.error('[Event] Outfit unlock error:', err.message));
     
     sendSuccess(res, HTTP_STATUS.OK, {
       success: true,

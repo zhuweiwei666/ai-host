@@ -92,7 +92,91 @@ const UserProfileSchema = new mongoose.Schema({
   
   // ========== 元数据 ==========
   totalMessages: { type: Number, default: 0 },    // 总消息数
-  lastActiveAt: { type: Date, default: Date.now } // 最后活跃时间
+  lastActiveAt: { type: Date, default: Date.now }, // 最后活跃时间
+  
+  // ========== AI 分析的用户画像 (自进化系统) ==========
+  aiAnalysis: {
+    // ----- 偏好分析 -----
+    preferences: {
+      contentStyle: [String],         // 偏好内容风格 ['cute', 'sexy', 'elegant', ...]
+      communicationStyle: String,     // 沟通风格 'flirty'/'romantic'/'direct'/'playful'
+      preferredLevel: Number,         // 偏好的尺度等级 1-5
+      activeTimeSlots: [String],      // 活跃时段 ['morning', 'night', ...]
+      favoriteTopics: [String],       // 常聊的话题
+      triggerWords: [String],         // 触发正面反应的关键词
+      avoidWords: [String],           // 触发负面反应的词
+    },
+    
+    // ----- 消费画像 -----
+    spending: {
+      priceSensitivity: { type: String, enum: ['high', 'medium', 'low'], default: 'medium' },
+      preferredGiftTypes: [String],   // 偏好的礼物类型
+      avgGiftValue: Number,           // 平均礼物价值
+      purchaseFrequency: String,      // 充值频率 'frequent'/'occasional'/'rare'/'never'
+      lastPurchaseAt: Date,           // 最后充值时间
+      ltv: Number,                    // 生命周期价值预估
+      ltvTier: { type: String, enum: ['whale', 'dolphin', 'minnow', 'free'], default: 'free' },
+    },
+    
+    // ----- 行为模式 -----
+    behavior: {
+      avgSessionDuration: Number,     // 平均会话时长(秒)
+      avgMessagesPerSession: Number,  // 每次会话消息数
+      avgDailyMessages: Number,       // 日均消息数
+      returnFrequency: String,        // 回访频率 'daily'/'weekly'/'monthly'/'sporadic'
+      preferredSessionTime: String,   // 偏好的会话时间
+      churnRisk: { type: String, enum: ['low', 'medium', 'high'], default: 'low' },
+      churnRiskUpdatedAt: Date,
+      engagementTrend: String,        // 互动趋势 'increasing'/'stable'/'decreasing'
+      daysSinceLastActive: Number,    // 距离上次活跃天数
+    },
+    
+    // ----- 内容消费 -----
+    contentConsumption: {
+      totalImagesViewed: { type: Number, default: 0 },
+      totalVideosWatched: { type: Number, default: 0 },
+      avgImageViewDuration: Number,   // 平均图片观看时长
+      avgVideoWatchProgress: Number,  // 平均视频观看进度
+      saveRate: Number,               // 保存率
+      shareRate: Number,              // 分享率
+      preferredContentTypes: [String], // 偏好内容类型
+    },
+    
+    // ----- 对话质量 -----
+    conversationQuality: {
+      avgResponseTime: Number,        // 平均回复时间(秒)
+      avgMessageLength: Number,       // 平均消息长度
+      positiveReactionRate: Number,   // 正面反应率
+      engagementScore: Number,        // 互动评分 0-100
+    },
+    
+    // ----- 个性化阈值 (自适应) -----
+    personalizedThresholds: {
+      intimacyMultiplier: { type: Number, default: 1 }, // 亲密度进度倍率
+      contentLevelOffset: { type: Number, default: 0 }, // 内容等级偏移
+      lastAdjusted: Date,
+    },
+    
+    // 分析元数据
+    lastAnalyzedAt: Date,
+    analysisVersion: String,
+    dataPoints: { type: Number, default: 0 }, // 分析用的数据点数量
+  },
+  
+  // ========== 会话追踪 ==========
+  currentSession: {
+    sessionId: String,
+    startedAt: Date,
+    messageCount: { type: Number, default: 0 },
+    lastEventAt: Date,
+  },
+  
+  // ========== 里程碑 ==========
+  milestones: [{
+    type: { type: String },           // 'first_message', 'first_gift', '100_messages', etc.
+    achievedAt: Date,
+    data: mongoose.Schema.Types.Mixed,
+  }],
   
 }, { timestamps: true });
 

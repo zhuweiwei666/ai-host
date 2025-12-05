@@ -91,6 +91,7 @@ loadRoute('/api/stats', './routes/stats');
 loadRoute('/api/gift', './routes/gift');
 loadRoute('/api/outfit', './routes/outfit');
 loadRoute('/api/profile', './routes/profile');
+loadRoute('/api/analytics', './routes/analytics');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint
@@ -122,4 +123,12 @@ app.listen(PORT, () => {
   console.log(`🌐 API routes (backend): /api/agents, /api/chat, /api/oss, /api/voice-models, /api/generate-image, ${isVideoFeatureEnabled ? '/api/generate-video, ' : ''}/api/users, /api/wallet, /api/stats`);
   console.log(`📁 Static uploads at: /uploads`);
   console.log(`✅ Ready to accept requests at /api/* endpoints`);
+  
+  // 启动 AI 自进化系统定时任务调度器
+  try {
+    const scheduler = require('./jobs/scheduler');
+    scheduler.start();
+  } catch (err) {
+    console.error('❌ Failed to start scheduler:', err.message);
+  }
 });

@@ -15,6 +15,7 @@ const Agent = require('../models/Agent');
 const Message = require('../models/Message');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
+const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // GET /api/gift/list - 获取所有可用礼物
@@ -120,6 +121,14 @@ router.post('/send', async (req, res) => {
     // 10. 获取最新余额和亲密度
     const newBalance = await walletService.getBalance(userId);
     const newIntimacy = await relationshipService.getIntimacy(userId, agentId);
+    
+    // 🔔 事件埋点：送礼
+    eventCollector.trackGiftSent(userId, agentId, {
+      giftId: gift._id,
+      price: gift.price,
+      giftName: gift.name,
+      source: 'chat'
+    }).catch(err => console.error('[Event] Gift sent error:', err.message));
     
     sendSuccess(res, HTTP_STATUS.OK, {
       success: true,

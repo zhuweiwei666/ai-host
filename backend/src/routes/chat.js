@@ -11,6 +11,7 @@ const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const ugcImageService = require('../services/ugcImageService');
 const profileService = require('../services/profileService'); // 用户画像服务 - 长期记忆
+const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -197,6 +198,12 @@ router.get('/history/:agentId', async (req, res) => {
       if (agent) {
         greeting = await getGreetingMessage(agent, userId);
       }
+      
+      // 🔔 事件埋点：首次会话开始
+      eventCollector.startSession(userId, agentId, {
+        deviceType: req.headers['x-device-type'] || 'web',
+        platform: req.headers['x-platform'] || 'web'
+      }).catch(err => console.error('[Event] Session start error:', err.message));
     }
     
     sendSuccess(res, HTTP_STATUS.OK, { history, intimacy, greeting });
@@ -377,6 +384,14 @@ router.post('/record-choice/:agentId', async (req, res) => {
     const result = await profileService.recordChoice(userId, agentId, choiceIndex);
     const agent = await Agent.findById(agentId);
     
+    // 🔔 事件埋点：记录用户选择
+    const styleMap = ['shy', 'normal', 'bold'];
+    eventCollector.trackReplyOptionSelected(userId, agentId, {
+      style: styleMap[choiceIndex] || 'unknown',
+      index: choiceIndex,
+      round: result.round
+    }).catch(err => console.error('[Event] Reply option error:', err.message));
+    
     // 返回下一轮的选项（如果还没完成）
     let replyOptions = [];
     if (!result.isComplete && result.round < 5) {
@@ -528,7 +543,14 @@ router.post('/', async (req, res) => {
     const finalSystemPrompt = `${baseIdentity}\n\n${stageInstruction}\n\n${IMAGE_RULE}`;
 
     // Save User Message - 关键：必须包含 userId 实现数据隔离
-    await Message.create({ agentId, userId, role: 'user', content: prompt });
+    const userMessage = await Message.create({ agentId, userId, role: 'user', content: prompt });
+    
+    // 🔔 事件埋点：用户发送消息
+    eventCollector.trackMessageSent(userId, agentId, {
+      messageId: userMessage._id,
+      content: prompt,
+      type: 'text'
+    }).catch(err => console.error('[Event] Message sent error:', err.message));
     
     // ========== 自动提取用户信息更新画像 ==========
     // 异步执行，不阻塞主流程
@@ -879,7 +901,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     if (!reply) reply = "...";
 
     // 保存 AI 回复 - 关键：必须包含 userId 实现数据隔离
-    await Message.create({
+    const aiMessage = await Message.create({
       agentId,
       userId,
       role: 'assistant',
@@ -888,6 +910,17 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       inputTokens: usage.prompt_tokens,
       outputTokens: usage.completion_tokens
     });
+    
+    // 🔔 事件埋点：AI 回复消息
+    eventCollector.trackMessageReceived(userId, agentId, {
+      messageId: aiMessage._id,
+      content: reply,
+      type: imageUrl ? 'image' : 'text',
+      hasImage: !!imageUrl,
+      userMessage: prompt,
+      aiResponse: reply,
+      stage: isNSFWStage ? 3 : (currentIntimacy <= t1 ? 1 : 2)
+    }).catch(err => console.error('[Event] Message received error:', err.message));
 
     // Return current balance and intimacy so frontend can update
     // Get final balance (may have changed due to image generation)
