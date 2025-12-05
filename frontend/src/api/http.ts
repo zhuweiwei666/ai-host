@@ -16,16 +16,8 @@ http.interceptors.request.use(
     const token = getToken();
     
     if (token) {
-      // 检查 token 是否过期
-      if (isTokenExpired()) {
-        logout();
-        // 如果在浏览器环境，跳转到登录页
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-        return Promise.reject(new Error('Token expired'));
-      }
-      
+      // 不在请求拦截器中检查 token 过期
+      // 让后端来决定 token 是否有效，避免不需要认证的 API 被错误拦截
       config.headers.Authorization = `Bearer ${token}`;
     }
     
