@@ -204,7 +204,9 @@ router.get('/history/:agentId', async (req, res) => {
       audioUrl: m.audioUrl,
       imageUrl: m.imageUrl,
       isProactive: m.isProactive || false, // 标记是否是主动消息
-      proactiveType: m.proactiveType
+      proactiveType: m.proactiveType,
+      messageType: m.messageType || 'normal', // 消息类型：normal, gift, gift_response
+      excludeFromContext: m.excludeFromContext || false // 是否排除出AI上下文
     }));
 
     // 如果没有历史记录，获取 AI 主动开场消息

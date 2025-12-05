@@ -107,21 +107,25 @@ router.post('/send', requireAuth, async (req, res) => {
       { upsert: true }
     );
     
-    // 9. 保存用户送礼消息到聊天记录
+    // 9. 保存用户送礼消息到聊天记录（标记为礼物消息，排除出AI上下文）
     const userGiftMessage = `[送出礼物] ${gift.emoji} ${gift.name}`;
     await Message.create({
       agentId,
       userId,
       role: 'user',
-      content: userGiftMessage
+      content: userGiftMessage,
+      messageType: 'gift',
+      excludeFromContext: true // 不作为AI上下文
     });
     
-    // 10. 将 AI 回复作为消息保存到聊天记录
+    // 10. 将 AI 回复作为消息保存到聊天记录（标记为礼物回复，排除出AI上下文）
     await Message.create({
       agentId,
       userId,
       role: 'assistant',
-      content: aiResponse
+      content: aiResponse,
+      messageType: 'gift_response',
+      excludeFromContext: true // 不作为AI上下文，防止AI重复提及礼物
     });
     
     // 11. 获取最新余额和亲密度

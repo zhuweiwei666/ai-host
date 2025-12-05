@@ -32,6 +32,14 @@ const MessageSchema = new mongoose.Schema(
       enum: ['greeting', 'missing', 'life_share', 'anniversary', 'recall', 'mood', 'tease']
     },
     
+    // ========== 系统消息相关 ==========
+    messageType: { 
+      type: String, 
+      enum: ['normal', 'gift', 'gift_response', 'system'],
+      default: 'normal'
+    }, // 消息类型：普通消息、送礼消息、礼物回复、系统消息
+    excludeFromContext: { type: Boolean, default: false }, // 是否从AI上下文中排除
+    
     createdAt: { type: Date, default: Date.now }
   }
 );

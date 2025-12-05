@@ -19,6 +19,8 @@ interface ChatMessage {
   isMediaLoading?: boolean; // Added for loading state
   isProactive?: boolean; // AI 主动发送的消息
   proactiveType?: string; // 主动消息类型: greeting, missing, life_share, tease 等
+  messageType?: string; // 消息类型: normal, gift, gift_response
+  excludeFromContext?: boolean; // 是否从AI上下文排除（礼物消息不需要发给AI）
 }
 
 // AudioPlayer Component (Unchanged)
@@ -292,10 +294,11 @@ const ChatPage: React.FC = () => {
     setBalance(response.balance);
     setIntimacy(response.intimacy);
     // 将用户送礼消息和 AI 的感谢消息添加到聊天记录
+    // 礼物消息标记为 excludeFromContext: true，不会发送给 AI 作为上下文
     setMessages(prev => [
       ...prev, 
-      { role: 'user', content: response.userMessage },
-      { role: 'assistant', content: response.aiResponse }
+      { role: 'user', content: response.userMessage, messageType: 'gift', excludeFromContext: true },
+      { role: 'assistant', content: response.aiResponse, messageType: 'gift_response', excludeFromContext: true }
     ]);
   };
 
@@ -361,7 +364,10 @@ const ChatPage: React.FC = () => {
     try {
       // 2. ALWAYS Get Text Reply first (Skip image gen in chat API)
       // We send skipImageGen: true so the backend doesn't auto-generate or charge for image yet
-      const apiHistory = messages.map(m => ({ role: m.role, content: m.content }));
+      // 过滤掉礼物消息等不需要发送给AI的消息（excludeFromContext: true）
+      const apiHistory = messages
+        .filter(m => !m.excludeFromContext)
+        .map(m => ({ role: m.role, content: m.content }));
       const textRes = await chatWithAgent(agent._id, currentPrompt, apiHistory, true);
       
       if (textRes.data.balance !== undefined) setBalance(textRes.data.balance);
