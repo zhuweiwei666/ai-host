@@ -169,7 +169,8 @@ router.get('/history/:agentId', async (req, res) => {
   if (!agentId) return errors.badRequest(res, 'agentId is required');
 
   try {
-    const messages = await Message.find({ agentId })
+    // 关键修复：按 userId + agentId 联合查询，确保每个用户只看到自己的聊天记录
+    const messages = await Message.find({ userId, agentId })
       .sort({ createdAt: -1 })
       .limit(50);
     
@@ -265,8 +266,8 @@ router.post('/', async (req, res) => {
     const baseIdentity = components.join('\n\n');
     const finalSystemPrompt = `${baseIdentity}\n\n${stageInstruction}\n\n${IMAGE_RULE}`;
 
-    // Save User Message
-    await Message.create({ agentId, role: 'user', content: prompt });
+    // Save User Message - 关键：必须包含 userId 实现数据隔离
+    await Message.create({ agentId, userId, role: 'user', content: prompt });
 
     const provider = ProviderFactory.getProvider(agent.modelName);
     
@@ -610,8 +611,10 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
     if (!reply) reply = "...";
 
+    // 保存 AI 回复 - 关键：必须包含 userId 实现数据隔离
     await Message.create({
       agentId,
+      userId,
       role: 'assistant',
       content: reply,
       imageUrl: imageUrl,
@@ -683,8 +686,9 @@ router.post('/tts', async (req, res) => {
         });
     } catch (logErr) { console.error('TTS Log Error', logErr); }
 
+    // 更新消息时也要按 userId 过滤，确保只更新当前用户的消息
     await Message.findOneAndUpdate(
-      { agentId, role: 'assistant', content: text }, 
+      { agentId, userId, role: 'assistant', content: text }, 
       { audioUrl: audioUrl },
       { sort: { createdAt: -1 } }
     );

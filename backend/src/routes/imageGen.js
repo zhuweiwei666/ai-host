@@ -107,10 +107,11 @@ router.post('/', async (req, res) => {
     });
 
     // 5. 更新最近的 assistant 消息的 imageUrl
+    // 关键修复：必须按 userId 过滤，确保只更新当前用户的消息
     const imageUrl = results[0].url;
     try {
       await Message.findOneAndUpdate(
-        { agentId, role: 'assistant' },
+        { agentId, userId: safeUserId, role: 'assistant' },
         { imageUrl },
         { sort: { createdAt: -1 } }
       );

@@ -130,7 +130,8 @@ const ChatPage: React.FC = () => {
   const [balance, setBalance] = useState<number>(0);
   const [intimacy, setIntimacy] = useState<number>(0); // Intimacy State
   const [showAdModal, setShowAdModal] = useState(false);
-  const userId = "test_user_001"; // Mock user ID
+  // 注意：userId 现在从认证 token 中获取，不再需要硬编码
+  // 所有 API 调用会自动带上 Authorization header
 
   // Video Generation Options
   // Removed videoFastMode toggle, defaulting to Fast Mode always as Quality Mode is deprecated.
@@ -176,7 +177,8 @@ const ChatPage: React.FC = () => {
 
   const fetchBalance = async () => {
     try {
-      const res = await http.get(`/wallet/balance?userId=${userId}`);
+      // 不再需要传递 userId，后端从认证 token 中获取用户身份
+      const res = await http.get('/wallet/balance');
       setBalance(res.data.balance);
     } catch (err) {
       console.error('Failed to fetch balance', err);
@@ -185,16 +187,13 @@ const ChatPage: React.FC = () => {
 
   const handleWatchAd = async () => {
     try {
+      // 不再需要传递 userId，后端从认证 token 中获取用户身份
       const res = await http.post('/wallet/reward/ad', { 
-        userId, 
-        traceId: `ad_${Date.now()}`, // Mock trace ID
-        reward: 50 
+        traceId: `ad_${Date.now()}` // 用于防止重复奖励
       });
-      if (res.data.success) {
-        setBalance(res.data.balance);
-        setShowAdModal(false);
-        alert('Ad watched! +50 Coins');
-      }
+      setBalance(res.data.balance);
+      setShowAdModal(false);
+      alert('Ad watched! +50 Coins');
     } catch (err) {
       alert('Ad reward failed');
     }
@@ -282,9 +281,9 @@ const ChatPage: React.FC = () => {
               } else {
                   // Generate Image
                   // Use user prompt + agent context is handled by backend
+                  // 不再需要传递 userId，后端从认证 token 中获取用户身份
                   const imgRes = await generateImage(currentPrompt, { 
                       agentId: agent._id, 
-                      userId, 
                       useAvatar: true 
                   });
                   mediaUrl = imgRes.data.url;
