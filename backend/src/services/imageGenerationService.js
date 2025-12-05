@@ -1,6 +1,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const { downloadAndUploadToOSS } = require('../utils/ossUpload');
+const sharp = require('sharp');
 
 /**
  * 图片生成服务
@@ -66,9 +67,20 @@ class ImageGenerationService {
       strength
     });
 
-    // 上传到 R2
+    // 上传到 R2，并检测纯黑图片
     const results = await Promise.all(imageUrls.map(async (remoteUrl) => {
       try {
+        // 先下载图片检测是否为纯黑
+        const imageResponse = await axios.get(remoteUrl, { responseType: 'arraybuffer', timeout: 30000 });
+        const imageBuffer = Buffer.from(imageResponse.data);
+        
+        // 检测是否为纯黑图片
+        const isBlackImage = await this.isBlackImage(imageBuffer);
+        if (isBlackImage) {
+          console.warn('[ImageGen] 检测到纯黑图片（内容可能被过滤），跳过');
+          return null; // 返回 null 表示这张图片无效
+        }
+        
         const storageUrl = await downloadAndUploadToOSS(
           remoteUrl, 
           `gen-${crypto.randomUUID()}.png`, 
@@ -81,8 +93,59 @@ class ImageGenerationService {
       }
     }));
 
-    console.log(`[ImageGen] 完成，共 ${results.length} 张`);
-    return results;
+    // 过滤掉纯黑图片
+    const validResults = results.filter(r => r !== null);
+    
+    console.log(`[ImageGen] 完成，有效图片 ${validResults.length}/${results.length} 张`);
+    
+    if (validResults.length === 0) {
+      console.warn('[ImageGen] 所有图片都被过滤了，可能是内容安全限制');
+      throw new Error('图片生成失败：内容可能被安全检查过滤');
+    }
+    
+    return validResults;
+  }
+
+  /**
+   * 检测图片是否为纯黑（或接近纯黑）
+   * @param {Buffer} imageBuffer - 图片数据
+   * @returns {boolean} - 是否为纯黑图片
+   */
+  async isBlackImage(imageBuffer) {
+    try {
+      // 缩小图片到 10x10 进行快速检测
+      const { data, info } = await sharp(imageBuffer)
+        .resize(10, 10, { fit: 'fill' })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      
+      // 计算平均亮度
+      let totalBrightness = 0;
+      const pixelCount = info.width * info.height;
+      const channels = info.channels;
+      
+      for (let i = 0; i < data.length; i += channels) {
+        // RGB 平均值
+        const r = data[i] || 0;
+        const g = data[i + 1] || 0;
+        const b = data[i + 2] || 0;
+        totalBrightness += (r + g + b) / 3;
+      }
+      
+      const avgBrightness = totalBrightness / pixelCount;
+      
+      // 如果平均亮度小于 10（接近纯黑），认为是无效图片
+      const isBlack = avgBrightness < 10;
+      
+      if (isBlack) {
+        console.log(`[ImageGen] 图片亮度检测: ${avgBrightness.toFixed(2)} (纯黑阈值: 10)`);
+      }
+      
+      return isBlack;
+    } catch (err) {
+      console.error('[ImageGen] 图片检测失败:', err.message);
+      return false; // 检测失败时不过滤
+    }
   }
 
   /**
