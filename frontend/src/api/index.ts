@@ -116,7 +116,20 @@ export const generateImage = (
 export const generateAvatarImage = generateImage;
 
 export const chatWithAgent = (agentId: string, prompt: string, history: { role: string; content: string }[] = [], skipImageGen?: boolean) => {
-  return http.post<{ reply: string; audioUrl?: string; ttsError?: string; balance?: number; imageUrl?: string; intimacy?: number }>('/chat', { agentId, prompt, history, skipImageGen });
+  return http.post<{ 
+    reply: string; 
+    audioUrl?: string; 
+    ttsError?: string; 
+    balance?: number; 
+    imageUrl?: string; 
+    intimacy?: number;
+    detection?: {
+      round: number;
+      userType: string;
+      isComplete: boolean;
+      replyOptions: { text: string; style: string }[];
+    };
+  }>('/chat', { agentId, prompt, history, skipImageGen });
 };
 
 export const getChatHistory = (agentId: string) => http.get<{ history: { role: string; content: string; audioUrl?: string }[]; intimacy?: number }>(`/chat/history/${agentId}`);
