@@ -10,7 +10,7 @@ const express = require('express');
 const router = express.Router();
 const UserProfile = require('../models/UserProfile');
 const relationshipService = require('../services/relationshipService');
-const { sendSuccess, errors, HTTP_STATUS } = require('../utils/response');
+const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // GET /api/profile/:agentId - 获取完整用户画像
 router.get('/:agentId', async (req, res) => {

@@ -16,7 +16,7 @@ const UserProfile = require('../models/UserProfile');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const imageGenerationService = require('../services/imageGenerationService');
-const { sendSuccess, errors, HTTP_STATUS } = require('../utils/response');
+const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // GET /api/outfit/list/:agentId - 获取 AI 主播的所有衣服/场景（含解锁状态）
 router.get('/list/:agentId', async (req, res) => {

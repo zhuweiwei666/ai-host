@@ -15,7 +15,7 @@ const Agent = require('../models/Agent');
 const Message = require('../models/Message');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
-const { sendSuccess, errors, HTTP_STATUS } = require('../utils/response');
+const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // GET /api/gift/list - 获取所有可用礼物
 router.get('/list', async (req, res) => {
