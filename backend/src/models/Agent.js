@@ -29,7 +29,29 @@ const AgentSchema = new mongoose.Schema({
 
   systemPrompt: { type: String, default: 'You are a helpful AI assistant.' }, // Custom/user layer
   voiceId: { type: String, default: '' }, // Fish Audio Reference ID
-  status: { type: String, enum: ['online', 'offline'], default: 'online' }, 
+  status: { type: String, enum: ['online', 'offline'], default: 'online' },
+  
+  // ========== 主动开场消息 ==========
+  greetingMessages: [{
+    content: { type: String, required: true },      // 消息内容
+    timeRange: { 
+      type: String, 
+      enum: ['any', 'morning', 'afternoon', 'evening', 'night'],
+      default: 'any'
+    },
+    mood: { 
+      type: String, 
+      enum: ['normal', 'miss_you', 'flirty', 'lonely', 'excited'],
+      default: 'normal'
+    },
+    // 是否附带图片
+    withImage: { type: Boolean, default: false },
+    imageHint: { type: String, default: '' },       // 图片描述提示
+  }],
+  
+  // ========== 默认开场（如果没有配置 greetingMessages）==========
+  defaultGreeting: { type: String, default: '' },
+  
 }, { timestamps: true });
 
 module.exports = mongoose.model('Agent', AgentSchema);

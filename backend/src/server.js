@@ -88,6 +88,9 @@ if (isVideoFeatureEnabled) {
 loadRoute('/api/users', './routes/users');
 loadRoute('/api/wallet', './routes/wallet');
 loadRoute('/api/stats', './routes/stats');
+loadRoute('/api/gift', './routes/gift');
+loadRoute('/api/outfit', './routes/outfit');
+loadRoute('/api/profile', './routes/profile');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint

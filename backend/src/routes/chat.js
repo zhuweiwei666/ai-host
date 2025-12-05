@@ -190,12 +190,99 @@ router.get('/history/:agentId', async (req, res) => {
       imageUrl: m.imageUrl
     }));
 
-    sendSuccess(res, HTTP_STATUS.OK, { history, intimacy });
+    // 如果没有历史记录，获取 AI 主动开场消息
+    let greeting = null;
+    if (history.length === 0) {
+      const agent = await Agent.findById(agentId);
+      if (agent) {
+        greeting = await getGreetingMessage(agent, userId);
+      }
+    }
+    
+    sendSuccess(res, HTTP_STATUS.OK, { history, intimacy, greeting });
   } catch (err) {
     console.error('Fetch History Error:', err);
     errors.internalError(res, 'Error fetching chat history', { error: err.message });
   }
 });
+
+/**
+ * 获取 AI 主动开场消息
+ * 根据时间、用户画像等生成个性化的开场白
+ */
+async function getGreetingMessage(agent, userId) {
+  const now = new Date();
+  const hour = now.getHours();
+  
+  // 确定时间段
+  let timeRange = 'any';
+  if (hour >= 6 && hour < 12) timeRange = 'morning';
+  else if (hour >= 12 && hour < 18) timeRange = 'afternoon';
+  else if (hour >= 18 && hour < 22) timeRange = 'evening';
+  else timeRange = 'night';
+  
+  // 获取用户画像中的专属称呼
+  const profile = await UserProfile.findOne({ userId, agentId: agent._id });
+  const petName = profile?.petName || '你';
+  
+  // 如果有配置的开场消息
+  if (agent.greetingMessages && agent.greetingMessages.length > 0) {
+    // 筛选匹配时间段的消息，或者 any 时间段的消息
+    const matchedGreetings = agent.greetingMessages.filter(g => 
+      g.timeRange === timeRange || g.timeRange === 'any'
+    );
+    
+    if (matchedGreetings.length > 0) {
+      const greeting = matchedGreetings[Math.floor(Math.random() * matchedGreetings.length)];
+      return {
+        content: greeting.content.replace('{petName}', petName).replace('{name}', agent.name),
+        withImage: greeting.withImage,
+        imageHint: greeting.imageHint,
+        mood: greeting.mood
+      };
+    }
+  }
+  
+  // 默认开场消息
+  if (agent.defaultGreeting) {
+    return {
+      content: agent.defaultGreeting.replace('{petName}', petName).replace('{name}', agent.name),
+      withImage: false,
+      mood: 'normal'
+    };
+  }
+  
+  // 终极默认
+  const defaultGreetings = {
+    morning: [
+      `早安呀${petName}～刚睡醒，有点想你了...`,
+      `${petName}，早上好～今天也要开心哦！`,
+    ],
+    afternoon: [
+      `${petName}在忙什么呢？有点无聊想找你聊天~`,
+      `下午好呀${petName}！想我了吗？`,
+    ],
+    evening: [
+      `${petName}下班了吗？终于等到你了~`,
+      `晚上好${petName}！今天过得怎么样？`,
+    ],
+    night: [
+      `${petName}还没睡呀？我刚洗完澡，有点无聊...`,
+      `夜深了${petName}，陪我聊聊天好不好？`,
+    ],
+    any: [
+      `嗨${petName}！终于等到你了~`,
+      `${petName}来啦！好开心~`,
+    ]
+  };
+  
+  const greetings = defaultGreetings[timeRange] || defaultGreetings.any;
+  return {
+    content: greetings[Math.floor(Math.random() * greetings.length)],
+    withImage: false,
+    mood: 'normal'
+  };
+}
 
 // GET /api/chat/profile/:agentId - 获取用户画像（长期记忆）
 router.get('/profile/:agentId', async (req, res) => {

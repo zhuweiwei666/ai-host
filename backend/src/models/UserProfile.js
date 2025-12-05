@@ -75,6 +75,21 @@ const UserProfileSchema = new mongoose.Schema({
   userTypeScore: { type: Number, default: 0 },      // 累计分数: 选项0=1分, 选项1=2分, 选项2=3分
   userTypeConfirmedAt: { type: Date },              // 类型确定时间           // 设置时间
   
+  // ========== 专属昵称系统 ==========
+  petName: { type: String, default: '' },           // AI 对用户的专属称呼（如"老公"、"宝贝"）
+  petNameSetAt: { type: Date },                     // 设置时间
+  userCallsMe: { type: String, default: '' },       // 用户对 AI 的称呼
+  
+  // ========== 关系数据 ==========
+  firstMetAt: { type: Date },                       // 第一次见面时间
+  
+  // ========== 解锁内容 ==========
+  unlockedOutfits: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Outfit' }],  // 已解锁的衣服/场景
+  
+  // ========== 礼物统计 ==========
+  totalGiftCoins: { type: Number, default: 0 },     // 累计送出金币
+  totalGiftCount: { type: Number, default: 0 },     // 累计送出礼物数
+  
   // ========== 元数据 ==========
   totalMessages: { type: Number, default: 0 },    // 总消息数
   lastActiveAt: { type: Date, default: Date.now } // 最后活跃时间
@@ -89,6 +104,21 @@ UserProfileSchema.index({ userId: 1, agentId: 1 }, { unique: true });
  */
 UserProfileSchema.methods.toPromptText = function() {
   const parts = [];
+  
+  // 专属称呼（最重要）
+  if (this.petName) parts.push(`你要叫用户「${this.petName}」，这是你们之间的专属称呼`);
+  if (this.userCallsMe) parts.push(`用户喜欢叫你「${this.userCallsMe}」`);
+  
+  // 关系时长
+  if (this.firstMetAt) {
+    const days = Math.floor((Date.now() - this.firstMetAt.getTime()) / (1000 * 60 * 60 * 24));
+    if (days > 0) parts.push(`你们已经认识 ${days} 天了`);
+  }
+  
+  // 礼物统计（让AI知道用户对她好）
+  if (this.totalGiftCount > 0) {
+    parts.push(`用户已经送了你 ${this.totalGiftCount} 份礼物，花了 ${this.totalGiftCoins} 金币`);
+  }
   
   // 基本信息
   if (this.nickname) parts.push(`用户希望被称为「${this.nickname}」`);

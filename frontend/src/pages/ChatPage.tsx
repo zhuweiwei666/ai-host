@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Agent, getAgent, chatWithAgent, getChatHistory, generateTTS, generateVideo, generateImage, http } from '../api'; // Import generateImage
 import { normalizeImageUrl } from '../utils/imageUrl';
+import GiftPanel from '../components/GiftPanel';
+import OutfitGallery from '../components/OutfitGallery';
+import RelationshipPanel from '../components/RelationshipPanel';
  
 
 const ENABLE_VIDEO_FEATURE = import.meta.env.VITE_ENABLE_VIDEO === 'true';
@@ -141,6 +144,14 @@ const ChatPage: React.FC = () => {
   const [replyOptions, setReplyOptions] = useState<ReplyOption[]>([]);
   const [detectionRound, setDetectionRound] = useState(0);
   const [isDetectionComplete, setIsDetectionComplete] = useState(false);
+  
+  // 礼物/衣服/关系面板状态
+  const [showGiftPanel, setShowGiftPanel] = useState(false);
+  const [showOutfitGallery, setShowOutfitGallery] = useState(false);
+  const [showRelationshipPanel, setShowRelationshipPanel] = useState(false);
+  
+  // AI 开场消息
+  const [greeting, setGreeting] = useState<{ content: string; withImage?: boolean } | null>(null);
 
   // Video Generation Options
   // Removed videoFastMode toggle, defaulting to Fast Mode always as Quality Mode is deprecated.
@@ -170,6 +181,10 @@ const ChatPage: React.FC = () => {
         .then(res => {
             setMessages((res.data.history || []) as any);
             if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
+            // 处理 AI 开场消息
+            if (res.data.greeting && (!res.data.history || res.data.history.length === 0)) {
+              setGreeting(res.data.greeting);
+            }
         })
         .catch(console.error);
       
@@ -219,6 +234,14 @@ const ChatPage: React.FC = () => {
       // 即使记录失败也发送消息
       setChatPrompt(option.text);
     }
+  };
+  
+  // 处理送礼物后的 AI 回复
+  const handleGiftSent = (response: { aiResponse: string; balance: number; intimacy: number }) => {
+    setBalance(response.balance);
+    setIntimacy(response.intimacy);
+    // 将 AI 的感谢消息添加到聊天记录
+    setMessages(prev => [...prev, { role: 'assistant', content: response.aiResponse }]);
   };
 
   useEffect(() => {
@@ -473,8 +496,12 @@ const ChatPage: React.FC = () => {
 
         {/* Balance & Intimacy Display */}
         <div className="flex items-center gap-4">
-             {/* Intimacy Bar */}
-             <div className="hidden sm:flex items-center gap-2 bg-pink-50 px-3 py-1.5 rounded-full border border-pink-100" title="Intimacy Level">
+             {/* Intimacy Bar - 可点击查看关系详情 */}
+             <button 
+               onClick={() => setShowRelationshipPanel(true)}
+               className="hidden sm:flex items-center gap-2 bg-pink-50 px-3 py-1.5 rounded-full border border-pink-100 hover:bg-pink-100 transition-colors" 
+               title="点击查看关系详情"
+             >
                 <span className="text-pink-500">❤️</span>
                 <div className="flex flex-col w-24">
                     <div className="flex justify-between text-[10px] text-pink-700 font-bold leading-none mb-0.5">
@@ -488,7 +515,16 @@ const ChatPage: React.FC = () => {
                         ></div>
                     </div>
                 </div>
-             </div>
+             </button>
+             
+             {/* 私房照按钮 */}
+             <button 
+               onClick={() => setShowOutfitGallery(true)}
+               className="hidden sm:flex items-center gap-1 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100 hover:bg-purple-100 transition-colors text-purple-600 text-sm"
+               title="查看私房照"
+             >
+               📷 私房照
+             </button>
 
         <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">
           <span className="text-lg">💎</span>
@@ -561,6 +597,14 @@ const ChatPage: React.FC = () => {
                       <span className="text-sm">{option.text}</span>
                     </button>
                   ))}
+                </div>
+              ) : greeting ? (
+                // AI 主动开场消息
+                <div className="mt-4 max-w-sm mx-auto">
+                  <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-pink-100">
+                    <p className="text-gray-800 text-sm leading-relaxed">{greeting.content}</p>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3">回复她开始聊天～</p>
                 </div>
               ) : (
                 <div className="mt-4">
@@ -786,7 +830,17 @@ const ChatPage: React.FC = () => {
                         </div>
                     )}
 
-                    <div className="relative">
+                    <div className="flex items-center gap-2">
+                    {/* 礼物按钮 */}
+                    <button
+                      onClick={() => setShowGiftPanel(true)}
+                      className="flex-shrink-0 p-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-full hover:opacity-90 transition-opacity shadow-lg"
+                      title="送礼物"
+                    >
+                      🎁
+                    </button>
+                    
+                    <div className="relative flex-1">
                     <input 
                     type="text" 
                     value={chatPrompt}
@@ -820,6 +874,7 @@ const ChatPage: React.FC = () => {
                         </svg>
                     )}
                     </button>
+                    </div>
                 </div>
                 </div>
             </footer>
@@ -905,6 +960,33 @@ const ChatPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 礼物面板 */}
+      <GiftPanel
+        agentId={agent._id}
+        agentName={agent.name}
+        isOpen={showGiftPanel}
+        onClose={() => setShowGiftPanel(false)}
+        onGiftSent={handleGiftSent}
+        balance={balance}
+      />
+
+      {/* 衣服/场景画廊 */}
+      <OutfitGallery
+        agentId={agent._id}
+        agentName={agent.name}
+        isOpen={showOutfitGallery}
+        onClose={() => setShowOutfitGallery(false)}
+        onBalanceChange={setBalance}
+      />
+
+      {/* 关系面板 */}
+      <RelationshipPanel
+        agentId={agent._id}
+        agentName={agent.name}
+        isOpen={showRelationshipPanel}
+        onClose={() => setShowRelationshipPanel(false)}
+      />
     </div>
   );
 };

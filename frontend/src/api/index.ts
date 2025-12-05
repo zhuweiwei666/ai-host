@@ -132,7 +132,11 @@ export const chatWithAgent = (agentId: string, prompt: string, history: { role: 
   }>('/chat', { agentId, prompt, history, skipImageGen });
 };
 
-export const getChatHistory = (agentId: string) => http.get<{ history: { role: string; content: string; audioUrl?: string }[]; intimacy?: number }>(`/chat/history/${agentId}`);
+export const getChatHistory = (agentId: string) => http.get<{ 
+  history: { role: string; content: string; audioUrl?: string }[]; 
+  intimacy?: number;
+  greeting?: { content: string; withImage?: boolean; mood?: string };
+}>(`/chat/history/${agentId}`);
 
 export const generateTTS = (agentId: string, text: string) => http.post<{ audioUrl: string; balance?: number }>('/chat/tts', { agentId, text });
 
