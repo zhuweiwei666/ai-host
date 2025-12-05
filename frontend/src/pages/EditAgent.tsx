@@ -13,6 +13,7 @@ import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
 import DraggableMediaList from '../components/DraggableMediaList';
 import UgcImageGallery from '../components/UgcImageGallery';
+import OutfitManager from '../components/OutfitManager';
 import { normalizeImageUrl } from '../utils/imageUrl';
 
 const CORE_PROMPT_TEMPLATE = `**[核心人设协议]**
@@ -1065,6 +1066,11 @@ const EditAgent: React.FC = () => {
           {/* AI UGC 相册 - 只在编辑模式显示 */}
           {isEdit && id && (
             <UgcImageGallery agentId={id} />
+          )}
+
+          {/* Outfit 私房照管理 - 只在编辑模式显示 */}
+          {isEdit && id && (
+            <OutfitManager agentId={id} agentName={formData.name} />
           )}
 
           <div>

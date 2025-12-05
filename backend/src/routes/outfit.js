@@ -4,14 +4,18 @@
  * - GET /api/outfit/list/:agentId - 获取 AI 主播的所有衣服/场景
  * - POST /api/outfit/unlock - 解锁衣服/场景
  * - GET /api/outfit/unlocked/:agentId - 获取已解锁的衣服/场景
+ * - POST /api/outfit/generate-images/:outfitId - 为衣服生成图片（管理员）
+ * - POST /api/outfit/generate-all/:agentId - 为主播所有衣服生成图片（管理员）
  */
 
 const express = require('express');
 const router = express.Router();
 const Outfit = require('../models/Outfit');
+const Agent = require('../models/Agent');
 const UserProfile = require('../models/UserProfile');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
+const imageGenerationService = require('../services/imageGenerationService');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/response');
 
 // GET /api/outfit/list/:agentId - 获取 AI 主播的所有衣服/场景（含解锁状态）
@@ -189,6 +193,238 @@ router.get('/unlocked/:agentId', async (req, res) => {
   } catch (err) {
     console.error('Get Unlocked Outfits Error:', err);
     errors.internalError(res, 'Failed to get unlocked outfits');
+  }
+});
+
+// ==================== 管理员 API：生成图片 ====================
+
+/**
+ * 根据 Outfit 的级别和名称生成合适的 prompt
+ */
+function generatePromptForOutfit(outfit, agentName, agentStyle) {
+  const isAnime = agentStyle === 'anime';
+  const baseStyle = isAnime ? 'anime style, ' : 'photorealistic, ';
+  
+  // 根据级别生成不同尺度的 prompt
+  const levelPrompts = {
+    1: { // 日常
+      '居家休闲': `${baseStyle}${agentName} wearing comfortable home clothes, cozy living room, relaxed pose, soft lighting`,
+      '清纯学生装': `${baseStyle}${agentName} wearing school uniform, classroom background, innocent smile, bright lighting`,
+      'default': `${baseStyle}${agentName} in casual outfit, natural pose, soft lighting`
+    },
+    2: { // 性感
+      '小礼服': `${baseStyle}${agentName} wearing elegant cocktail dress, showing collarbone and shoulders, glamorous, party lighting`,
+      '紧身瑜伽服': `${baseStyle}${agentName} wearing tight yoga outfit, fitness pose, athletic body, gym lighting`,
+      'default': `${baseStyle}${agentName} in sexy outfit, alluring pose, dramatic lighting`
+    },
+    3: { // 暴露
+      '性感睡衣': `${baseStyle}${agentName} wearing lace lingerie nightgown, bedroom, seductive pose, soft romantic lighting`,
+      '比基尼': `${baseStyle}${agentName} wearing bikini, beach background, summer vibes, golden hour lighting`,
+      '黑丝OL': `${baseStyle}${agentName} wearing office suit with black stockings, professional yet sexy, office background`,
+      'default': `${baseStyle}${agentName} in revealing outfit, sensual pose, intimate lighting`
+    },
+    4: { // 大尺度
+      '情趣内衣': `${baseStyle}${agentName} wearing sexy lingerie, bedroom setting, seductive expression, intimate lighting`,
+      '浴巾围身': `${baseStyle}${agentName} wrapped in towel after shower, bathroom, wet hair, steamy atmosphere`,
+      '女仆装': `${baseStyle}${agentName} wearing short maid outfit, bending forward, playful pose, home setting`,
+      'default': `${baseStyle}${agentName} in provocative outfit, very sensual pose, intimate setting`
+    },
+    5: { // 极限
+      '全裸围裙': `${baseStyle}${agentName} wearing only an apron, kitchen background, cooking, back view, teasing`,
+      '床上诱惑': `${baseStyle}${agentName} lying on bed, covered partially with sheets, bedroom, romantic mood, soft lighting`,
+      'default': `${baseStyle}${agentName} in very revealing state, extremely sensual, artistic nude style`
+    }
+  };
+  
+  const levelMap = levelPrompts[outfit.level] || levelPrompts[1];
+  return levelMap[outfit.name] || levelMap['default'];
+}
+
+// POST /api/outfit/generate-images/:outfitId - 为单个衣服生成图片
+router.post('/generate-images/:outfitId', async (req, res) => {
+  const { outfitId } = req.params;
+  const { count = 1 } = req.body; // 生成几张图片
+  
+  // 这里可以添加管理员权限验证
+  // if (!req.user?.isAdmin) return errors.forbidden(res);
+
+  try {
+    const outfit = await Outfit.findById(outfitId);
+    if (!outfit) {
+      return errors.notFound(res, 'Outfit not found');
+    }
+    
+    const agent = await Agent.findById(outfit.agentId);
+    if (!agent) {
+      return errors.notFound(res, 'Agent not found');
+    }
+    
+    // 获取参考图
+    const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+    if (!referenceImage) {
+      return errors.badRequest(res, '主播没有头像，无法生成图片');
+    }
+    
+    // 生成 prompt
+    const prompt = generatePromptForOutfit(outfit, agent.name, agent.style);
+    console.log(`[Outfit] 生成图片: ${outfit.name}, prompt: ${prompt}`);
+    
+    // 根据级别调整 strength（级别越高，变化越大）
+    const strengthByLevel = { 1: 0.6, 2: 0.65, 3: 0.7, 4: 0.75, 5: 0.8 };
+    const strength = strengthByLevel[outfit.level] || 0.7;
+    
+    // 调用图片生成服务
+    const results = await imageGenerationService.generate(prompt, {
+      referenceImage,
+      count: Math.min(count, 4), // 最多4张
+      width: 768,
+      height: 1152,
+      strength,
+      style: agent.style || 'realistic'
+    });
+    
+    // 更新 Outfit
+    const newImageUrls = results.map(r => r.url);
+    outfit.imageUrls = [...(outfit.imageUrls || []), ...newImageUrls];
+    
+    // 如果没有预览图，用第一张作为预览图
+    if (!outfit.previewUrl && newImageUrls.length > 0) {
+      outfit.previewUrl = newImageUrls[0];
+    }
+    
+    await outfit.save();
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      success: true,
+      outfit: outfit.toObject(),
+      generated: newImageUrls.length,
+      message: `成功生成 ${newImageUrls.length} 张图片`
+    });
+    
+  } catch (err) {
+    console.error('Generate Outfit Images Error:', err);
+    errors.internalError(res, '图片生成失败', { error: err.message });
+  }
+});
+
+// POST /api/outfit/generate-all/:agentId - 为主播所有没有图片的衣服生成图片
+router.post('/generate-all/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  const { countPerOutfit = 1 } = req.body;
+  
+  // 这里可以添加管理员权限验证
+
+  try {
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return errors.notFound(res, 'Agent not found');
+    }
+    
+    const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+    if (!referenceImage) {
+      return errors.badRequest(res, '主播没有头像，无法生成图片');
+    }
+    
+    // 获取所有没有图片的衣服
+    const outfits = await Outfit.find({ 
+      agentId, 
+      isActive: true,
+      $or: [
+        { imageUrls: { $exists: false } },
+        { imageUrls: { $size: 0 } }
+      ]
+    }).sort({ level: 1, sortOrder: 1 });
+    
+    if (outfits.length === 0) {
+      return sendSuccess(res, HTTP_STATUS.OK, {
+        success: true,
+        message: '所有衣服都已有图片',
+        generated: 0
+      });
+    }
+    
+    console.log(`[Outfit] 开始为 ${agent.name} 生成 ${outfits.length} 套衣服的图片`);
+    
+    const results = [];
+    const strengthByLevel = { 1: 0.6, 2: 0.65, 3: 0.7, 4: 0.75, 5: 0.8 };
+    
+    for (const outfit of outfits) {
+      try {
+        const prompt = generatePromptForOutfit(outfit, agent.name, agent.style);
+        const strength = strengthByLevel[outfit.level] || 0.7;
+        
+        console.log(`[Outfit] 生成: ${outfit.name} (Level ${outfit.level})`);
+        
+        const genResults = await imageGenerationService.generate(prompt, {
+          referenceImage,
+          count: Math.min(countPerOutfit, 2),
+          width: 768,
+          height: 1152,
+          strength,
+          style: agent.style || 'realistic'
+        });
+        
+        const newImageUrls = genResults.map(r => r.url);
+        outfit.imageUrls = newImageUrls;
+        outfit.previewUrl = newImageUrls[0];
+        await outfit.save();
+        
+        results.push({
+          name: outfit.name,
+          level: outfit.level,
+          generated: newImageUrls.length,
+          success: true
+        });
+        
+        // 添加延迟避免 API 限流
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (err) {
+        console.error(`[Outfit] 生成失败 ${outfit.name}:`, err.message);
+        results.push({
+          name: outfit.name,
+          level: outfit.level,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      success: true,
+      agentName: agent.name,
+      total: outfits.length,
+      generated: successCount,
+      failed: outfits.length - successCount,
+      details: results,
+      message: `成功为 ${successCount}/${outfits.length} 套衣服生成图片`
+    });
+    
+  } catch (err) {
+    console.error('Generate All Outfit Images Error:', err);
+    errors.internalError(res, '批量生成失败', { error: err.message });
+  }
+});
+
+// GET /api/outfit/admin/list/:agentId - 管理员获取衣服列表（包含所有信息）
+router.get('/admin/list/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  try {
+    const outfits = await Outfit.find({ agentId })
+      .sort({ level: 1, sortOrder: 1 });
+    
+    const agent = await Agent.findById(agentId);
+    
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      outfits,
+      agent: agent ? { name: agent.name, avatarUrl: agent.avatarUrls?.[0] || agent.avatarUrl } : null
+    });
+  } catch (err) {
+    console.error('Admin Get Outfit List Error:', err);
+    errors.internalError(res, 'Failed to get outfit list');
   }
 });
 
