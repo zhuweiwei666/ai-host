@@ -12,6 +12,7 @@ import {
 import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
 import DraggableMediaList from '../components/DraggableMediaList';
+import UgcImageGallery from '../components/UgcImageGallery';
 import { normalizeImageUrl } from '../utils/imageUrl';
 
 const CORE_PROMPT_TEMPLATE = `**[核心人设协议]**
@@ -1060,6 +1061,11 @@ const EditAgent: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* AI UGC 相册 - 只在编辑模式显示 */}
+          {isEdit && id && (
+            <UgcImageGallery agentId={id} />
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Custom Personality & Appearance</label>

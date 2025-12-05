@@ -9,6 +9,7 @@ const fishAudioService = require('../services/fishAudioService');
 const imageGenerationService = require('../services/imageGenerationService');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
+const ugcImageService = require('../services/ugcImageService');
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -422,6 +423,25 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
           reply = "Here's the photo you wanted.";
         }
 
+            // ==================== UGC 相册优先逻辑 ====================
+            // 先尝试从相册获取可用图片，减少 API 调用成本
+            let usedUgcImage = false;
+            try {
+                const ugcImage = await ugcImageService.getAvailableImage(agentId, userId, isNSFWStage);
+                if (ugcImage) {
+                    imageUrl = ugcImage.imageUrl;
+                    await ugcImageService.markAsSent(ugcImage._id, userId);
+                    usedUgcImage = true;
+                    console.log(`[Chat] 从 UGC 相册获取图片: ${imageUrl.substring(0, 50)}...`);
+                }
+            } catch (ugcErr) {
+                console.error('[Chat] UGC 相册查询失败，降级到 API 生成:', ugcErr.message);
+            }
+
+            // 如果相册没有可用图片，则调用 API 生成
+            if (!usedUgcImage) {
+                console.log('[Chat] 相册无可用图片，调用 API 生成新图...');
+                
             const isAnimeStyle = agent.style === 'anime';
         const realismKeywords = "RAW PHOTO, photorealistic, 8k uhd, dslr, soft lighting, film grain, Fujifilm XT3";
             const animeKeywords = "anime style, 2d, illustration, vibrant colors, studio ghibli style, makoto shinkai style, masterpiece, best quality";
@@ -534,6 +554,19 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
           imageUrl = results[0].url;
           console.log('Image Generated:', imageUrl);
               
+              // ==================== 保存到 UGC 相册 ====================
+              try {
+                  await ugcImageService.saveGeneratedImage({
+                      agentId,
+                      imageUrl,
+                      prompt: consistentPrompt,
+                      generatedByUserId: userId,
+                      isNsfw: isNSFWStage
+                  });
+              } catch (ugcSaveErr) {
+                  console.error('[Chat] 保存到 UGC 相册失败:', ugcSaveErr.message);
+              }
+              
               // LOG IMAGE COST
               try {
                 const imgModel = 'flux/dev';
@@ -553,6 +586,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
         } else {
           console.warn('[Chat] Image generation returned no results');
         }
+            } // end if (!usedUgcImage)
       } catch (err) {
         console.error('[Chat] Image Generation Error:', err);
         if (err.message === 'INSUFFICIENT_FUNDS') {

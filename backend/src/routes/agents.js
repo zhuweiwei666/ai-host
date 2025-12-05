@@ -8,6 +8,7 @@ const { optionalAuth } = require('../middleware/auth');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
+const ugcImageService = require('../services/ugcImageService');
 
 // Helper function to check MongoDB connection
 const checkDBConnection = () => {
@@ -257,6 +258,155 @@ router.get('/:id', optionalAuth, async (req, res) => {
       error: err.message,
       stack: isDev ? err.stack : undefined
     });
+  }
+});
+
+// ==================== AI UGC 相册管理 API ====================
+
+/**
+ * GET /api/agents/:id/ugc-images
+ * 获取主播的 UGC 相册列表
+ * Query params: isNsfw, isActive, page, limit
+ */
+router.get('/:id/ugc-images', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { isNsfw, isActive, page, limit } = req.query;
+    
+    // 验证主播存在
+    const agent = await Agent.findById(agentId);
+    if (!agent) return errors.notFound(res, 'Agent not found');
+
+    const options = {
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 20
+    };
+    
+    if (isNsfw !== undefined) options.isNsfw = isNsfw === 'true';
+    if (isActive !== undefined) options.isActive = isActive === 'true';
+
+    const result = await ugcImageService.listImages(agentId, options);
+    sendSuccess(res, HTTP_STATUS.OK, result);
+  } catch (err) {
+    console.error('[GET /agents/:id/ugc-images] Error:', err);
+    errors.internalError(res, err.message || 'Failed to fetch UGC images');
+  }
+});
+
+/**
+ * GET /api/agents/:id/ugc-images/stats
+ * 获取主播的 UGC 相册统计信息
+ */
+router.get('/:id/ugc-images/stats', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    
+    const agent = await Agent.findById(agentId);
+    if (!agent) return errors.notFound(res, 'Agent not found');
+
+    const stats = await ugcImageService.getStats(agentId);
+    sendSuccess(res, HTTP_STATUS.OK, stats);
+  } catch (err) {
+    console.error('[GET /agents/:id/ugc-images/stats] Error:', err);
+    errors.internalError(res, err.message || 'Failed to fetch UGC stats');
+  }
+});
+
+/**
+ * POST /api/agents/:id/ugc-images
+ * 手动添加图片到相册
+ * Body: { imageUrl, prompt?, isNsfw? }
+ */
+router.post('/:id/ugc-images', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { imageUrl, prompt, isNsfw } = req.body;
+
+    if (!imageUrl) {
+      return errors.badRequest(res, 'imageUrl is required');
+    }
+
+    const agent = await Agent.findById(agentId);
+    if (!agent) return errors.notFound(res, 'Agent not found');
+
+    const image = await ugcImageService.addImage({
+      agentId,
+      imageUrl,
+      prompt: prompt || '',
+      isNsfw: isNsfw || false
+    });
+
+    sendSuccess(res, HTTP_STATUS.CREATED, image);
+  } catch (err) {
+    console.error('[POST /agents/:id/ugc-images] Error:', err);
+    errors.internalError(res, err.message || 'Failed to add UGC image');
+  }
+});
+
+/**
+ * DELETE /api/agents/:id/ugc-images/:imageId
+ * 删除相册中的图片
+ */
+router.delete('/:id/ugc-images/:imageId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { imageId } = req.params;
+
+    const deleted = await ugcImageService.deleteImage(imageId);
+    if (!deleted) {
+      return errors.notFound(res, 'Image not found');
+    }
+
+    sendSuccess(res, HTTP_STATUS.OK, null, 'Image deleted');
+  } catch (err) {
+    console.error('[DELETE /agents/:id/ugc-images/:imageId] Error:', err);
+    errors.internalError(res, err.message || 'Failed to delete UGC image');
+  }
+});
+
+/**
+ * PATCH /api/agents/:id/ugc-images/:imageId
+ * 启用/禁用图片
+ * Body: { isActive: boolean }
+ */
+router.patch('/:id/ugc-images/:imageId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { imageId } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== 'boolean') {
+      return errors.badRequest(res, 'isActive must be a boolean');
+    }
+
+    const updated = await ugcImageService.toggleActive(imageId, isActive);
+    if (!updated) {
+      return errors.notFound(res, 'Image not found');
+    }
+
+    sendSuccess(res, HTTP_STATUS.OK, updated);
+  } catch (err) {
+    console.error('[PATCH /agents/:id/ugc-images/:imageId] Error:', err);
+    errors.internalError(res, err.message || 'Failed to update UGC image');
+  }
+});
+
+/**
+ * POST /api/agents/:id/ugc-images/batch-delete
+ * 批量删除图片
+ * Body: { imageIds: string[] }
+ */
+router.post('/:id/ugc-images/batch-delete', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { imageIds } = req.body;
+
+    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+      return errors.badRequest(res, 'imageIds must be a non-empty array');
+    }
+
+    const deletedCount = await ugcImageService.batchDelete(imageIds);
+    sendSuccess(res, HTTP_STATUS.OK, { deletedCount });
+  } catch (err) {
+    console.error('[POST /agents/:id/ugc-images/batch-delete] Error:', err);
+    errors.internalError(res, err.message || 'Failed to batch delete UGC images');
   }
 });
 

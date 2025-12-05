@@ -179,3 +179,61 @@ export const loginChannelUser = (data: {
   platform?: 'android' | 'ios';
 }) => 
   http.post<{ user: User; token: string; balance: number }>('/users/login', data);
+
+// ==================== AI UGC 相册 API ====================
+
+export interface UgcImage {
+  _id: string;
+  agentId: string;
+  imageUrl: string;
+  prompt: string;
+  generatedByUserId: string | null;
+  sentToUserIds: string[];
+  isNsfw: boolean;
+  isActive: boolean;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UgcImageStats {
+  sfwCount: number;
+  nsfwCount: number;
+  totalImages: number;
+  maxPerCategory: number;
+  totalUsage: number;
+}
+
+export interface UgcImageListResponse {
+  images: UgcImage[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// 获取 UGC 相册列表
+export const getUgcImages = (agentId: string, params?: { isNsfw?: boolean; isActive?: boolean; page?: number; limit?: number }) =>
+  http.get<UgcImageListResponse>(`/agents/${agentId}/ugc-images`, { params });
+
+// 获取 UGC 相册统计
+export const getUgcImageStats = (agentId: string) =>
+  http.get<UgcImageStats>(`/agents/${agentId}/ugc-images/stats`);
+
+// 手动添加图片到相册
+export const addUgcImage = (agentId: string, data: { imageUrl: string; prompt?: string; isNsfw?: boolean }) =>
+  http.post<UgcImage>(`/agents/${agentId}/ugc-images`, data);
+
+// 删除 UGC 图片
+export const deleteUgcImage = (agentId: string, imageId: string) =>
+  http.delete(`/agents/${agentId}/ugc-images/${imageId}`);
+
+// 启用/禁用 UGC 图片
+export const toggleUgcImageActive = (agentId: string, imageId: string, isActive: boolean) =>
+  http.patch<UgcImage>(`/agents/${agentId}/ugc-images/${imageId}`, { isActive });
+
+// 批量删除 UGC 图片
+export const batchDeleteUgcImages = (agentId: string, imageIds: string[]) =>
+  http.post<{ deletedCount: number }>(`/agents/${agentId}/ugc-images/batch-delete`, { imageIds });
