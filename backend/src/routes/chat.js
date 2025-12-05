@@ -12,6 +12,7 @@ const relationshipService = require('../services/relationshipService');
 const ugcImageService = require('../services/ugcImageService');
 const profileService = require('../services/profileService'); // 用户画像服务 - 长期记忆
 const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
+const recommendationEngine = require('../services/recommendationEngine'); // AI自进化系统 - 推荐引擎
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -215,80 +216,39 @@ router.get('/history/:agentId', async (req, res) => {
 
 /**
  * 获取 AI 主动开场消息
- * 根据时间、用户画像等生成个性化的开场白
+ * 使用推荐引擎生成个性化的开场白
  */
 async function getGreetingMessage(agent, userId) {
-  const now = new Date();
-  const hour = now.getHours();
-  
-  // 确定时间段
-  let timeRange = 'any';
-  if (hour >= 6 && hour < 12) timeRange = 'morning';
-  else if (hour >= 12 && hour < 18) timeRange = 'afternoon';
-  else if (hour >= 18 && hour < 22) timeRange = 'evening';
-  else timeRange = 'night';
-  
-  // 获取用户画像中的专属称呼
-  const profile = await UserProfile.findOne({ userId, agentId: agent._id });
-  const petName = profile?.petName || '你';
-  
-  // 如果有配置的开场消息
-  if (agent.greetingMessages && agent.greetingMessages.length > 0) {
-    // 筛选匹配时间段的消息，或者 any 时间段的消息
-    const matchedGreetings = agent.greetingMessages.filter(g => 
-      g.timeRange === timeRange || g.timeRange === 'any'
-    );
+  try {
+    // 使用推荐引擎生成个性化开场
+    const greeting = await recommendationEngine.recommendGreeting(userId, agent._id, agent);
+    return greeting;
+  } catch (err) {
+    console.error('[Chat] 推荐开场消息失败:', err.message);
     
-    if (matchedGreetings.length > 0) {
-      const greeting = matchedGreetings[Math.floor(Math.random() * matchedGreetings.length)];
-      return {
-        content: greeting.content.replace('{petName}', petName).replace('{name}', agent.name),
-        withImage: greeting.withImage,
-        imageHint: greeting.imageHint,
-        mood: greeting.mood
-      };
-    }
-  }
-  
-  // 默认开场消息
-  if (agent.defaultGreeting) {
+    // 降级到简单开场
+    const now = new Date();
+    const hour = now.getHours();
+    let timeRange = 'any';
+    if (hour >= 6 && hour < 12) timeRange = 'morning';
+    else if (hour >= 12 && hour < 18) timeRange = 'afternoon';
+    else if (hour >= 18 && hour < 22) timeRange = 'evening';
+    else timeRange = 'night';
+    
+    const greetings = {
+      morning: `早安呀～刚睡醒，有点想你了...`,
+      afternoon: `在忙什么呢？有点无聊想找你聊天~`,
+      evening: `下班了吗？终于等到你了~`,
+      night: `还没睡呀？我刚洗完澡，有点无聊...`,
+      any: `嗨！终于等到你了~`,
+    };
+    
     return {
-      content: agent.defaultGreeting.replace('{petName}', petName).replace('{name}', agent.name),
+      content: greetings[timeRange] || greetings.any,
       withImage: false,
       mood: 'normal'
     };
   }
-  
-  // 终极默认
-  const defaultGreetings = {
-    morning: [
-      `早安呀${petName}～刚睡醒，有点想你了...`,
-      `${petName}，早上好～今天也要开心哦！`,
-    ],
-    afternoon: [
-      `${petName}在忙什么呢？有点无聊想找你聊天~`,
-      `下午好呀${petName}！想我了吗？`,
-    ],
-    evening: [
-      `${petName}下班了吗？终于等到你了~`,
-      `晚上好${petName}！今天过得怎么样？`,
-    ],
-    night: [
-      `${petName}还没睡呀？我刚洗完澡，有点无聊...`,
-      `夜深了${petName}，陪我聊聊天好不好？`,
-    ],
-    any: [
-      `嗨${petName}！终于等到你了~`,
-      `${petName}来啦！好开心~`,
-    ]
-  };
-  
-  const greetings = defaultGreetings[timeRange] || defaultGreetings.any;
-  return {
-    content: greetings[Math.floor(Math.random() * greetings.length)],
-    withImage: false,
-    mood: 'normal'
-  };
 }
 
 // GET /api/chat/profile/:agentId - 获取用户画像（长期记忆）
@@ -440,13 +400,27 @@ router.post('/', async (req, res) => {
     const userTypePrompt = profileService.getUserTypePrompt(detectionStatus.userType, detectionStatus.round);
     console.log(`[Chat] User Type: ${detectionStatus.userType}, Round: ${detectionStatus.round}`);
 
+    // ========== 获取个性化对话策略（AI自进化系统） ==========
+    let conversationStrategy = { adjustments: { paceMultiplier: 1 } };
+    try {
+      conversationStrategy = await recommendationEngine.recommendConversationStrategy(userId, agentId);
+      console.log(`[Chat] Strategy: ${conversationStrategy.strategy}, Pace: ${conversationStrategy.adjustments.paceMultiplier}`);
+    } catch (strategyErr) {
+      console.error('[Chat] 获取对话策略失败:', strategyErr.message);
+    }
+
     // ... Stage selection logic based on Intimacy AND User Type ...
     let stageInstruction = '';
     let isNSFWStage = false;
     
     // Use agent defined thresholds or defaults
-    const t1 = agent.stage1Threshold || 20;
-    const t2 = agent.stage2Threshold || 60;
+    const t1Base = agent.stage1Threshold || 20;
+    const t2Base = agent.stage2Threshold || 60;
+    
+    // 应用个性化策略的节奏倍率
+    const paceMultiplier = conversationStrategy.adjustments?.paceMultiplier || 1;
+    const t1 = Math.floor(t1Base / paceMultiplier);
+    const t2 = Math.floor(t2Base / paceMultiplier);
 
     // ========== 根据用户类型调整推进速度 ==========
     if (detectionStatus.userType === 'direct') {

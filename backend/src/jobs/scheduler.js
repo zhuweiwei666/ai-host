@@ -5,6 +5,7 @@
 const cron = require('node-cron');
 const contentAnalyzer = require('../services/contentAnalyzer');
 const conversationEvaluator = require('../services/conversationEvaluator');
+const userAnalyzer = require('../services/userAnalyzer');
 
 class JobScheduler {
   constructor() {
@@ -71,6 +72,28 @@ class JobScheduler {
       }
     }));
     
+    // 每天凌晨4点：更新用户画像
+    this.jobs.push(cron.schedule('0 4 * * *', async () => {
+      console.log('⏰ [Scheduler] 更新用户画像...');
+      try {
+        const result = await userAnalyzer.analyzeAllUsers(500);
+        console.log(`✅ [Scheduler] 用户画像更新: ${result.analyzed} 成功`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 用户画像更新失败:', err.message);
+      }
+    }));
+    
+    // 每天凌晨5点：更新流失风险
+    this.jobs.push(cron.schedule('0 5 * * *', async () => {
+      console.log('⏰ [Scheduler] 更新流失风险...');
+      try {
+        const updated = await userAnalyzer.updateChurnRisks();
+        console.log(`✅ [Scheduler] 流失风险更新: ${updated} 用户`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 流失风险更新失败:', err.message);
+      }
+    }));
+    
     // 每天早上8点：生成日报
     this.jobs.push(cron.schedule('0 8 * * *', async () => {
       console.log('⏰ [Scheduler] 生成每日报告...');
@@ -120,6 +143,8 @@ class JobScheduler {
     console.log('  - 每小时: 对话评估、内容分数更新');
     console.log('  - 每日 02:00: 内容分数全量更新');
     console.log('  - 每日 03:00: 标记表现不佳内容');
+    console.log('  - 每日 04:00: 用户画像更新');
+    console.log('  - 每日 05:00: 流失风险更新');
     console.log('  - 每日 08:00: 生成日报');
     console.log('  - 每周一 04:00: Prompt优化建议');
   }
@@ -161,6 +186,12 @@ class JobScheduler {
       
       case 'generateConversationReport':
         return await conversationEvaluator.generateDailyReport();
+      
+      case 'analyzeUsers':
+        return await userAnalyzer.analyzeAllUsers(500);
+      
+      case 'updateChurnRisks':
+        return await userAnalyzer.updateChurnRisks();
       
       default:
         throw new Error(`未知任务: ${taskName}`);

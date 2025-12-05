@@ -13,6 +13,8 @@ const Agent = require('../models/Agent');
 const Message = require('../models/Message');
 const contentAnalyzer = require('../services/contentAnalyzer');
 const conversationEvaluator = require('../services/conversationEvaluator');
+const userAnalyzer = require('../services/userAnalyzer');
+const recommendationEngine = require('../services/recommendationEngine');
 const scheduler = require('../jobs/scheduler');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -323,6 +325,138 @@ router.get('/report/conversation', async (req, res) => {
   } catch (err) {
     console.error('Conversation Report Error:', err);
     errors.internalError(res, 'Failed to generate conversation report');
+  }
+});
+
+// ==================== 用户分析 ====================
+
+// GET /api/analytics/users/segmentation - 用户分层统计
+router.get('/users/segmentation', async (req, res) => {
+  const { agentId } = req.query;
+  
+  try {
+    const segmentation = await userAnalyzer.getUserSegmentation(agentId || null);
+    sendSuccess(res, HTTP_STATUS.OK, segmentation);
+  } catch (err) {
+    console.error('User Segmentation Error:', err);
+    errors.internalError(res, 'Failed to get user segmentation');
+  }
+});
+
+// GET /api/analytics/users/churn-risk - 高流失风险用户
+router.get('/users/churn-risk', async (req, res) => {
+  const { limit = 100 } = req.query;
+  
+  try {
+    const users = await userAnalyzer.getHighChurnRiskUsers(Number(limit));
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      count: users.length,
+      users 
+    });
+  } catch (err) {
+    console.error('Churn Risk Users Error:', err);
+    errors.internalError(res, 'Failed to get churn risk users');
+  }
+});
+
+// GET /api/analytics/users/recall - 需要召回的用户
+router.get('/users/recall', async (req, res) => {
+  const { daysInactive = 3, limit = 100 } = req.query;
+  
+  try {
+    const users = await userAnalyzer.getUsersForRecall(Number(daysInactive), Number(limit));
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      count: users.length,
+      users 
+    });
+  } catch (err) {
+    console.error('Recall Users Error:', err);
+    errors.internalError(res, 'Failed to get recall users');
+  }
+});
+
+// GET /api/analytics/users/:userId/profile/:agentId - 获取用户详细画像
+router.get('/users/:userId/profile/:agentId', async (req, res) => {
+  const { userId, agentId } = req.params;
+  
+  try {
+    // 触发分析更新
+    const analysis = await userAnalyzer.analyzeUser(userId, agentId);
+    
+    // 获取完整画像
+    const profile = await UserProfile.findOne({ userId, agentId })
+      .populate('agentId', 'name')
+      .lean();
+    
+    if (!profile) {
+      return errors.notFound(res, 'User profile not found');
+    }
+    
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      profile,
+      freshAnalysis: !!analysis
+    });
+  } catch (err) {
+    console.error('User Profile Error:', err);
+    errors.internalError(res, 'Failed to get user profile');
+  }
+});
+
+// ==================== 推荐系统 ====================
+
+// GET /api/analytics/recommend/outfits/:agentId - 推荐私房照
+router.get('/recommend/outfits/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  const { limit = 5 } = req.query;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  try {
+    const recommendations = await recommendationEngine.recommendOutfits(userId, agentId, Number(limit));
+    sendSuccess(res, HTTP_STATUS.OK, { recommendations });
+  } catch (err) {
+    console.error('Recommend Outfits Error:', err);
+    errors.internalError(res, 'Failed to get recommendations');
+  }
+});
+
+// GET /api/analytics/recommend/gifts/:agentId - 推荐礼物
+router.get('/recommend/gifts/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  const { limit = 3 } = req.query;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  try {
+    const recommendations = await recommendationEngine.recommendGifts(userId, agentId, Number(limit));
+    sendSuccess(res, HTTP_STATUS.OK, { recommendations });
+  } catch (err) {
+    console.error('Recommend Gifts Error:', err);
+    errors.internalError(res, 'Failed to get gift recommendations');
+  }
+});
+
+// GET /api/analytics/recommend/strategy/:agentId - 获取对话策略推荐
+router.get('/recommend/strategy/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  try {
+    const strategy = await recommendationEngine.recommendConversationStrategy(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, strategy);
+  } catch (err) {
+    console.error('Recommend Strategy Error:', err);
+    errors.internalError(res, 'Failed to get conversation strategy');
   }
 });
 
