@@ -1,6 +1,6 @@
 import axios from "axios";
 import { BASE_URL } from "./config";
-import { getToken, logout, isTokenExpired } from "../utils/auth";
+import { getToken, logout } from "../utils/auth";
 
 export const http = axios.create({
   baseURL: BASE_URL,
