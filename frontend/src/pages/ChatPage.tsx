@@ -495,8 +495,8 @@ const ChatPage: React.FC = () => {
         </div>
 
         {/* Balance & Intimacy Display */}
-        <div className="flex items-center gap-4">
-             {/* Intimacy Bar - 可点击查看关系详情 */}
+        <div className="flex items-center gap-2 sm:gap-4">
+             {/* Intimacy Bar - 桌面端完整显示 */}
              <button 
                onClick={() => setShowRelationshipPanel(true)}
                className="hidden sm:flex items-center gap-2 bg-pink-50 px-3 py-1.5 rounded-full border border-pink-100 hover:bg-pink-100 transition-colors" 
@@ -517,7 +517,16 @@ const ChatPage: React.FC = () => {
                 </div>
              </button>
              
-             {/* 私房照按钮 */}
+             {/* Intimacy - 移动端简化显示 */}
+             <button 
+               onClick={() => setShowRelationshipPanel(true)}
+               className="sm:hidden flex items-center gap-1 bg-pink-50 px-2 py-1 rounded-full border border-pink-100" 
+             >
+                <span className="text-pink-500 text-sm">❤️</span>
+                <span className="text-xs font-bold text-pink-600">{intimacy}</span>
+             </button>
+             
+             {/* 私房照按钮 - 桌面端 */}
              <button 
                onClick={() => setShowOutfitGallery(true)}
                className="hidden sm:flex items-center gap-1 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100 hover:bg-purple-100 transition-colors text-purple-600 text-sm"
@@ -526,7 +535,7 @@ const ChatPage: React.FC = () => {
                📷 私房照
              </button>
 
-        <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">
+        <div className="flex items-center gap-2 sm:gap-3 bg-indigo-50 px-2 sm:px-4 py-1.5 sm:py-2 rounded-full border border-indigo-100">
           <span className="text-lg">💎</span>
           <span className="font-bold text-indigo-700">{balance}</span>
           <button 
@@ -831,6 +840,15 @@ const ChatPage: React.FC = () => {
                     )}
 
                     <div className="flex items-center gap-2">
+                    {/* 私房照按钮 - 移动端 */}
+                    <button
+                      onClick={() => setShowOutfitGallery(true)}
+                      className="sm:hidden flex-shrink-0 p-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full hover:opacity-90 transition-opacity shadow-lg"
+                      title="私房照"
+                    >
+                      📷
+                    </button>
+                    
                     {/* 礼物按钮 */}
                     <button
                       onClick={() => setShowGiftPanel(true)}
