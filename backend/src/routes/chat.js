@@ -170,9 +170,11 @@ router.get('/history/:agentId', async (req, res) => {
 
   try {
     // 关键修复：按 userId + agentId 联合查询，确保每个用户只看到自己的聊天记录
+    // 记忆长度：100条消息（可根据需要调整，更多消息=更长记忆，但也会增加 token 消耗）
+    const MEMORY_LENGTH = 100;
     const messages = await Message.find({ userId, agentId })
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(MEMORY_LENGTH);
     
     // Reverse to return chronological order (oldest to newest)
     messages.reverse();
