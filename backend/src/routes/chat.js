@@ -382,6 +382,152 @@ router.post('/record-choice/:agentId', async (req, res) => {
   }
 });
 
+// POST /api/chat/suggest-replies/:agentId - 根据 AI 上一条消息生成建议回复
+router.post('/suggest-replies/:agentId', requireAuth, async (req, res) => {
+  const { agentId } = req.params;
+  const { lastAiMessage, intimacy = 0 } = req.body;
+  const userId = req.user.id;
+  
+  if (!lastAiMessage) {
+    return errors.badRequest(res, 'lastAiMessage is required');
+  }
+
+  try {
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return errors.notFound(res, 'Agent not found');
+    }
+    
+    // 获取用户画像
+    const profile = await UserProfile.findOne({ userId, agentId });
+    const userType = profile?.detectedUserType || 'unknown';
+    
+    // 使用 LLM 生成建议回复
+    const suggestions = await generateSuggestedReplies(lastAiMessage, {
+      agentName: agent.name,
+      intimacy,
+      userType,
+      petName: profile?.petName
+    });
+    
+    sendSuccess(res, HTTP_STATUS.OK, { suggestions });
+  } catch (err) {
+    console.error('Generate Suggestions Error:', err);
+    errors.internalError(res, 'Error generating suggestions', { error: err.message });
+  }
+});
+
+/**
+ * 使用 LLM 生成 3 个建议回复
+ */
+async function generateSuggestedReplies(lastAiMessage, context) {
+  const { agentName, intimacy, userType, petName } = context;
+  
+  // 根据亲密度确定语气
+  let toneGuide = '';
+  if (intimacy >= 70) {
+    toneGuide = '亲密暧昧的语气，可以有撩拨和调情';
+  } else if (intimacy >= 40) {
+    toneGuide = '亲近友好的语气，带有适度的暧昧';
+  } else {
+    toneGuide = '友好礼貌的语气，稍带俏皮';
+  }
+  
+  const prompt = `你是一个帮助用户回复AI女友的助手。
+用户正在和一个叫"${agentName}"的AI女友聊天。
+${petName ? `用户给她起的昵称是"${petName}"。` : ''}
+当前亲密度: ${intimacy}
+用户类型: ${userType === 'direct' ? '直接型（喜欢快速推进）' : userType === 'slow_burn' ? '循序渐进型（喜欢慢慢升温）' : '未确定'}
+
+AI女友刚刚发送的消息是:
+"${lastAiMessage}"
+
+请生成3个用户可以回复的消息建议，要求：
+1. 语气: ${toneGuide}
+2. 第一个选项：比较含蓄/正常的回复
+3. 第二个选项：中等程度的回复，稍微主动一些
+4. 第三个选项：比较大胆/直接的回复
+5. 每个回复控制在30字以内
+6. 回复要自然，像真人说话，不要太正式
+7. 可以使用emoji但不要太多
+
+请直接返回JSON数组格式，不要其他内容：
+["回复1", "回复2", "回复3"]`;
+
+  try {
+    const provider = ProviderFactory.create();
+    const result = await provider.chat([
+      { role: 'user', content: prompt }
+    ], {
+      model: process.env.DEFAULT_LLM_MODEL || 'grok-3-fast',
+      temperature: 0.8,
+      max_tokens: 200
+    });
+    
+    // 解析 JSON 结果
+    const content = result.content.trim();
+    // 尝试提取 JSON 数组
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const suggestions = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(suggestions) && suggestions.length === 3) {
+        return suggestions.map((text, index) => ({
+          text,
+          style: index === 0 ? 'shy' : index === 1 ? 'normal' : 'bold'
+        }));
+      }
+    }
+    
+    // 如果解析失败，返回默认选项
+    console.warn('[Chat] Failed to parse LLM suggestions, using defaults');
+    return getDefaultSuggestions(lastAiMessage, agentName);
+  } catch (err) {
+    console.error('[Chat] LLM suggestion error:', err.message);
+    return getDefaultSuggestions(lastAiMessage, agentName);
+  }
+}
+
+/**
+ * 默认建议回复（LLM 失败时使用）
+ */
+function getDefaultSuggestions(lastAiMessage, agentName) {
+  // 根据消息内容生成简单的默认回复
+  if (lastAiMessage.includes('想你') || lastAiMessage.includes('想念')) {
+    return [
+      { text: '我也有点想你了~', style: 'shy' },
+      { text: '那你想我什么呢？', style: 'normal' },
+      { text: '想我就过来找我嘛~', style: 'bold' }
+    ];
+  }
+  if (lastAiMessage.includes('早') || lastAiMessage.includes('起床')) {
+    return [
+      { text: '早安~ 你也早啊', style: 'shy' },
+      { text: '早~ 昨晚睡得好吗？', style: 'normal' },
+      { text: '早安吻~ 今天也要乖乖的哦', style: 'bold' }
+    ];
+  }
+  if (lastAiMessage.includes('晚安') || lastAiMessage.includes('睡')) {
+    return [
+      { text: '晚安，好梦~', style: 'shy' },
+      { text: '晚安~ 梦里见哦', style: 'normal' },
+      { text: '晚安吻~ 梦里等你来找我', style: 'bold' }
+    ];
+  }
+  if (lastAiMessage.includes('吃') || lastAiMessage.includes('饭')) {
+    return [
+      { text: '刚吃完~ 你呢？', style: 'shy' },
+      { text: '在吃呢~ 想和你一起吃', style: 'normal' },
+      { text: '喂我吃嘛~', style: 'bold' }
+    ];
+  }
+  // 通用默认
+  return [
+    { text: '嗯嗯~', style: 'shy' },
+    { text: '然后呢？继续说~', style: 'normal' },
+    { text: `${agentName}今天好可爱哦~`, style: 'bold' }
+  ];
+}
+
 router.post('/', async (req, res) => {
   const { agentId, prompt, history, skipImageGen } = req.body;
   

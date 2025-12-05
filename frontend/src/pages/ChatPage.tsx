@@ -147,6 +147,15 @@ const ChatPage: React.FC = () => {
   const [detectionRound, setDetectionRound] = useState(0);
   const [isDetectionComplete, setIsDetectionComplete] = useState(false);
   
+  // 回复建议模式（永久开关）
+  const [suggestMode, setSuggestMode] = useState<boolean>(() => {
+    // 从 localStorage 读取用户偏好
+    const saved = localStorage.getItem('suggestMode');
+    return saved === 'true';
+  });
+  const [suggestions, setSuggestions] = useState<ReplyOption[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  
   // 礼物/衣服/关系面板状态
   const [showGiftPanel, setShowGiftPanel] = useState(false);
   const [showOutfitGallery, setShowOutfitGallery] = useState(false);
@@ -212,7 +221,7 @@ const ChatPage: React.FC = () => {
     }
   };
   
-  // 处理选择三选一回复
+  // 处理选择三选一回复（侦测期）
   const handleReplyOptionSelect = async (option: ReplyOption, index: number) => {
     if (!agent?._id) return;
     
@@ -235,6 +244,46 @@ const ChatPage: React.FC = () => {
       console.error('Failed to record choice', err);
       // 即使记录失败也发送消息
       setChatPrompt(option.text);
+    }
+  };
+  
+  // 处理选择建议回复（永久模式）
+  const handleSuggestionSelect = (suggestion: ReplyOption) => {
+    setSuggestions([]); // 清空建议
+    setChatPrompt(suggestion.text);
+    setTimeout(() => {
+      const sendBtn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
+      if (sendBtn) sendBtn.click();
+    }, 100);
+  };
+  
+  // 获取建议回复
+  const fetchSuggestions = async (lastAiMessage: string) => {
+    if (!agent?._id || !suggestMode) return;
+    
+    setLoadingSuggestions(true);
+    try {
+      const res = await http.post(`/chat/suggest-replies/${agent._id}`, {
+        lastAiMessage,
+        intimacy
+      });
+      if (res.data.suggestions && res.data.suggestions.length > 0) {
+        setSuggestions(res.data.suggestions);
+      }
+    } catch (err) {
+      console.error('Failed to fetch suggestions', err);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+  
+  // 切换建议模式
+  const toggleSuggestMode = () => {
+    const newValue = !suggestMode;
+    setSuggestMode(newValue);
+    localStorage.setItem('suggestMode', String(newValue));
+    if (!newValue) {
+      setSuggestions([]); // 关闭时清空建议
     }
   };
   
@@ -339,6 +388,12 @@ const ChatPage: React.FC = () => {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // 如果开启了建议模式且侦测已完成，获取建议回复
+      const detectionComplete = textRes.data.detection?.isComplete || isDetectionComplete;
+      if (suggestMode && detectionComplete && textRes.data.reply) {
+        fetchSuggestions(textRes.data.reply);
+      }
       
       // 3. If Media Mode, Trigger Generation in Background
       if (activeMode !== 'text') {
@@ -796,8 +851,8 @@ const ChatPage: React.FC = () => {
 
             <footer className="bg-white/90 backdrop-blur-md border-t border-gray-200 p-4 relative z-10">
                 <div className="max-w-3xl mx-auto">
-                {/* Response Mode Selector */}
-                <div className="flex gap-2 mb-3">
+                {/* Response Mode Selector + Suggest Mode Toggle */}
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <button
                         onClick={() => setResponseMode('text')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1 ${
@@ -839,7 +894,55 @@ const ChatPage: React.FC = () => {
                         Video (50)
                     </button>
                     )}
+                    
+                    {/* 分隔符 */}
+                    <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                    
+                    {/* 回复建议开关 */}
+                    <button
+                        onClick={toggleSuggestMode}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1 ${
+                            suggestMode 
+                                ? 'bg-pink-500 text-white' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        title="开启后 AI 会给你建议回复"
+                    >
+                        💡 建议
+                    </button>
                 </div>
+                
+                {/* 建议回复区域 */}
+                {suggestMode && isDetectionComplete && suggestions.length > 0 && (
+                  <div className="mb-3 space-y-2">
+                    <p className="text-xs text-gray-400">选择一个建议回复：</p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSuggestionSelect(suggestion)}
+                          className={`px-3 py-2 text-sm rounded-full transition-all ${
+                            idx === 0 
+                              ? 'bg-pink-50 text-pink-700 border border-pink-200 hover:border-pink-400' 
+                              : idx === 1 
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200 hover:border-purple-400' 
+                              : 'bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-400'
+                          }`}
+                        >
+                          {suggestion.text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 加载建议中 */}
+                {suggestMode && isDetectionComplete && loadingSuggestions && (
+                  <div className="mb-3 flex items-center gap-2 text-xs text-gray-400">
+                    <div className="animate-spin h-3 w-3 border-2 border-pink-300 border-t-pink-500 rounded-full"></div>
+                    正在想建议...
+                  </div>
+                )}
 
                     {/* Video Options (Only visible in Video Mode) */}
                     {ENABLE_VIDEO_FEATURE && responseMode === 'video' && (
