@@ -144,7 +144,8 @@ const ChatPage: React.FC = () => {
   // 开场提示词状态
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [showStarters, setShowStarters] = useState(false);
-  const [interactionMode, setInteractionMode] = useState<string>('not_set');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_interactionMode, setInteractionMode] = useState<string>('not_set');
 
   // Video Generation Options
   // Removed videoFastMode toggle, defaulting to Fast Mode always as Quality Mode is deprecated.
