@@ -93,6 +93,7 @@ loadRoute('/api/outfit', './routes/outfit');
 loadRoute('/api/profile', './routes/profile');
 loadRoute('/api/analytics', './routes/analytics');
 loadRoute('/api/alert', './routes/alert');
+loadRoute('/api/preview', './routes/preview');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint

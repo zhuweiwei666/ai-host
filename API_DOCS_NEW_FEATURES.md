@@ -927,6 +927,456 @@ const getProactiveLabel = (type?: string) => {
 
 ---
 
+## 10. 视频预览系统（悬停播放）
+
+### 10.1 获取主播预览视频列表
+```
+GET /api/preview/videos/:agentId
+```
+**认证:** 无需
+
+**Query 参数:**
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| maxScale | number | 最大尺度等级（1-5），筛选 |
+| tag | string | 筛选特定标签 |
+| limit | number | 返回数量限制 |
+
+**响应:**
+```json
+{
+  "success": true,
+  "data": {
+    "agentId": "xxx",
+    "agentName": "Harper Lux",
+    "videos": [
+      {
+        "id": "video_id",
+        "url": "https://...",
+        "thumbnailUrl": "https://...",
+        "duration": 15,
+        "width": 720,
+        "height": 1280,
+        "fileSize": 1024000,
+        "format": "mp4",
+        "isVertical": true,
+        "sortOrder": 0,
+        "tags": ["cute", "dance"],
+        "scaleLevel": 1,
+        "index": 0
+      }
+    ],
+    "defaultIndex": 0,
+    "totalCount": 5
+  }
+}
+```
+
+---
+
+### 10.2 获取单个预览视频
+```
+GET /api/preview/video/:agentId/:index
+```
+**认证:** 无需
+
+---
+
+### 10.3 获取随机预览视频
+```
+GET /api/preview/random/:agentId
+```
+**认证:** 无需
+
+**Query 参数:**
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| maxScale | number | 最大尺度等级 |
+
+---
+
+### 10.4 获取所有主播的预览视频（列表页）
+```
+GET /api/preview/all
+```
+**认证:** 无需
+
+**Query 参数:**
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| maxScale | number | 最大尺度等级 |
+| limit | number | 返回主播数量限制 |
+
+**响应:**
+```json
+{
+  "success": true,
+  "data": {
+    "agents": [
+      {
+        "agentId": "xxx",
+        "agentName": "Harper Lux",
+        "avatarUrl": "https://...",
+        "video": {
+          "url": "https://...",
+          "thumbnailUrl": "https://...",
+          "duration": 15,
+          "isVertical": true
+        }
+      }
+    ],
+    "totalCount": 10
+  }
+}
+```
+
+---
+
+### 10.5 添加预览视频（管理员）
+```
+POST /api/preview/videos/:agentId
+```
+**认证:** 必须 (Admin)
+
+**请求体:**
+```json
+{
+  "url": "https://...",
+  "thumbnailUrl": "https://...",
+  "duration": 15,
+  "width": 720,
+  "height": 1280,
+  "fileSize": 1024000,
+  "format": "mp4",
+  "isVertical": true,
+  "tags": ["cute", "dance"],
+  "scaleLevel": 1
+}
+```
+
+---
+
+### 10.6 更新预览视频（管理员）
+```
+PUT /api/preview/videos/:agentId/:videoId
+```
+**认证:** 必须 (Admin)
+
+---
+
+### 10.7 删除预览视频（管理员）
+```
+DELETE /api/preview/videos/:agentId/:videoId
+```
+**认证:** 必须 (Admin)
+
+---
+
+### 10.8 重新排序视频（管理员）
+```
+POST /api/preview/videos/:agentId/reorder
+```
+**认证:** 必须 (Admin)
+
+**请求体:**
+```json
+{
+  "videoIds": ["id1", "id2", "id3"]
+}
+```
+
+---
+
+### 10.9 迁移旧数据（管理员）
+```
+POST /api/preview/videos/:agentId/migrate
+```
+**认证:** 必须 (Admin)
+
+**说明:** 将 `coverVideoUrls` 迁移到新的 `previewVideos` 结构
+
+---
+
+### 10.10 批量迁移所有主播（管理员）
+```
+POST /api/preview/videos/migrate-all
+```
+**认证:** 必须 (Admin)
+
+---
+
+### 10.11 平台接入示例
+
+#### Android 悬停播放
+```kotlin
+// 数据类
+data class PreviewVideo(
+    val url: String,
+    val thumbnailUrl: String,
+    val duration: Int,
+    val isVertical: Boolean
+)
+
+// 获取视频列表
+fun getPreviewVideos(agentId: String): List<PreviewVideo> {
+    val response = api.get("/api/preview/videos/$agentId")
+    return response.data.videos
+}
+
+// RecyclerView ViewHolder
+class AgentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    private val thumbnail: ImageView = itemView.findViewById(R.id.thumbnail)
+    private val videoPlayer: ExoPlayer
+    
+    fun bind(agent: Agent, video: PreviewVideo) {
+        // 显示缩略图
+        Glide.with(thumbnail).load(video.thumbnailUrl).into(thumbnail)
+        
+        // 鼠标/触摸悬停监听
+        itemView.setOnHoverListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_HOVER_ENTER -> {
+                    // 开始播放视频
+                    playVideo(video.url)
+                }
+                MotionEvent.ACTION_HOVER_EXIT -> {
+                    // 停止播放，显示缩略图
+                    stopVideo()
+                }
+            }
+            true
+        }
+    }
+    
+    private fun playVideo(url: String) {
+        val mediaItem = MediaItem.fromUri(url)
+        videoPlayer.setMediaItem(mediaItem)
+        videoPlayer.prepare()
+        videoPlayer.play()
+        videoPlayer.repeatMode = Player.REPEAT_MODE_ONE
+    }
+}
+```
+
+#### iOS 悬停播放
+```swift
+import AVKit
+
+struct AgentCard: View {
+    let agent: Agent
+    let previewVideo: PreviewVideo?
+    
+    @State private var isHovering = false
+    @State private var player: AVPlayer?
+    
+    var body: some View {
+        ZStack {
+            // 缩略图
+            AsyncImage(url: URL(string: previewVideo?.thumbnailUrl ?? agent.avatarUrl)) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Color.gray
+            }
+            
+            // 视频播放器（悬停时显示）
+            if isHovering, let videoUrl = previewVideo?.url {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player = AVPlayer(url: URL(string: videoUrl)!)
+                        player?.play()
+                        // 循环播放
+                        NotificationCenter.default.addObserver(
+                            forName: .AVPlayerItemDidPlayToEndTime,
+                            object: player?.currentItem,
+                            queue: .main
+                        ) { _ in
+                            player?.seek(to: .zero)
+                            player?.play()
+                        }
+                    }
+                    .onDisappear {
+                        player?.pause()
+                        player = nil
+                    }
+            }
+        }
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        // 触摸设备长按
+        .onLongPressGesture(minimumDuration: 0.3) {
+            isHovering = true
+        } onPressingChanged: { pressing in
+            if !pressing {
+                isHovering = false
+            }
+        }
+    }
+}
+
+// 获取预览视频
+func fetchPreviewVideos(agentId: String) async throws -> [PreviewVideo] {
+    let response = try await AF.request("\(baseURL)/api/preview/videos/\(agentId)")
+        .serializingDecodable(PreviewVideosResponse.self)
+        .value
+    return response.data.videos
+}
+```
+
+#### Web 悬停播放
+```typescript
+// React 组件
+import React, { useState, useRef, useEffect } from 'react';
+
+interface PreviewVideo {
+  url: string;
+  thumbnailUrl: string;
+  duration: number;
+  isVertical: boolean;
+}
+
+interface AgentCardProps {
+  agentId: string;
+  agentName: string;
+  avatarUrl: string;
+  previewVideo?: PreviewVideo;
+}
+
+const AgentCard: React.FC<AgentCardProps> = ({ 
+  agentId, agentName, avatarUrl, previewVideo 
+}) => {
+  const [isHovering, setIsHovering] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  useEffect(() => {
+    if (isHovering && videoRef.current && previewVideo) {
+      videoRef.current.play().catch(console.error);
+    } else if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [isHovering, previewVideo]);
+  
+  return (
+    <div 
+      className="agent-card"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      // 移动端长按
+      onTouchStart={() => setIsHovering(true)}
+      onTouchEnd={() => setIsHovering(false)}
+    >
+      {/* 缩略图 */}
+      <img 
+        src={previewVideo?.thumbnailUrl || avatarUrl}
+        alt={agentName}
+        className={`thumbnail ${isHovering ? 'hidden' : ''}`}
+      />
+      
+      {/* 视频 */}
+      {previewVideo && (
+        <video
+          ref={videoRef}
+          src={previewVideo.url}
+          className={`preview-video ${isHovering ? 'visible' : ''}`}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        />
+      )}
+      
+      <div className="agent-name">{agentName}</div>
+    </div>
+  );
+};
+
+// 获取所有主播的预览视频
+export const getAllPreviewVideos = async (maxScale?: number) => {
+  const params = maxScale ? `?maxScale=${maxScale}` : '';
+  return http.get(`/api/preview/all${params}`);
+};
+
+// 获取单个主播的预览视频列表
+export const getAgentPreviewVideos = (agentId: string) => 
+  http.get(`/api/preview/videos/${agentId}`);
+
+// 列表页使用
+const AgentList: React.FC = () => {
+  const [agents, setAgents] = useState<AgentCardProps[]>([]);
+  
+  useEffect(() => {
+    getAllPreviewVideos(3).then(res => { // 最大尺度 3
+      setAgents(res.data.agents.map(a => ({
+        agentId: a.agentId,
+        agentName: a.agentName,
+        avatarUrl: a.avatarUrl,
+        previewVideo: a.video
+      })));
+    });
+  }, []);
+  
+  return (
+    <div className="agent-grid">
+      {agents.map(agent => (
+        <AgentCard key={agent.agentId} {...agent} />
+      ))}
+    </div>
+  );
+};
+```
+
+**CSS 样式:**
+```css
+.agent-card {
+  position: relative;
+  width: 200px;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+}
+
+.thumbnail.hidden {
+  opacity: 0;
+}
+
+.preview-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.preview-video.visible {
+  opacity: 1;
+}
+
+.agent-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  color: white;
+  font-weight: bold;
+}
+```
+
+---
+
 ## 数据模型参考
 
 ### Message 消息模型
@@ -1024,6 +1474,23 @@ const getProactiveLabel = (type?: string) => {
   unlockValue: Number,
   sortOrder: Number,
   isActive: Boolean
+}
+```
+
+### PreviewVideo 预览视频模型
+```javascript
+{
+  url: String,                  // 视频 URL
+  thumbnailUrl: String,         // 缩略图/封面图 URL
+  duration: Number,             // 视频时长（秒）
+  width: Number,                // 视频宽度
+  height: Number,               // 视频高度
+  fileSize: Number,             // 文件大小（字节）
+  format: String,               // 视频格式，默认 'mp4'
+  isVertical: Boolean,          // 是否竖屏，默认 true
+  sortOrder: Number,            // 排序顺序
+  tags: [String],               // 标签：如 'sexy', 'cute', 'dance'
+  scaleLevel: Number            // 尺度等级 1-5
 }
 ```
 

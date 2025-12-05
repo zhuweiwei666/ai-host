@@ -1,5 +1,20 @@
 const mongoose = require('mongoose');
 
+// 视频预览配置 Schema
+const PreviewVideoSchema = new mongoose.Schema({
+  url: { type: String, required: true },           // 视频 URL
+  thumbnailUrl: { type: String, default: '' },     // 缩略图/封面图 URL
+  duration: { type: Number, default: 0 },          // 视频时长（秒）
+  width: { type: Number, default: 0 },             // 视频宽度
+  height: { type: Number, default: 0 },            // 视频高度
+  fileSize: { type: Number, default: 0 },          // 文件大小（字节）
+  format: { type: String, default: 'mp4' },        // 视频格式
+  isVertical: { type: Boolean, default: true },    // 是否竖屏
+  sortOrder: { type: Number, default: 0 },         // 排序顺序
+  tags: [String],                                   // 标签：如 'sexy', 'cute', 'dance'
+  scaleLevel: { type: Number, default: 1, min: 1, max: 5 }, // 尺度等级 1-5
+}, { _id: true });
+
 const AgentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   gender: { type: String, enum: ['male', 'female', 'other'], default: 'female' },
@@ -11,6 +26,10 @@ const AgentSchema = new mongoose.Schema({
   avatarUrls: { type: [String], default: [] }, // Array of image URLs
   coverVideoUrls: { type: [String], default: [] }, // Array of video URLs
   privatePhotoUrls: { type: [String], default: [] }, // Array of NSFW/Paid image URLs
+  
+  // ========== 视频预览系统 ==========
+  previewVideos: [PreviewVideoSchema],              // 预览视频列表（带元数据）
+  defaultPreviewIndex: { type: Number, default: 0 }, // 默认播放的视频索引
   description: { type: String, default: '' },
   modelName: { type: String, required: true, default: 'grok-4-1-fast-reasoning' },
   temperature: { type: Number, default: 0.7 },
