@@ -107,7 +107,16 @@ router.post('/send', requireAuth, async (req, res) => {
       { upsert: true }
     );
     
-    // 9. 将 AI 回复作为消息保存到聊天记录
+    // 9. 保存用户送礼消息到聊天记录
+    const userGiftMessage = `[送出礼物] ${gift.emoji} ${gift.name}`;
+    await Message.create({
+      agentId,
+      userId,
+      role: 'user',
+      content: userGiftMessage
+    });
+    
+    // 10. 将 AI 回复作为消息保存到聊天记录
     await Message.create({
       agentId,
       userId,
@@ -115,7 +124,7 @@ router.post('/send', requireAuth, async (req, res) => {
       content: aiResponse
     });
     
-    // 10. 获取最新余额和亲密度
+    // 11. 获取最新余额和亲密度
     const newBalance = await walletService.getBalance(userId);
     const newIntimacy = await relationshipService.getIntimacy(userId, agentId);
     
@@ -134,6 +143,7 @@ router.post('/send', requireAuth, async (req, res) => {
         emoji: gift.emoji,
         price: gift.price
       },
+      userMessage: userGiftMessage,
       aiResponse,
       balance: newBalance,
       intimacy: newIntimacy,

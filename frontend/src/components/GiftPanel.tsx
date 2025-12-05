@@ -22,7 +22,7 @@ interface GiftPanelProps {
   agentName: string;
   isOpen: boolean;
   onClose: () => void;
-  onGiftSent: (response: { aiResponse: string; balance: number; intimacy: number }) => void;
+  onGiftSent: (response: { userMessage: string; aiResponse: string; balance: number; intimacy: number }) => void;
   balance: number;
 }
 
@@ -63,6 +63,7 @@ export function GiftPanel({ agentId, agentName, isOpen, onClose, onGiftSent, bal
     try {
       const res = await http.post('/gift/send', { agentId, giftId: gift._id });
       onGiftSent({
+        userMessage: res.data.userMessage,
         aiResponse: res.data.aiResponse,
         balance: res.data.balance,
         intimacy: res.data.intimacy

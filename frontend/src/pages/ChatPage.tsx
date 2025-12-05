@@ -237,11 +237,15 @@ const ChatPage: React.FC = () => {
   };
   
   // 处理送礼物后的 AI 回复
-  const handleGiftSent = (response: { aiResponse: string; balance: number; intimacy: number }) => {
+  const handleGiftSent = (response: { userMessage: string; aiResponse: string; balance: number; intimacy: number }) => {
     setBalance(response.balance);
     setIntimacy(response.intimacy);
-    // 将 AI 的感谢消息添加到聊天记录
-    setMessages(prev => [...prev, { role: 'assistant', content: response.aiResponse }]);
+    // 将用户送礼消息和 AI 的感谢消息添加到聊天记录
+    setMessages(prev => [
+      ...prev, 
+      { role: 'user', content: response.userMessage },
+      { role: 'assistant', content: response.aiResponse }
+    ]);
   };
 
   useEffect(() => {
