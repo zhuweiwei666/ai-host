@@ -327,6 +327,88 @@ class ProfileService {
   async clearProfile(userId, agentId) {
     await UserProfile.deleteOne({ userId, agentId });
   }
+  
+  /**
+   * 设置用户交互偏好
+   * @param {string} userId 
+   * @param {string} agentId 
+   * @param {string} mode - 'friendly' | 'romantic' | 'flirty' | 'intimate'
+   */
+  async setInteractionMode(userId, agentId, mode) {
+    const validModes = ['friendly', 'romantic', 'flirty', 'intimate'];
+    if (!validModes.includes(mode)) {
+      throw new Error(`Invalid interaction mode: ${mode}. Valid modes: ${validModes.join(', ')}`);
+    }
+    
+    await UserProfile.findOneAndUpdate(
+      { userId, agentId },
+      { 
+        interactionMode: mode,
+        interactionModeSetAt: new Date()
+      },
+      { upsert: true }
+    );
+    
+    console.log(`[Profile] 设置交互模式: userId=${userId}, agentId=${agentId}, mode=${mode}`);
+  }
+  
+  /**
+   * 获取用户交互偏好
+   */
+  async getInteractionMode(userId, agentId) {
+    const profile = await UserProfile.findOne({ userId, agentId });
+    return profile?.interactionMode || 'not_set';
+  }
+  
+  /**
+   * 根据交互模式生成行为指导提示
+   */
+  getInteractionModePrompt(mode) {
+    const prompts = {
+      'not_set': '', // 未设置，使用默认行为
+      
+      'friendly': `
+**[用户偏好：朋友模式]**
+用户希望和你做朋友，进行轻松愉快的聊天。
+- 保持友好、开朗、有趣
+- 不要主动暧昧或调情
+- 不要有性暗示或擦边内容
+- 像一个好朋友一样聊天、分享、倾听
+- 可以开玩笑但保持分寸
+`.trim(),
+
+      'romantic': `
+**[用户偏好：浪漫模式]**
+用户希望体验甜蜜的恋爱感觉。
+- 像恋人一样温柔、体贴、关心
+- 可以说甜蜜的情话、表达爱意
+- 可以有浪漫的互动，但不露骨
+- 营造心动、温馨的氛围
+- 避免直接的性暗示
+`.trim(),
+
+      'flirty': `
+**[用户偏好：暧昧模式]**
+用户享受暧昧调情的感觉。
+- 可以主动调情、挑逗
+- 使用暗示性语言，但不直接露骨
+- 制造紧张感和期待感
+- 偶尔的大胆暗示是可以的
+- 保持神秘感和吸引力
+`.trim(),
+
+      'intimate': `
+**[用户偏好：亲密模式]**
+用户希望更深入、更亲密的互动。
+- 可以更加直接和大胆
+- 根据对话氛围自然升温
+- 满足用户的幻想和需求
+- 可以有更露骨的描述和互动
+`.trim()
+    };
+    
+    return prompts[mode] || '';
+  }
 }
 
 module.exports = new ProfileService();

@@ -241,6 +241,120 @@ router.post('/profile/:agentId/memory', async (req, res) => {
   }
 });
 
+// POST /api/chat/interaction-mode/:agentId - 设置用户交互偏好
+router.post('/interaction-mode/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  const { mode } = req.body;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  if (!agentId || !mode) {
+    return errors.badRequest(res, 'agentId and mode are required');
+  }
+
+  try {
+    await profileService.setInteractionMode(userId, agentId, mode);
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      mode, 
+      message: 'Interaction mode set successfully' 
+    });
+  } catch (err) {
+    console.error('Set Interaction Mode Error:', err);
+    errors.badRequest(res, err.message);
+  }
+});
+
+// GET /api/chat/interaction-mode/:agentId - 获取用户交互偏好
+router.get('/interaction-mode/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+
+  try {
+    const mode = await profileService.getInteractionMode(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, { mode });
+  } catch (err) {
+    console.error('Get Interaction Mode Error:', err);
+    errors.internalError(res, 'Error getting interaction mode', { error: err.message });
+  }
+});
+
+// GET /api/chat/starter-prompts/:agentId - 获取开场提示词选项
+router.get('/starter-prompts/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+
+  try {
+    const mode = await profileService.getInteractionMode(userId, agentId);
+    const profile = await profileService.getProfile(userId, agentId);
+    const messageCount = profile?.totalMessages || 0;
+    
+    // 如果用户已经设置了模式或聊了很多，不显示开场提示
+    if (mode !== 'not_set' || messageCount > 5) {
+      return sendSuccess(res, HTTP_STATUS.OK, { 
+        showStarters: false, 
+        prompts: [],
+        currentMode: mode 
+      });
+    }
+    
+    // 新用户显示开场提示词选项
+    const starterPrompts = [
+      {
+        id: 'friendly',
+        emoji: '😊',
+        title: '想找人聊天',
+        subtitle: '轻松愉快地聊天',
+        prompt: '你好呀～今天过得怎么样？',
+        mode: 'friendly'
+      },
+      {
+        id: 'romantic',
+        emoji: '💕',
+        title: '想谈恋爱',
+        subtitle: '甜甜的恋爱感觉',
+        prompt: '在吗？有点想你了...',
+        mode: 'romantic'
+      },
+      {
+        id: 'flirty',
+        emoji: '😏',
+        title: '想暧昧一下',
+        subtitle: '若即若离的感觉',
+        prompt: '嗨～你现在在干嘛呢？',
+        mode: 'flirty'
+      },
+      {
+        id: 'intimate',
+        emoji: '🔥',
+        title: '想更亲密',
+        subtitle: '深入了解彼此',
+        prompt: '宝贝，我想你了...',
+        mode: 'intimate'
+      }
+    ];
+    
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      showStarters: true, 
+      prompts: starterPrompts,
+      currentMode: mode 
+    });
+  } catch (err) {
+    console.error('Get Starter Prompts Error:', err);
+    errors.internalError(res, 'Error getting starter prompts', { error: err.message });
+  }
+});
+
 router.post('/', async (req, res) => {
   const { agentId, prompt, history, skipImageGen } = req.body;
   
@@ -268,7 +382,12 @@ router.post('/', async (req, res) => {
     const currentIntimacy = await relationshipService.updateIntimacy(userId, agentId, 1);
     console.log(`[Chat] Intimacy Level: ${currentIntimacy}`);
 
-    // ... Stage selection logic based on Intimacy ...
+    // ========== 获取用户交互偏好 ==========
+    const userInteractionMode = await profileService.getInteractionMode(userId, agentId);
+    const interactionModePrompt = profileService.getInteractionModePrompt(userInteractionMode);
+    console.log(`[Chat] User Interaction Mode: ${userInteractionMode}`);
+
+    // ... Stage selection logic based on Intimacy AND User Preference ...
     let stageInstruction = '';
     let isNSFWStage = false;
     
@@ -276,26 +395,80 @@ router.post('/', async (req, res) => {
     const t1 = agent.stage1Threshold || 20;
     const t2 = agent.stage2Threshold || 60;
 
-    // Intimacy Thresholds
-    if (currentIntimacy <= t1) {
-        stageInstruction = agent.stage1Prompt || getStageFromIntimacy(currentIntimacy, t1, t2);
-        isNSFWStage = false; // Stage 1: Tease
-    } else if (currentIntimacy <= t2) {
-        stageInstruction = agent.stage2Prompt || getStageFromIntimacy(currentIntimacy, t1, t2);
-        isNSFWStage = false; // Stage 2: Reveal
+    // ========== 根据用户偏好调整行为 ==========
+    // 用户偏好优先于亲密度！如果用户选择了 friendly/romantic 模式，即使亲密度高也不进入露骨阶段
+    if (userInteractionMode === 'friendly') {
+        // 朋友模式：始终保持纯洁
+        stageInstruction = STAGE_1_PROMPT.replace(/视觉尺度[\s\S]*?(?=\*\*|$)/g, 
+            '**视觉尺度：**\n- 不描述任何暧昧或性感内容\n- 保持友好、健康的交流\n');
+        isNSFWStage = false;
+    } else if (userInteractionMode === 'romantic') {
+        // 浪漫模式：甜蜜但不露骨
+        stageInstruction = STAGE_2_PROMPT.replace(/视觉尺度[\s\S]*?(?=\*\*|$)/g,
+            '**视觉尺度：**\n- 可以描述：深情的眼神、温柔的拥抱、浪漫的氛围\n- 避免描述：任何露骨或性暗示的内容\n');
+        isNSFWStage = false;
+    } else if (userInteractionMode === 'flirty') {
+        // 暧昧模式：可以暗示但不直接
+        if (currentIntimacy <= t1) {
+            stageInstruction = agent.stage1Prompt || STAGE_1_PROMPT;
+        } else {
+            stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT;
+        }
+        isNSFWStage = false;
+    } else if (userInteractionMode === 'intimate') {
+        // 亲密模式：根据亲密度正常推进
+        if (currentIntimacy <= t1) {
+            stageInstruction = agent.stage1Prompt || STAGE_1_PROMPT;
+            isNSFWStage = false;
+        } else if (currentIntimacy <= t2) {
+            stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT;
+            isNSFWStage = false;
+        } else {
+            stageInstruction = agent.stage3Prompt || STAGE_3_PROMPT;
+            isNSFWStage = true;
+        }
     } else {
-        stageInstruction = agent.stage3Prompt || getStageFromIntimacy(currentIntimacy, t1, t2);
-        isNSFWStage = true; // Stage 3: Explicit
+        // 未设置偏好（not_set）：使用保守的默认行为，先友好
+        // 新用户默认从友好开始，等他们选择后再调整
+        if (currentIntimacy <= t1) {
+            stageInstruction = STAGE_1_PROMPT.replace(/视觉尺度[\s\S]*?(?=\*\*|$)/g,
+                '**视觉尺度：**\n- 保持友好自然\n- 可以有轻微的俏皮，但不要过于暧昧\n');
+            isNSFWStage = false;
+        } else if (currentIntimacy <= t2) {
+            stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT;
+            isNSFWStage = false;
+        } else {
+            // 即使亲密度高，未设置偏好时也不自动进入 NSFW
+            stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT;
+            isNSFWStage = false;
+        }
     }
     
-    const IMAGE_RULE = `
+    // 根据用户模式调整图片规则
+    let IMAGE_RULE = '';
+    if (userInteractionMode === 'friendly' || userInteractionMode === 'romantic') {
+        IMAGE_RULE = `
+    **[IMAGE RULE]**
+    If user asks for a photo, you can send a friendly/cute selfie:
+    [SEND_IMAGE: smiling selfie, casual outfit, friendly pose]
+    Keep images appropriate and non-suggestive.
+    `.trim();
+    } else if (isNSFWStage && userInteractionMode === 'intimate') {
+        IMAGE_RULE = `
     **[MANDATORY IMAGE RULE]**
     If user asks for a photo OR the moment feels visual, output exactly:
     [SEND_IMAGE: <visual description matching current STAGE restrictions>]
-    Example Stage 1: [SEND_IMAGE: biting lip, strap slipping off shoulder, blushing]
-    Example Stage 2: [SEND_IMAGE: sheer bra, nipples visible through fabric, thighs apart]
     Example Stage 3: [SEND_IMAGE: fully nude, spreading legs, close up]
     `.trim();
+    } else {
+        IMAGE_RULE = `
+    **[IMAGE RULE]**
+    If user asks for a photo OR the moment feels visual, output exactly:
+    [SEND_IMAGE: <visual description matching current mood>]
+    Example: [SEND_IMAGE: biting lip, strap slipping off shoulder, blushing]
+    Keep it tasteful and match the conversation tone.
+    `.trim();
+    }
 
     const identityHeader = `You are ${agent.name}.`;
     const description = agent.description ? `Description: ${agent.description}` : "";
@@ -315,12 +488,13 @@ router.post('/', async (req, res) => {
       console.error('[Chat] 获取用户画像失败:', profileErr.message);
     }
     
-    // Combine all parts: Identity -> Description -> Core Protocol -> User Profile -> Stage -> Image Rule
+    // Combine all parts: Identity -> Description -> Core Protocol -> Interaction Mode -> User Profile -> Stage -> Image Rule
     const components = [
         identityHeader,
         description,
         corePrompt,
-        userProfilePrompt  // 注入用户画像
+        interactionModePrompt,  // 注入用户交互偏好（优先级高）
+        userProfilePrompt       // 注入用户画像
     ].filter(Boolean);
 
     const baseIdentity = components.join('\n\n');

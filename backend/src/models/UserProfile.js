@@ -57,6 +57,20 @@ const UserProfileSchema = new mongoose.Schema({
   conversationSummary: { type: String, default: '' },  // AI 生成的对话摘要
   lastSummaryAt: { type: Date },                       // 上次摘要时间
   
+  // ========== 交互偏好 ==========
+  // 用户选择的交互模式，决定 AI 的行为风格
+  interactionMode: { 
+    type: String, 
+    enum: ['not_set', 'friendly', 'romantic', 'flirty', 'intimate'],
+    default: 'not_set'
+  },
+  // friendly: 纯聊天，像朋友一样，不暧昧
+  // romantic: 浪漫甜蜜，像恋人一样，但不露骨
+  // flirty: 暧昧调情，有暗示但不直接
+  // intimate: 亲密深入，可以更大胆
+  
+  interactionModeSetAt: { type: Date },           // 设置时间
+  
   // ========== 元数据 ==========
   totalMessages: { type: Number, default: 0 },    // 总消息数
   lastActiveAt: { type: Date, default: Date.now } // 最后活跃时间

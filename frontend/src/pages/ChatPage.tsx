@@ -114,6 +114,16 @@ const AudioPlayer: React.FC<{ src: string; autoPlay?: boolean }> = ({ src, autoP
   );
 };
 
+// 开场提示词类型
+interface StarterPrompt {
+  id: string;
+  emoji: string;
+  title: string;
+  subtitle: string;
+  prompt: string;
+  mode: string;
+}
+
 const ChatPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -130,8 +140,11 @@ const ChatPage: React.FC = () => {
   const [balance, setBalance] = useState<number>(0);
   const [intimacy, setIntimacy] = useState<number>(0); // Intimacy State
   const [showAdModal, setShowAdModal] = useState(false);
-  // 注意：userId 现在从认证 token 中获取，不再需要硬编码
-  // 所有 API 调用会自动带上 Authorization header
+  
+  // 开场提示词状态
+  const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
+  const [showStarters, setShowStarters] = useState(false);
+  const [interactionMode, setInteractionMode] = useState<string>('not_set');
 
   // Video Generation Options
   // Removed videoFastMode toggle, defaulting to Fast Mode always as Quality Mode is deprecated.
@@ -163,11 +176,54 @@ const ChatPage: React.FC = () => {
             if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
         })
         .catch(console.error);
+      
+      // 获取开场提示词选项
+      fetchStarterPrompts(id);
     }
     
     // Fetch initial balance
     fetchBalance();
   }, [id, navigate]);
+  
+  // 获取开场提示词
+  const fetchStarterPrompts = async (agentId: string) => {
+    try {
+      const res = await http.get(`/chat/starter-prompts/${agentId}`);
+      if (res.data.showStarters) {
+        setStarterPrompts(res.data.prompts || []);
+        setShowStarters(true);
+      } else {
+        setShowStarters(false);
+      }
+      if (res.data.currentMode) {
+        setInteractionMode(res.data.currentMode);
+      }
+    } catch (err) {
+      console.error('Failed to fetch starter prompts', err);
+    }
+  };
+  
+  // 处理选择开场提示词
+  const handleStarterSelect = async (starter: StarterPrompt) => {
+    if (!agent?._id) return;
+    
+    try {
+      // 1. 设置交互模式
+      await http.post(`/chat/interaction-mode/${agent._id}`, { mode: starter.mode });
+      setInteractionMode(starter.mode);
+      setShowStarters(false);
+      
+      // 2. 发送选中的提示词作为第一条消息
+      setChatPrompt(starter.prompt);
+      // 使用 setTimeout 确保状态更新后再发送
+      setTimeout(() => {
+        const sendBtn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
+        if (sendBtn) sendBtn.click();
+      }, 100);
+    } catch (err) {
+      console.error('Failed to set interaction mode', err);
+    }
+  };
 
   useEffect(() => {
     if (!ENABLE_VIDEO_FEATURE && responseMode === 'video') {
@@ -470,15 +526,50 @@ const ChatPage: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 relative z-10">
         <div className="max-w-3xl mx-auto space-y-6">
           {messages.length === 0 && (
-            <div className="text-center py-12">
-              <div className="inline-block p-4 rounded-full bg-indigo-50 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900">Start a conversation with {agent.name}</h3>
-              <p className="text-gray-500 mt-1 max-w-md mx-auto">{agent.description}</p>
-              <p className="text-xs text-gray-400 mt-4">Chat costs 1 Coin. Images cost 10 Coins.</p>
+            <div className="text-center py-8">
+              {/* Agent Avatar */}
+              <img 
+                src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')} 
+                alt={agent.name}
+                className="w-24 h-24 rounded-full object-cover object-[50%_20%] mx-auto mb-4 border-4 border-white shadow-lg"
+                onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120'; }}
+              />
+              <h3 className="text-xl font-bold text-gray-900 mb-1">{agent.name}</h3>
+              <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">{agent.description}</p>
+              
+              {/* 开场提示词选项 */}
+              {showStarters && starterPrompts.length > 0 ? (
+                <div className="space-y-3 max-w-sm mx-auto">
+                  <p className="text-sm text-gray-600 mb-4">你想怎么和我聊天？</p>
+                  {starterPrompts.map((starter) => (
+                    <button
+                      key={starter.id}
+                      onClick={() => handleStarterSelect(starter)}
+                      className="w-full flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all text-left group"
+                    >
+                      <span className="text-2xl">{starter.emoji}</span>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900 group-hover:text-indigo-600">{starter.title}</div>
+                        <div className="text-xs text-gray-500">{starter.subtitle}</div>
+                      </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 group-hover:text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div>
+                  <div className="inline-block p-3 rounded-full bg-indigo-50 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-600 text-sm">发送消息开始聊天吧～</p>
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-400 mt-6">聊天 1 金币 · 图片 10 金币</p>
             </div>
           )}
 
@@ -682,6 +773,7 @@ const ChatPage: React.FC = () => {
                     autoFocus
                     />
                     <button 
+                    data-send-btn
                     onClick={handleChat} 
                     disabled={loading || !chatPrompt.trim() || balance < 1}
                     className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
