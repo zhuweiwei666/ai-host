@@ -114,14 +114,10 @@ const AudioPlayer: React.FC<{ src: string; autoPlay?: boolean }> = ({ src, autoP
   );
 };
 
-// 开场提示词类型
-interface StarterPrompt {
-  id: string;
-  emoji: string;
-  title: string;
-  subtitle: string;
-  prompt: string;
-  mode: string;
+// 三选一回复选项类型
+interface ReplyOption {
+  text: string;
+  style: 'shy' | 'normal' | 'bold';
 }
 
 const ChatPage: React.FC = () => {
@@ -141,11 +137,10 @@ const ChatPage: React.FC = () => {
   const [intimacy, setIntimacy] = useState<number>(0); // Intimacy State
   const [showAdModal, setShowAdModal] = useState(false);
   
-  // 开场提示词状态
-  const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
-  const [showStarters, setShowStarters] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_interactionMode, setInteractionMode] = useState<string>('not_set');
+  // 用户类型侦测系统状态
+  const [replyOptions, setReplyOptions] = useState<ReplyOption[]>([]);
+  const [detectionRound, setDetectionRound] = useState(0);
+  const [isDetectionComplete, setIsDetectionComplete] = useState(false);
 
   // Video Generation Options
   // Removed videoFastMode toggle, defaulting to Fast Mode always as Quality Mode is deprecated.
@@ -178,51 +173,51 @@ const ChatPage: React.FC = () => {
         })
         .catch(console.error);
       
-      // 获取开场提示词选项
-      fetchStarterPrompts(id);
+      // 获取侦测状态
+      fetchDetectionStatus(id);
     }
     
     // Fetch initial balance
     fetchBalance();
   }, [id, navigate]);
   
-  // 获取开场提示词
-  const fetchStarterPrompts = async (agentId: string) => {
+  // 获取用户类型侦测状态
+  const fetchDetectionStatus = async (agentId: string) => {
     try {
-      const res = await http.get(`/chat/starter-prompts/${agentId}`);
-      if (res.data.showStarters) {
-        setStarterPrompts(res.data.prompts || []);
-        setShowStarters(true);
-      } else {
-        setShowStarters(false);
-      }
-      if (res.data.currentMode) {
-        setInteractionMode(res.data.currentMode);
+      const res = await http.get(`/chat/detection-status/${agentId}`);
+      setDetectionRound(res.data.round || 0);
+      setIsDetectionComplete(res.data.isComplete || false);
+      if (res.data.replyOptions && res.data.replyOptions.length > 0) {
+        setReplyOptions(res.data.replyOptions);
       }
     } catch (err) {
-      console.error('Failed to fetch starter prompts', err);
+      console.error('Failed to fetch detection status', err);
     }
   };
   
-  // 处理选择开场提示词
-  const handleStarterSelect = async (starter: StarterPrompt) => {
+  // 处理选择三选一回复
+  const handleReplyOptionSelect = async (option: ReplyOption, index: number) => {
     if (!agent?._id) return;
     
     try {
-      // 1. 设置交互模式
-      await http.post(`/chat/interaction-mode/${agent._id}`, { mode: starter.mode });
-      setInteractionMode(starter.mode);
-      setShowStarters(false);
+      // 1. 记录用户选择
+      const recordRes = await http.post(`/chat/record-choice/${agent._id}`, { choiceIndex: index });
+      setDetectionRound(recordRes.data.round || 0);
+      setIsDetectionComplete(recordRes.data.isComplete || false);
       
-      // 2. 发送选中的提示词作为第一条消息
-      setChatPrompt(starter.prompt);
-      // 使用 setTimeout 确保状态更新后再发送
+      // 2. 清空当前选项
+      setReplyOptions([]);
+      
+      // 3. 发送选中的文本
+      setChatPrompt(option.text);
       setTimeout(() => {
         const sendBtn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
         if (sendBtn) sendBtn.click();
       }, 100);
     } catch (err) {
-      console.error('Failed to set interaction mode', err);
+      console.error('Failed to record choice', err);
+      // 即使记录失败也发送消息
+      setChatPrompt(option.text);
     }
   };
 
@@ -293,6 +288,17 @@ const ChatPage: React.FC = () => {
       
       if (textRes.data.balance !== undefined) setBalance(textRes.data.balance);
       if (textRes.data.intimacy !== undefined) setIntimacy(textRes.data.intimacy);
+      
+      // 更新侦测状态和选项
+      if (textRes.data.detection) {
+        setDetectionRound(textRes.data.detection.round || 0);
+        setIsDetectionComplete(textRes.data.detection.isComplete || false);
+        if (textRes.data.detection.replyOptions && textRes.data.detection.replyOptions.length > 0) {
+          setReplyOptions(textRes.data.detection.replyOptions);
+        } else {
+          setReplyOptions([]);
+        }
+      }
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',
@@ -536,31 +542,28 @@ const ChatPage: React.FC = () => {
                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120'; }}
               />
               <h3 className="text-xl font-bold text-gray-900 mb-1">{agent.name}</h3>
-              <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">{agent.description}</p>
+              <p className="text-gray-500 text-sm max-w-md mx-auto mb-4">{agent.description}</p>
               
-              {/* 开场提示词选项 */}
-              {showStarters && starterPrompts.length > 0 ? (
-                <div className="space-y-3 max-w-sm mx-auto">
-                  <p className="text-sm text-gray-600 mb-4">你想怎么和我聊天？</p>
-                  {starterPrompts.map((starter) => (
+              {/* 首次对话三选一选项 */}
+              {replyOptions.length > 0 && !isDetectionComplete ? (
+                <div className="space-y-2 max-w-sm mx-auto mt-4">
+                  <p className="text-sm text-gray-500 mb-3">选择一个开场白开始对话：</p>
+                  {replyOptions.map((option, idx) => (
                     <button
-                      key={starter.id}
-                      onClick={() => handleStarterSelect(starter)}
-                      className="w-full flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all text-left group"
+                      key={idx}
+                      onClick={() => handleReplyOptionSelect(option, idx)}
+                      className={`w-full p-3 rounded-xl border text-left transition-all ${
+                        idx === 0 ? 'bg-pink-50 border-pink-200 hover:border-pink-400' :
+                        idx === 1 ? 'bg-purple-50 border-purple-200 hover:border-purple-400' :
+                        'bg-red-50 border-red-200 hover:border-red-400'
+                      }`}
                     >
-                      <span className="text-2xl">{starter.emoji}</span>
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900 group-hover:text-indigo-600">{starter.title}</div>
-                        <div className="text-xs text-gray-500">{starter.subtitle}</div>
-                      </div>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 group-hover:text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                      <span className="text-sm">{option.text}</span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <div>
+                <div className="mt-4">
                   <div className="inline-block p-3 rounded-full bg-indigo-50 mb-3">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -570,7 +573,7 @@ const ChatPage: React.FC = () => {
                 </div>
               )}
               
-              <p className="text-xs text-gray-400 mt-6">聊天 1 金币 · 图片 10 金币</p>
+              <p className="text-xs text-gray-400 mt-4">聊天 1 金币 · 图片 10 金币</p>
             </div>
           )}
 
@@ -685,6 +688,33 @@ const ChatPage: React.FC = () => {
             </div>
           ))}
           <div ref={chatEndRef} />
+          
+          {/* 侦测期间的三选一回复选项（在消息下方显示） */}
+          {messages.length > 0 && replyOptions.length > 0 && !isDetectionComplete && !loading && (
+            <div className="mt-4 mb-2 px-2">
+              <p className="text-xs text-gray-400 text-center mb-2">
+                选择回复 ({detectionRound}/5)
+              </p>
+              <div className="flex flex-col gap-2 max-w-md mx-auto">
+                {replyOptions.map((option, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleReplyOptionSelect(option, idx)}
+                    disabled={loading}
+                    className={`w-full p-3 rounded-2xl text-sm text-left transition-all shadow-sm ${
+                      idx === 0 
+                        ? 'bg-gradient-to-r from-pink-50 to-pink-100 border border-pink-200 hover:border-pink-400 text-pink-800' 
+                        : idx === 1 
+                        ? 'bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 hover:border-purple-400 text-purple-800' 
+                        : 'bg-gradient-to-r from-red-50 to-red-100 border border-red-200 hover:border-red-400 text-red-800'
+                    }`}
+                  >
+                    {option.text}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </main>
 

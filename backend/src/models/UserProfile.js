@@ -57,19 +57,23 @@ const UserProfileSchema = new mongoose.Schema({
   conversationSummary: { type: String, default: '' },  // AI 生成的对话摘要
   lastSummaryAt: { type: Date },                       // 上次摘要时间
   
-  // ========== 交互偏好 ==========
-  // 用户选择的交互模式，决定 AI 的行为风格
-  interactionMode: { 
-    type: String, 
-    enum: ['not_set', 'friendly', 'romantic', 'flirty', 'intimate'],
-    default: 'not_set'
-  },
-  // friendly: 纯聊天，像朋友一样，不暧昧
-  // romantic: 浪漫甜蜜，像恋人一样，但不露骨
-  // flirty: 暧昧调情，有暗示但不直接
-  // intimate: 亲密深入，可以更大胆
+  // ========== 用户类型侦测 ==========
+  // 前5轮对话用于侦测用户类型
+  detectionRound: { type: Number, default: 0 },     // 当前侦测轮数 (0-5)
+  detectionChoices: [{                               // 用户的选择记录
+    round: Number,                                   // 第几轮
+    choiceIndex: Number,                             // 选择了哪个 (0=含蓄, 1=中等, 2=直接)
+    createdAt: { type: Date, default: Date.now }
+  }],
   
-  interactionModeSetAt: { type: Date },           // 设置时间
+  // 用户类型 (5轮后确定)
+  userType: { 
+    type: String, 
+    enum: ['unknown', 'slow_burn', 'direct'],       // unknown=未确定, slow_burn=闷骚型, direct=直接型
+    default: 'unknown'
+  },
+  userTypeScore: { type: Number, default: 0 },      // 累计分数: 选项0=1分, 选项1=2分, 选项2=3分
+  userTypeConfirmedAt: { type: Date },              // 类型确定时间           // 设置时间
   
   // ========== 元数据 ==========
   totalMessages: { type: Number, default: 0 },    // 总消息数

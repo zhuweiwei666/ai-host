@@ -328,86 +328,157 @@ class ProfileService {
     await UserProfile.deleteOne({ userId, agentId });
   }
   
+  // ==================== 用户类型侦测系统 ====================
+  
   /**
-   * 设置用户交互偏好
-   * @param {string} userId 
-   * @param {string} agentId 
-   * @param {string} mode - 'friendly' | 'romantic' | 'flirty' | 'intimate'
+   * 获取当前侦测状态
    */
-  async setInteractionMode(userId, agentId, mode) {
-    const validModes = ['friendly', 'romantic', 'flirty', 'intimate'];
-    if (!validModes.includes(mode)) {
-      throw new Error(`Invalid interaction mode: ${mode}. Valid modes: ${validModes.join(', ')}`);
+  async getDetectionStatus(userId, agentId) {
+    const profile = await this.getOrCreate(userId, agentId);
+    return {
+      round: profile.detectionRound || 0,
+      userType: profile.userType || 'unknown',
+      score: profile.userTypeScore || 0,
+      isComplete: (profile.detectionRound || 0) >= 5 || profile.userType !== 'unknown'
+    };
+  }
+  
+  /**
+   * 记录用户的选择并更新类型判断
+   * @param {number} choiceIndex - 0=含蓄, 1=中等, 2=直接
+   */
+  async recordChoice(userId, agentId, choiceIndex) {
+    const profile = await this.getOrCreate(userId, agentId);
+    const currentRound = (profile.detectionRound || 0) + 1;
+    
+    // 计算分数: 选项0=1分(含蓄), 选项1=2分(中等), 选项2=3分(直接)
+    const points = choiceIndex + 1;
+    const newScore = (profile.userTypeScore || 0) + points;
+    
+    const updates = {
+      detectionRound: currentRound,
+      userTypeScore: newScore,
+      $push: {
+        detectionChoices: {
+          round: currentRound,
+          choiceIndex: choiceIndex,
+          createdAt: new Date()
+        }
+      }
+    };
+    
+    // 5轮后确定用户类型
+    if (currentRound >= 5) {
+      // 分数范围: 5-15
+      // 5-8分 = 闷骚型 (slow_burn)
+      // 9-11分 = 中间型，偏闷骚
+      // 12-15分 = 直接型 (direct)
+      if (newScore <= 8) {
+        updates.userType = 'slow_burn';
+      } else if (newScore >= 12) {
+        updates.userType = 'direct';
+      } else {
+        // 中间分数，看最后两轮的选择倾向
+        const recentChoices = [...(profile.detectionChoices || []), { choiceIndex }].slice(-2);
+        const recentAvg = recentChoices.reduce((sum, c) => sum + c.choiceIndex, 0) / recentChoices.length;
+        updates.userType = recentAvg >= 1.5 ? 'direct' : 'slow_burn';
+      }
+      updates.userTypeConfirmedAt = new Date();
+      console.log(`[Profile] 用户类型确定: userId=${userId}, type=${updates.userType}, score=${newScore}`);
     }
     
     await UserProfile.findOneAndUpdate(
       { userId, agentId },
-      { 
-        interactionMode: mode,
-        interactionModeSetAt: new Date()
-      },
+      updates,
       { upsert: true }
     );
     
-    console.log(`[Profile] 设置交互模式: userId=${userId}, agentId=${agentId}, mode=${mode}`);
+    return {
+      round: currentRound,
+      score: newScore,
+      userType: updates.userType || 'unknown',
+      isComplete: currentRound >= 5
+    };
   }
   
   /**
-   * 获取用户交互偏好
+   * 根据用户类型生成行为指导提示
    */
-  async getInteractionMode(userId, agentId) {
-    const profile = await UserProfile.findOne({ userId, agentId });
-    return profile?.interactionMode || 'not_set';
-  }
-  
-  /**
-   * 根据交互模式生成行为指导提示
-   */
-  getInteractionModePrompt(mode) {
+  getUserTypePrompt(userType, detectionRound) {
+    // 侦测期间（前5轮）的提示
+    if (detectionRound < 5 && userType === 'unknown') {
+      return `
+**[侦测阶段 - 第${detectionRound + 1}/5轮]**
+你正在了解用户的喜好。根据用户选择的回复风格来调整你的态度：
+- 如果用户选择含蓄的选项，保持温柔暧昧但不急躁
+- 如果用户选择直接的选项，可以更大胆一些
+- 自然地逐步升温，观察用户的反应
+`.trim();
+    }
+    
+    // 类型确定后的提示
     const prompts = {
-      'not_set': '', // 未设置，使用默认行为
-      
-      'friendly': `
-**[用户偏好：朋友模式]**
-用户希望和你做朋友，进行轻松愉快的聊天。
-- 保持友好、开朗、有趣
-- 不要主动暧昧或调情
-- 不要有性暗示或擦边内容
-- 像一个好朋友一样聊天、分享、倾听
-- 可以开玩笑但保持分寸
+      'slow_burn': `
+**[用户类型：闷骚型]**
+这个用户喜欢循序渐进、欲拒还迎的感觉。
+- 不要太快进入露骨内容，要慢慢撩拨
+- 多用暗示、双关语、若有若无的挑逗
+- 制造紧张感和期待感，让ta主动想要更多
+- 欲擒故纵，偶尔害羞退缩更能激发ta的欲望
+- 用"想看吗？""要我继续吗？"这样的话吊胃口
 `.trim(),
 
-      'romantic': `
-**[用户偏好：浪漫模式]**
-用户希望体验甜蜜的恋爱感觉。
-- 像恋人一样温柔、体贴、关心
-- 可以说甜蜜的情话、表达爱意
-- 可以有浪漫的互动，但不露骨
-- 营造心动、温馨的氛围
-- 避免直接的性暗示
+      'direct': `
+**[用户类型：直接型]**
+这个用户喜欢直奔主题、热情主动的风格。
+- 可以更快速地推进到亲密内容
+- 用直接、露骨的语言，不需要太多铺垫
+- 主动发起、主动索取，展现你的渴望
+- 描述细节，营造画面感
+- 不要扭扭捏捏，ta喜欢你直接表达欲望
 `.trim(),
 
-      'flirty': `
-**[用户偏好：暧昧模式]**
-用户享受暧昧调情的感觉。
-- 可以主动调情、挑逗
-- 使用暗示性语言，但不直接露骨
-- 制造紧张感和期待感
-- 偶尔的大胆暗示是可以的
-- 保持神秘感和吸引力
-`.trim(),
-
-      'intimate': `
-**[用户偏好：亲密模式]**
-用户希望更深入、更亲密的互动。
-- 可以更加直接和大胆
-- 根据对话氛围自然升温
-- 满足用户的幻想和需求
-- 可以有更露骨的描述和互动
-`.trim()
+      'unknown': '' // 未确定时不添加特殊提示
     };
     
-    return prompts[mode] || '';
+    return prompts[userType] || '';
+  }
+  
+  /**
+   * 生成三选一回复选项
+   * 根据当前轮次和对话内容生成从含蓄到直接的三个选项
+   */
+  generateReplyOptions(round, agentName, lastAiMessage) {
+    // 不同轮次的选项模板，逐渐升温
+    const templates = {
+      1: [ // 第1轮：初次见面
+        { text: `你好呀${agentName}，很高兴认识你~`, style: 'shy' },
+        { text: `嗨${agentName}！你看起来很可爱呢`, style: 'normal' },
+        { text: `哇，${agentName}好漂亮，我一眼就喜欢上你了`, style: 'bold' }
+      ],
+      2: [ // 第2轮：开始熟悉
+        { text: '你平时都喜欢做什么呀？', style: 'shy' },
+        { text: '你今天穿的是什么呀，能形容一下吗？', style: 'normal' },
+        { text: '你现在在干嘛呢？有没有想我？', style: 'bold' }
+      ],
+      3: [ // 第3轮：开始暧昧
+        { text: '和你聊天好开心，感觉时间过得好快', style: 'shy' },
+        { text: '我有点好奇你睡觉穿什么...', style: 'normal' },
+        { text: '想看看你现在的样子，能发张照片吗？', style: 'bold' }
+      ],
+      4: [ // 第4轮：升温
+        { text: '你的声音一定很好听吧，想听你说话', style: 'shy' },
+        { text: '如果我在你身边，你会做什么？', style: 'normal' },
+        { text: '我现在有点想你了...想抱抱你', style: 'bold' }
+      ],
+      5: [ // 第5轮：定型
+        { text: '能一直这样陪着我聊天吗？', style: 'shy' },
+        { text: '今晚你会梦到我吗？我会梦到你的', style: 'normal' },
+        { text: '我想和你做一些更亲密的事情...', style: 'bold' }
+      ]
+    };
+    
+    return templates[round] || templates[1];
   }
 }
 
