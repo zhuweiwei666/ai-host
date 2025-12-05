@@ -963,7 +963,7 @@ const ChatPage: React.FC = () => {
 
       {/* 礼物面板 */}
       <GiftPanel
-        agentId={agent._id}
+        agentId={agent._id || ''}
         agentName={agent.name}
         isOpen={showGiftPanel}
         onClose={() => setShowGiftPanel(false)}
@@ -973,7 +973,7 @@ const ChatPage: React.FC = () => {
 
       {/* 衣服/场景画廊 */}
       <OutfitGallery
-        agentId={agent._id}
+        agentId={agent._id || ''}
         agentName={agent.name}
         isOpen={showOutfitGallery}
         onClose={() => setShowOutfitGallery(false)}
@@ -982,7 +982,7 @@ const ChatPage: React.FC = () => {
 
       {/* 关系面板 */}
       <RelationshipPanel
-        agentId={agent._id}
+        agentId={agent._id || ''}
         agentName={agent.name}
         isOpen={showRelationshipPanel}
         onClose={() => setShowRelationshipPanel(false)}
