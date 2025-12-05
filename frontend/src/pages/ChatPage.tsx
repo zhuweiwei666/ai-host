@@ -117,7 +117,7 @@ const AudioPlayer: React.FC<{ src: string; autoPlay?: boolean }> = ({ src, autoP
 // 三选一回复选项类型
 interface ReplyOption {
   text: string;
-  style: 'shy' | 'normal' | 'bold';
+  style: string;
 }
 
 const ChatPage: React.FC = () => {
