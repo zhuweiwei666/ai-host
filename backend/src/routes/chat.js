@@ -174,6 +174,16 @@ router.get('/history/:agentId', async (req, res) => {
   if (!agentId) return errors.badRequest(res, 'agentId is required');
 
   try {
+    // ========== 投递主动消息 ==========
+    // 检查是否有待投递的 AI 主动消息
+    try {
+      const proactiveMessageService = require('../services/proactiveMessageService');
+      await proactiveMessageService.deliverMessages(userId, agentId);
+    } catch (proactiveErr) {
+      console.error('[Chat] 投递主动消息失败:', proactiveErr.message);
+      // 不影响主流程
+    }
+    
     // 关键修复：按 userId + agentId 联合查询，确保每个用户只看到自己的聊天记录
     // 记忆长度：100条消息（可根据需要调整，更多消息=更长记忆，但也会增加 token 消耗）
     const MEMORY_LENGTH = 100;
@@ -191,7 +201,9 @@ router.get('/history/:agentId', async (req, res) => {
       role: m.role,
       content: m.content,
       audioUrl: m.audioUrl,
-      imageUrl: m.imageUrl
+      imageUrl: m.imageUrl,
+      isProactive: m.isProactive || false, // 标记是否是主动消息
+      proactiveType: m.proactiveType
     }));
 
     // 如果没有历史记录，获取 AI 主动开场消息

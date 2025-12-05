@@ -17,6 +17,8 @@ interface ChatMessage {
   isLoadingAudio?: boolean;
   shouldAutoPlay?: boolean;
   isMediaLoading?: boolean; // Added for loading state
+  isProactive?: boolean; // AI 主动发送的消息
+  proactiveType?: string; // 主动消息类型: greeting, missing, life_share, tease 等
 }
 
 // AudioPlayer Component (Unchanged)
@@ -695,11 +697,28 @@ const ChatPage: React.FC = () => {
                   </div>
                 )}
                 
+                {/* 主动消息标签 */}
+                {msg.isProactive && (
+                  <div className="flex items-center gap-1 text-xs text-pink-500 mb-1">
+                    <span>💭</span>
+                    <span>
+                      {msg.proactiveType === 'greeting' && '来自她的问候'}
+                      {msg.proactiveType === 'missing' && '她在想你'}
+                      {msg.proactiveType === 'life_share' && '她的日常'}
+                      {msg.proactiveType === 'tease' && '悄悄话'}
+                      {msg.proactiveType === 'mood' && '心情分享'}
+                      {!['greeting', 'missing', 'life_share', 'tease', 'mood'].includes(msg.proactiveType || '') && '主动消息'}
+                    </span>
+                  </div>
+                )}
+                
                 <div 
                   className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-wrap ${
                     msg.role === 'user' 
                       ? 'bg-indigo-600 text-white rounded-br-none' 
-                      : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
+                      : msg.isProactive 
+                        ? 'bg-gradient-to-br from-pink-50 to-rose-50 text-gray-800 rounded-bl-none border border-pink-100' 
+                        : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
                   }`}
                 >
                   {msg.content}

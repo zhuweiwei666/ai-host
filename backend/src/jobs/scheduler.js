@@ -11,6 +11,7 @@ const paceController = require('../services/paceController');
 const recallService = require('../services/recallService');
 const alertService = require('../services/alertService');
 const notificationService = require('../services/notificationService');
+const proactiveMessageService = require('../services/proactiveMessageService');
 
 class JobScheduler {
   constructor() {
@@ -143,6 +144,74 @@ class JobScheduler {
       }
     }));
     
+    // ========== AI 主动消息任务 ==========
+    
+    // 每天早上 7:30：生成早安消息
+    this.jobs.push(cron.schedule('30 7 * * *', async () => {
+      console.log('⏰ [Scheduler] 生成 AI 主动消息 (早安)...');
+      try {
+        const count = await proactiveMessageService.generateBatchMessages();
+        console.log(`✅ [Scheduler] 主动消息生成: ${count} 条`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 主动消息生成失败:', err.message);
+      }
+    }));
+    
+    // 每天中午 12:30：生成午间消息
+    this.jobs.push(cron.schedule('30 12 * * *', async () => {
+      console.log('⏰ [Scheduler] 生成 AI 主动消息 (午间)...');
+      try {
+        const count = await proactiveMessageService.generateBatchMessages();
+        console.log(`✅ [Scheduler] 主动消息生成: ${count} 条`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 主动消息生成失败:', err.message);
+      }
+    }));
+    
+    // 每天下午 15:30：生成下午消息
+    this.jobs.push(cron.schedule('30 15 * * *', async () => {
+      console.log('⏰ [Scheduler] 生成 AI 主动消息 (下午)...');
+      try {
+        const count = await proactiveMessageService.generateBatchMessages();
+        console.log(`✅ [Scheduler] 主动消息生成: ${count} 条`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 主动消息生成失败:', err.message);
+      }
+    }));
+    
+    // 每天晚上 19:30：生成晚间消息
+    this.jobs.push(cron.schedule('30 19 * * *', async () => {
+      console.log('⏰ [Scheduler] 生成 AI 主动消息 (晚间)...');
+      try {
+        const count = await proactiveMessageService.generateBatchMessages();
+        console.log(`✅ [Scheduler] 主动消息生成: ${count} 条`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 主动消息生成失败:', err.message);
+      }
+    }));
+    
+    // 每天晚上 22:30：生成晚安消息
+    this.jobs.push(cron.schedule('30 22 * * *', async () => {
+      console.log('⏰ [Scheduler] 生成 AI 主动消息 (晚安)...');
+      try {
+        const count = await proactiveMessageService.generateBatchMessages();
+        console.log(`✅ [Scheduler] 主动消息生成: ${count} 条`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 主动消息生成失败:', err.message);
+      }
+    }));
+    
+    // 每天凌晨 1 点：清理过期的主动消息
+    this.jobs.push(cron.schedule('0 1 * * *', async () => {
+      console.log('⏰ [Scheduler] 清理过期主动消息...');
+      try {
+        const cleaned = await proactiveMessageService.cleanup();
+        console.log(`✅ [Scheduler] 清理了 ${cleaned} 条过期消息`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 清理过期消息失败:', err.message);
+      }
+    }));
+    
     // 每2小时：告警检测和通知
     this.jobs.push(cron.schedule('0 */2 * * *', async () => {
       console.log('⏰ [Scheduler] 运行告警检测...');
@@ -194,13 +263,19 @@ class JobScheduler {
     console.log('📅 已注册的任务:');
     console.log('  - 每小时: 对话评估、内容分数更新');
     console.log('  - 每2小时: 告警检测和通知');
+    console.log('  - 每日 01:00: 清理过期主动消息');
     console.log('  - 每日 02:00: 内容分数全量更新');
     console.log('  - 每日 03:00: 标记表现不佳内容');
     console.log('  - 每日 04:00: 用户画像更新');
     console.log('  - 每日 05:00: 流失风险更新');
     console.log('  - 每日 06:00: 个性化阈值更新');
+    console.log('  - 每日 07:30: AI主动消息(早安)');
     console.log('  - 每日 08:00: 生成日报');
     console.log('  - 每日 10:00: 用户召回');
+    console.log('  - 每日 12:30: AI主动消息(午间)');
+    console.log('  - 每日 15:30: AI主动消息(下午)');
+    console.log('  - 每日 19:30: AI主动消息(晚间)');
+    console.log('  - 每日 22:30: AI主动消息(晚安)');
     console.log('  - 每周一 04:00: A/B测试评估、Prompt优化');
   }
   
@@ -265,6 +340,12 @@ class JobScheduler {
       
       case 'sendNotifications':
         return await notificationService.sendPendingNotifications();
+      
+      case 'generateProactiveMessages':
+        return await proactiveMessageService.generateBatchMessages();
+      
+      case 'cleanupProactiveMessages':
+        return await proactiveMessageService.cleanup();
       
       default:
         throw new Error(`未知任务: ${taskName}`);

@@ -713,6 +713,8 @@ router.get('/tasks/list', (req, res) => {
     { name: 'executeRecall', description: '执行用户召回' },
     { name: 'evaluateABTests', description: '评估A/B测试' },
     { name: 'recallEffectiveness', description: '分析召回效果' },
+    { name: 'generateProactiveMessages', description: '生成AI主动消息' },
+    { name: 'cleanupProactiveMessages', description: '清理过期主动消息' },
   ];
   
   sendSuccess(res, HTTP_STATUS.OK, { tasks });

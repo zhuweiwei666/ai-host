@@ -25,6 +25,13 @@ const MessageSchema = new mongoose.Schema(
     experimentId: { type: mongoose.Schema.Types.ObjectId, ref: 'PromptExperiment' },
     variantId: String,
     
+    // ========== 主动消息相关 ==========
+    isProactive: { type: Boolean, default: false }, // 是否是 AI 主动发送的消息
+    proactiveType: { 
+      type: String, 
+      enum: ['greeting', 'missing', 'life_share', 'anniversary', 'recall', 'mood', 'tease']
+    },
+    
     createdAt: { type: Date, default: Date.now }
   }
 );
