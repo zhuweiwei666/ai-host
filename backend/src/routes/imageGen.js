@@ -3,6 +3,7 @@ const router = express.Router();
 const imageGenerationService = require('../services/imageGenerationService');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
+const ugcImageService = require('../services/ugcImageService');
 const Agent = require('../models/Agent');
 const Message = require('../models/Message');
 const UsageLog = require('../models/UsageLog');
@@ -116,6 +117,25 @@ router.post('/', async (req, res) => {
       console.log('[ImageGen] 已更新消息 imageUrl:', imageUrl.substring(0, 50) + '...');
     } catch (msgErr) {
       console.error('[ImageGen] 更新消息 imageUrl 失败:', msgErr.message);
+    }
+
+    // 6. 保存到 UGC 相册
+    try {
+      // 判断是否为 NSFW：检查用户的亲密度等级
+      const intimacy = await relationshipService.getIntimacy(safeUserId, agentId);
+      const t2 = agent.stage2Threshold || 60;
+      const isNsfw = intimacy > t2; // Stage 3 为 NSFW
+      
+      await ugcImageService.saveGeneratedImage({
+        agentId,
+        imageUrl,
+        prompt: description,
+        generatedByUserId: safeUserId,
+        isNsfw
+      });
+      console.log(`[ImageGen] 已保存到 UGC 相册: isNsfw=${isNsfw}`);
+    } catch (ugcErr) {
+      console.error('[ImageGen] 保存到 UGC 相册失败:', ugcErr.message);
     }
 
     // 7. 记录使用日志 & 增加亲密度
