@@ -22,10 +22,10 @@ interface Outfit {
 
 interface OutfitManagerProps {
   agentId: string;
-  agentName: string;
+  agentName?: string;
 }
 
-export function OutfitManager({ agentId, agentName }: OutfitManagerProps) {
+export function OutfitManager({ agentId }: OutfitManagerProps) {
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null); // outfitId or 'all'
@@ -92,11 +92,6 @@ export function OutfitManager({ agentId, agentName }: OutfitManagerProps) {
       setGenerating(null);
       setTimeout(() => setProgress(''), 5000);
     }
-  };
-
-  const getLevelLabel = (level: number) => {
-    const labels = ['', '日常', '性感', '暴露', '大尺度', '极限'];
-    return labels[level] || '';
   };
 
   const getLevelColor = (level: number) => {
