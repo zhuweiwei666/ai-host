@@ -9,6 +9,8 @@ const userAnalyzer = require('../services/userAnalyzer');
 const abTestService = require('../services/abTestService');
 const paceController = require('../services/paceController');
 const recallService = require('../services/recallService');
+const alertService = require('../services/alertService');
+const notificationService = require('../services/notificationService');
 
 class JobScheduler {
   constructor() {
@@ -141,6 +143,23 @@ class JobScheduler {
       }
     }));
     
+    // 每2小时：告警检测和通知
+    this.jobs.push(cron.schedule('0 */2 * * *', async () => {
+      console.log('⏰ [Scheduler] 运行告警检测...');
+      try {
+        const result = await alertService.runAllChecks();
+        console.log(`✅ [Scheduler] 告警检测: 新增 ${result.alertsCreated}, 更新 ${result.alertsUpdated}`);
+        
+        // 发送待发送的通知
+        const notifyResult = await notificationService.sendPendingNotifications();
+        if (notifyResult.sent > 0) {
+          console.log(`📢 [Scheduler] 发送通知: ${notifyResult.sent}/${notifyResult.total}`);
+        }
+      } catch (err) {
+        console.error('❌ [Scheduler] 告警检测失败:', err.message);
+      }
+    }));
+    
     // 每周一凌晨4点：评估A/B测试和生成Prompt优化建议
     this.jobs.push(cron.schedule('0 4 * * 1', async () => {
       console.log('⏰ [Scheduler] 评估A/B测试...');
@@ -149,6 +168,7 @@ class JobScheduler {
         console.log(`✅ [Scheduler] A/B测试评估: ${abResults.filter(r => r.concluded).length} 个已结束`);
       } catch (err) {
         console.error('❌ [Scheduler] A/B测试评估失败:', err.message);
+        await alertService.createTaskFailureAlert('evaluateABTests', err.message);
       }
       
       console.log('⏰ [Scheduler] 生成Prompt优化建议...');
@@ -173,6 +193,7 @@ class JobScheduler {
     console.log('✅ [Scheduler] 定时任务调度器已启动');
     console.log('📅 已注册的任务:');
     console.log('  - 每小时: 对话评估、内容分数更新');
+    console.log('  - 每2小时: 告警检测和通知');
     console.log('  - 每日 02:00: 内容分数全量更新');
     console.log('  - 每日 03:00: 标记表现不佳内容');
     console.log('  - 每日 04:00: 用户画像更新');
@@ -238,6 +259,12 @@ class JobScheduler {
       
       case 'recallEffectiveness':
         return await recallService.analyzeRecallEffectiveness(7);
+      
+      case 'runAlertChecks':
+        return await alertService.runAllChecks();
+      
+      case 'sendNotifications':
+        return await notificationService.sendPendingNotifications();
       
       default:
         throw new Error(`未知任务: ${taskName}`);

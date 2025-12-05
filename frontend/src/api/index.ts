@@ -254,3 +254,205 @@ export const toggleUgcImageActive = (agentId: string, imageId: string, isActive:
 // 批量删除 UGC 图片
 export const batchDeleteUgcImages = (agentId: string, imageIds: string[]) =>
   http.post<{ deletedCount: number }>(`/agents/${agentId}/ugc-images/batch-delete`, { imageIds });
+
+// ==================== 运营仪表盘 API ====================
+
+// Dashboard 概览
+export const getDashboardOverview = () => 
+  http.get<{
+    overview: {
+      totalAgents: number;
+      activeAgents: number;
+      totalUsers: number;
+      activeUsersToday: number;
+      totalRevenue: number;
+      revenueToday: number;
+    };
+    trends: {
+      users: { date: string; count: number }[];
+      revenue: { date: string; amount: number }[];
+      messages: { date: string; count: number }[];
+    };
+  }>('/analytics/dashboard');
+
+// 告警相关
+export interface Alert {
+  _id: string;
+  type: string;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  message: string;
+  status: 'active' | 'acknowledged' | 'resolved' | 'ignored';
+  agentId?: { _id: string; name: string };
+  userId?: string;
+  data?: {
+    metric?: string;
+    currentValue?: number;
+    threshold?: number;
+    changePercent?: number;
+    details?: Record<string, unknown>;
+  };
+  duplicateCount: number;
+  createdAt: string;
+}
+
+export interface AlertRule {
+  _id: string;
+  name: string;
+  description?: string;
+  type: string;
+  conditions: {
+    metric: string;
+    operator: string;
+    threshold: number;
+    timeWindow: number;
+    minSampleSize?: number;
+  };
+  severity: 'info' | 'warning' | 'critical';
+  enabled: boolean;
+  notifications: {
+    channels: { type: string; target: string; enabled: boolean }[];
+    cooldown: number;
+    maxPerDay: number;
+  };
+}
+
+export const getAlertStats = () => 
+  http.get<{ total: number; bySeverity: Record<string, number>; byType: Record<string, number> }>('/alert/stats');
+
+export const getAlerts = (params?: { limit?: number; status?: string; severity?: string; type?: string }) =>
+  http.get<{ count: number; alerts: Alert[] }>('/alert/list', { params });
+
+export const acknowledgeAlert = (alertId: string) =>
+  http.post(`/alert/${alertId}/acknowledge`);
+
+export const acknowledgeAlertsBatch = (alertIds: string[]) =>
+  http.post('/alert/acknowledge-batch', { alertIds });
+
+export const resolveAlert = (alertId: string, resolution?: string) =>
+  http.post(`/alert/${alertId}/resolve`, { resolution });
+
+export const ignoreAlert = (alertId: string) =>
+  http.post(`/alert/${alertId}/ignore`);
+
+export const getAlertRules = () =>
+  http.get<{ rules: AlertRule[] }>('/alert/rules/list');
+
+export const toggleAlertRule = (ruleId: string) =>
+  http.post<{ enabled: boolean; message: string }>(`/alert/rules/${ruleId}/toggle`);
+
+export const runAlertCheck = () =>
+  http.post<{ checks: unknown[]; alertsCreated: number; alertsUpdated: number }>('/alert/run-check');
+
+export const initDefaultAlertRules = () =>
+  http.post<{ message: string; count: number }>('/alert/rules/init-defaults');
+
+// A/B 测试
+export interface ABExperiment {
+  _id: string;
+  name: string;
+  description?: string;
+  agentId: { _id: string; name: string } | string;
+  status: 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
+  variants: {
+    id: string;
+    name: string;
+    prompt: string;
+    allocation: number;
+    isControl: boolean;
+    metrics: {
+      sessions: number;
+      messages: number;
+      gifts: number;
+      giftValue: number;
+      unlocks: number;
+      nextDayRetention: number;
+      totalUsers: number;
+    };
+  }[];
+  winner?: string;
+  confidenceLevel?: number;
+  startedAt?: string;
+  endedAt?: string;
+  createdAt: string;
+}
+
+export const getABExperiments = (params?: { agentId?: string; status?: string }) =>
+  http.get<{ experiments: ABExperiment[] }>('/analytics/ab-test/list', { params });
+
+export const getABExperimentResults = (experimentId: string) =>
+  http.get<{
+    experiment: { id: string; name: string; status: string; runningDays: number };
+    variants: { id: string; name: string; score: number; metrics: Record<string, number> }[];
+    totalUsers: number;
+    canConclude: boolean;
+    winner?: string;
+    confidenceLevel?: number;
+  }>(`/analytics/ab-test/${experimentId}`);
+
+export const createABExperiment = (data: { agentId: string; variants: { name?: string; prompt: string }[]; name?: string; description?: string }) =>
+  http.post<{ experiment: ABExperiment }>('/analytics/ab-test/create', data);
+
+export const startABExperiment = (experimentId: string) =>
+  http.post<{ experiment: ABExperiment }>(`/analytics/ab-test/${experimentId}/start`);
+
+export const endABExperiment = (experimentId: string, applyWinner?: boolean) =>
+  http.post(`/analytics/ab-test/${experimentId}/end`, { applyWinner });
+
+export const applyABWinner = (experimentId: string) =>
+  http.post(`/analytics/ab-test/${experimentId}/apply`);
+
+// 召回相关
+export interface RecallCandidate {
+  userId: string;
+  agentId: { _id: string; name: string };
+  intimacy: number;
+  totalMessages: number;
+  aiAnalysis?: {
+    spending?: { ltv: number; ltvTier: string };
+    behavior?: { daysSinceLastActive: number; churnRisk: string };
+  };
+  recallPriority: number;
+  suggestedRecallType: string;
+}
+
+export const getRecallCandidates = (params?: { minDays?: number; maxDays?: number; limit?: number }) =>
+  http.get<{ count: number; candidates: RecallCandidate[] }>('/analytics/recall/candidates', { params });
+
+export const executeRecall = (limit?: number) =>
+  http.post<{ sent: number; skipped: number; total: number }>('/analytics/recall/execute', { limit });
+
+export const getRecallEffectiveness = (days?: number) =>
+  http.get<{ totalSent: number; returned: number; returnRate: number; byType: Record<string, { sent: number; returned: number; returnRate: number }> }>('/analytics/recall/effectiveness', { params: { days } });
+
+// 用户分析
+export const getUserSegmentation = () =>
+  http.get<{
+    byLTV: Record<string, number>;
+    byActivity: Record<string, number>;
+    byChurnRisk: Record<string, number>;
+    total: number;
+  }>('/analytics/users/segmentation');
+
+export const getHighChurnRiskUsers = (limit?: number) =>
+  http.get<{ count: number; users: unknown[] }>('/analytics/users/churn-risk', { params: { limit } });
+
+// 内容分析
+export const getContentOverview = (agentId: string) =>
+  http.get<{
+    total: number;
+    byStatus: Record<string, number>;
+    avgScore: number;
+    topContent: unknown[];
+  }>(`/analytics/content/overview/${agentId}`);
+
+// 对话质量
+export const getConversationScores = (agentId: string, days?: number) =>
+  http.get(`/analytics/conversation/scores/${agentId}`, { params: { days } });
+
+// 手动触发任务
+export const getAvailableTasks = () =>
+  http.get<{ tasks: { name: string; description: string }[] }>('/analytics/tasks/list');
+
+export const runTask = (taskName: string) =>
+  http.post<{ task: string; result: unknown }>('/analytics/tasks/run', { taskName });
