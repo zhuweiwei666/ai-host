@@ -458,17 +458,18 @@ AI女友刚刚发送的消息是:
 ["回复1", "回复2", "回复3"]`;
 
   try {
-    const provider = ProviderFactory.create();
-    const result = await provider.chat([
-      { role: 'user', content: prompt }
-    ], {
-      model: process.env.DEFAULT_LLM_MODEL || 'grok-3-fast',
-      temperature: 0.8,
-      max_tokens: 200
-    });
+    const modelName = process.env.DEFAULT_LLM_MODEL || 'grok-3-fast';
+    const provider = ProviderFactory.getProvider(modelName);
+    const result = await provider.chat(
+      modelName,
+      [{ role: 'user', content: prompt }],
+      0.9 // 较高的 temperature 使生成更有变化
+    );
     
     // 解析 JSON 结果
-    const content = result.content.trim();
+    const content = (typeof result === 'object' && result.content) 
+      ? result.content.trim() 
+      : (typeof result === 'string' ? result.trim() : '');
     // 尝试提取 JSON 数组
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
