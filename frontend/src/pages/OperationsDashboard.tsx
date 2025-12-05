@@ -658,64 +658,81 @@ export default function OperationsDashboard() {
           </div>
         )}
 
-        {!loading && activeTab === 'users' && userSegmentation && (
+        {!loading && activeTab === 'users' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* LTV 分布 */}
-              <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="font-semibold mb-4">💰 LTV 分布</h3>
-                <div className="space-y-2">
-                  {Object.entries(userSegmentation.byLTV).map(([tier, count]) => (
-                    <div key={tier} className="flex items-center justify-between">
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        tier === 'whale' ? 'bg-purple-100 text-purple-800' :
-                        tier === 'dolphin' ? 'bg-blue-100 text-blue-800' :
-                        tier === 'minnow' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>{tier}</span>
-                      <span className="font-medium">{count}</span>
+            {userSegmentation ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* LTV 分布 */}
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="font-semibold mb-4">💰 LTV 分布</h3>
+                    <div className="space-y-2">
+                      {Object.entries(userSegmentation.byLTV || {}).map(([tier, count]) => (
+                        <div key={tier} className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            tier === 'whale' ? 'bg-purple-100 text-purple-800' :
+                            tier === 'dolphin' ? 'bg-blue-100 text-blue-800' :
+                            tier === 'minnow' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>{tier}</span>
+                          <span className="font-medium">{count as number}</span>
+                        </div>
+                      ))}
+                      {Object.keys(userSegmentation.byLTV || {}).length === 0 && (
+                        <div className="text-gray-400 text-sm">暂无数据</div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* 活跃度分布 */}
-              <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="font-semibold mb-4">📊 活跃度分布</h3>
-                <div className="space-y-2">
-                  {Object.entries(userSegmentation.byActivity).map(([level, count]) => (
-                    <div key={level} className="flex items-center justify-between">
-                      <span>{level}</span>
-                      <span className="font-medium">{count}</span>
+                  {/* 活跃度分布 */}
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="font-semibold mb-4">📊 活跃度分布</h3>
+                    <div className="space-y-2">
+                      {Object.entries(userSegmentation.byActivity || {}).map(([level, count]) => (
+                        <div key={level} className="flex items-center justify-between">
+                          <span>{level}</span>
+                          <span className="font-medium">{count as number}</span>
+                        </div>
+                      ))}
+                      {Object.keys(userSegmentation.byActivity || {}).length === 0 && (
+                        <div className="text-gray-400 text-sm">暂无数据</div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* 流失风险分布 */}
-              <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="font-semibold mb-4">⚠️ 流失风险</h3>
-                <div className="space-y-2">
-                  {Object.entries(userSegmentation.byChurnRisk).map(([risk, count]) => (
-                    <div key={risk} className="flex items-center justify-between">
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        risk === 'high' ? 'bg-red-100 text-red-800' :
-                        risk === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>{risk}</span>
-                      <span className="font-medium">{count}</span>
+                  {/* 流失风险分布 */}
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <h3 className="font-semibold mb-4">⚠️ 流失风险</h3>
+                    <div className="space-y-2">
+                      {Object.entries(userSegmentation.byChurnRisk || {}).map(([risk, count]) => (
+                        <div key={risk} className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            risk === 'high' ? 'bg-red-100 text-red-800' :
+                            risk === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>{risk}</span>
+                          <span className="font-medium">{count as number}</span>
+                        </div>
+                      ))}
+                      {Object.keys(userSegmentation.byChurnRisk || {}).length === 0 && (
+                        <div className="text-gray-400 text-sm">暂无数据</div>
+                      )}
                     </div>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="text-center">
-                <div className="text-4xl font-bold text-gray-800">{userSegmentation.total}</div>
-                <div className="text-gray-500">总用户数</div>
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-gray-800">{userSegmentation.total || 0}</div>
+                    <div className="text-gray-500">总用户数</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                暂无用户分析数据，请先运行用户分析任务
               </div>
-            </div>
+            )}
           </div>
         )}
 
