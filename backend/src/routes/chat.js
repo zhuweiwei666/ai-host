@@ -10,6 +10,7 @@ const imageGenerationService = require('../services/imageGenerationService');
 const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const ugcImageService = require('../services/ugcImageService');
+const profileService = require('../services/profileService'); // 用户画像服务 - 长期记忆
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -196,6 +197,50 @@ router.get('/history/:agentId', async (req, res) => {
   }
 });
 
+// GET /api/chat/profile/:agentId - 获取用户画像（长期记忆）
+router.get('/profile/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  if (!agentId) return errors.badRequest(res, 'agentId is required');
+
+  try {
+    const profile = await profileService.getProfile(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, { profile });
+  } catch (err) {
+    console.error('Fetch Profile Error:', err);
+    errors.internalError(res, 'Error fetching user profile', { error: err.message });
+  }
+});
+
+// POST /api/chat/profile/:agentId/memory - 手动添加记忆
+router.post('/profile/:agentId/memory', async (req, res) => {
+  const { agentId } = req.params;
+  const { content, category } = req.body;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  if (!agentId || !content) {
+    return errors.badRequest(res, 'agentId and content are required');
+  }
+
+  try {
+    await profileService.addMemory(userId, agentId, content, category || 'general');
+    const profile = await profileService.getProfile(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, { profile, message: 'Memory added successfully' });
+  } catch (err) {
+    console.error('Add Memory Error:', err);
+    errors.internalError(res, 'Error adding memory', { error: err.message });
+  }
+});
+
 router.post('/', async (req, res) => {
   const { agentId, prompt, history, skipImageGen } = req.body;
   
@@ -258,11 +303,24 @@ router.post('/', async (req, res) => {
     // 使用新的核心协议（如果 agent 没有自定义的话）
     const corePrompt = agent.corePrompt || CORE_PROMPT_TEMPLATE;
     
-    // Combine all parts: Identity -> Description -> Core Protocol -> Stage -> Image Rule
+    // ========== 用户画像 - 长期记忆 ==========
+    // 获取用户画像，注入到系统提示中实现长期记忆
+    let userProfilePrompt = '';
+    try {
+      userProfilePrompt = await profileService.getProfilePrompt(userId, agentId);
+      if (userProfilePrompt) {
+        console.log(`[Chat] 注入用户画像到系统提示`);
+      }
+    } catch (profileErr) {
+      console.error('[Chat] 获取用户画像失败:', profileErr.message);
+    }
+    
+    // Combine all parts: Identity -> Description -> Core Protocol -> User Profile -> Stage -> Image Rule
     const components = [
         identityHeader,
         description,
-        corePrompt
+        corePrompt,
+        userProfilePrompt  // 注入用户画像
     ].filter(Boolean);
 
     const baseIdentity = components.join('\n\n');
@@ -270,6 +328,12 @@ router.post('/', async (req, res) => {
 
     // Save User Message - 关键：必须包含 userId 实现数据隔离
     await Message.create({ agentId, userId, role: 'user', content: prompt });
+    
+    // ========== 自动提取用户信息更新画像 ==========
+    // 异步执行，不阻塞主流程
+    profileService.extractAndUpdate(userId, agentId, prompt).catch(err => {
+      console.error('[Chat] 提取用户信息失败:', err.message);
+    });
 
     const provider = ProviderFactory.getProvider(agent.modelName);
     
