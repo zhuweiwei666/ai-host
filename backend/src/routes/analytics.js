@@ -15,6 +15,9 @@ const contentAnalyzer = require('../services/contentAnalyzer');
 const conversationEvaluator = require('../services/conversationEvaluator');
 const userAnalyzer = require('../services/userAnalyzer');
 const recommendationEngine = require('../services/recommendationEngine');
+const abTestService = require('../services/abTestService');
+const paceController = require('../services/paceController');
+const recallService = require('../services/recallService');
 const scheduler = require('../jobs/scheduler');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -460,6 +463,217 @@ router.get('/recommend/strategy/:agentId', async (req, res) => {
   }
 });
 
+// ==================== A/B 测试 ====================
+
+// GET /api/analytics/ab-test/list - 获取所有实验
+router.get('/ab-test/list', async (req, res) => {
+  const { agentId, status } = req.query;
+  
+  try {
+    const experiments = await abTestService.listExperiments(agentId, status);
+    sendSuccess(res, HTTP_STATUS.OK, { experiments });
+  } catch (err) {
+    console.error('List Experiments Error:', err);
+    errors.internalError(res, 'Failed to list experiments');
+  }
+});
+
+// GET /api/analytics/ab-test/:experimentId - 获取实验详情和结果
+router.get('/ab-test/:experimentId', async (req, res) => {
+  const { experimentId } = req.params;
+  
+  try {
+    const results = await abTestService.getExperimentResults(experimentId);
+    sendSuccess(res, HTTP_STATUS.OK, results);
+  } catch (err) {
+    console.error('Get Experiment Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// POST /api/analytics/ab-test/create - 创建新实验
+router.post('/ab-test/create', async (req, res) => {
+  const { agentId, variants, name, description, minSampleSize } = req.body;
+  
+  if (!agentId || !variants || variants.length === 0) {
+    return errors.badRequest(res, 'agentId and variants are required');
+  }
+  
+  try {
+    const experiment = await abTestService.createExperiment(agentId, variants, {
+      name,
+      description,
+      minSampleSize,
+      createdBy: req.user?.id || 'admin',
+    });
+    
+    sendSuccess(res, HTTP_STATUS.CREATED, { experiment });
+  } catch (err) {
+    console.error('Create Experiment Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// POST /api/analytics/ab-test/:experimentId/start - 启动实验
+router.post('/ab-test/:experimentId/start', async (req, res) => {
+  const { experimentId } = req.params;
+  
+  try {
+    const experiment = await abTestService.startExperiment(experimentId);
+    sendSuccess(res, HTTP_STATUS.OK, { experiment });
+  } catch (err) {
+    console.error('Start Experiment Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// POST /api/analytics/ab-test/:experimentId/end - 结束实验
+router.post('/ab-test/:experimentId/end', async (req, res) => {
+  const { experimentId } = req.params;
+  const { applyWinner = false } = req.body;
+  
+  try {
+    const result = await abTestService.endExperiment(experimentId, applyWinner);
+    sendSuccess(res, HTTP_STATUS.OK, result);
+  } catch (err) {
+    console.error('End Experiment Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// POST /api/analytics/ab-test/:experimentId/apply - 应用赢家
+router.post('/ab-test/:experimentId/apply', async (req, res) => {
+  const { experimentId } = req.params;
+  
+  try {
+    const result = await abTestService.applyWinner(experimentId);
+    sendSuccess(res, HTTP_STATUS.OK, result);
+  } catch (err) {
+    console.error('Apply Winner Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// GET /api/analytics/ab-test/suggest/:agentId - 生成优化变体建议
+router.get('/ab-test/suggest/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  try {
+    const suggestions = await abTestService.generateOptimizedVariants(agentId);
+    sendSuccess(res, HTTP_STATUS.OK, suggestions);
+  } catch (err) {
+    console.error('Generate Suggestions Error:', err);
+    errors.internalError(res, err.message);
+  }
+});
+
+// ==================== 用户召回 ====================
+
+// GET /api/analytics/recall/candidates - 获取召回候选用户
+router.get('/recall/candidates', async (req, res) => {
+  const { minDays = 3, maxDays = 14, limit = 100 } = req.query;
+  
+  try {
+    const candidates = await recallService.getRecallCandidates({
+      minDaysInactive: Number(minDays),
+      maxDaysInactive: Number(maxDays),
+      limit: Number(limit),
+    });
+    
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      count: candidates.length,
+      candidates 
+    });
+  } catch (err) {
+    console.error('Get Recall Candidates Error:', err);
+    errors.internalError(res, 'Failed to get recall candidates');
+  }
+});
+
+// POST /api/analytics/recall/generate - 生成召回消息
+router.post('/recall/generate', async (req, res) => {
+  const { userId, agentId } = req.body;
+  
+  if (!userId || !agentId) {
+    return errors.badRequest(res, 'userId and agentId are required');
+  }
+  
+  try {
+    const message = await recallService.generateRecallMessage(userId, agentId);
+    if (!message) {
+      return errors.notFound(res, 'User or agent not found');
+    }
+    sendSuccess(res, HTTP_STATUS.OK, message);
+  } catch (err) {
+    console.error('Generate Recall Error:', err);
+    errors.internalError(res, 'Failed to generate recall message');
+  }
+});
+
+// POST /api/analytics/recall/execute - 执行批量召回
+router.post('/recall/execute', async (req, res) => {
+  const { limit = 50 } = req.body;
+  
+  try {
+    const result = await recallService.executeBatchRecall(Number(limit));
+    sendSuccess(res, HTTP_STATUS.OK, result);
+  } catch (err) {
+    console.error('Execute Recall Error:', err);
+    errors.internalError(res, 'Failed to execute recall');
+  }
+});
+
+// GET /api/analytics/recall/effectiveness - 召回效果分析
+router.get('/recall/effectiveness', async (req, res) => {
+  const { days = 7 } = req.query;
+  
+  try {
+    const results = await recallService.analyzeRecallEffectiveness(Number(days));
+    sendSuccess(res, HTTP_STATUS.OK, results);
+  } catch (err) {
+    console.error('Recall Effectiveness Error:', err);
+    errors.internalError(res, 'Failed to analyze recall effectiveness');
+  }
+});
+
+// ==================== 尺度控制 ====================
+
+// GET /api/analytics/pace/thresholds/:agentId - 获取个性化阈值
+router.get('/pace/thresholds/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  try {
+    const thresholds = await paceController.getPersonalizedThresholds(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, thresholds);
+  } catch (err) {
+    console.error('Get Thresholds Error:', err);
+    errors.internalError(res, 'Failed to get thresholds');
+  }
+});
+
+// GET /api/analytics/pace/content-level/:agentId - 获取内容等级范围
+router.get('/pace/content-level/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  
+  if (!req.user || !req.user.id) {
+    return errors.unauthorized(res);
+  }
+  const userId = req.user.id;
+  
+  try {
+    const range = await paceController.getContentLevelRange(userId, agentId);
+    sendSuccess(res, HTTP_STATUS.OK, range);
+  } catch (err) {
+    console.error('Get Content Level Error:', err);
+    errors.internalError(res, 'Failed to get content level range');
+  }
+});
+
 // ==================== 手动触发任务 ====================
 
 // POST /api/analytics/tasks/run - 手动执行后台任务
@@ -482,6 +696,26 @@ router.post('/tasks/run', async (req, res) => {
     console.error('Run Task Error:', err);
     errors.internalError(res, err.message);
   }
+});
+
+// GET /api/analytics/tasks/list - 获取可用任务列表
+router.get('/tasks/list', (req, res) => {
+  const tasks = [
+    { name: 'evaluateConversations', description: '评估待处理的对话' },
+    { name: 'updateRecentScores', description: '更新最近内容分数' },
+    { name: 'updateAllScores', description: '更新所有内容分数' },
+    { name: 'deprecateUnderperforming', description: '标记表现不佳内容' },
+    { name: 'generateContentReport', description: '生成内容日报' },
+    { name: 'generateConversationReport', description: '生成对话日报' },
+    { name: 'analyzeUsers', description: '分析用户画像' },
+    { name: 'updateChurnRisks', description: '更新流失风险' },
+    { name: 'updateThresholds', description: '更新个性化阈值' },
+    { name: 'executeRecall', description: '执行用户召回' },
+    { name: 'evaluateABTests', description: '评估A/B测试' },
+    { name: 'recallEffectiveness', description: '分析召回效果' },
+  ];
+  
+  sendSuccess(res, HTTP_STATUS.OK, { tasks });
 });
 
 module.exports = router;

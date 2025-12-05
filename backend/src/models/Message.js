@@ -10,6 +10,21 @@ const MessageSchema = new mongoose.Schema(
     imageUrl: { type: String }, // Optional, for assistant generated image
     inputTokens: { type: Number, default: 0 }, // Token usage tracking
     outputTokens: { type: Number, default: 0 }, // Token usage tracking
+    
+    // ========== 召回消息相关 (AI自进化系统) ==========
+    isRecallMessage: { type: Boolean, default: false }, // 是否是召回消息
+    recallMetadata: {
+      recallType: String,           // vip_care, miss_you, gentle_nudge, etc.
+      daysInactive: Number,         // 用户不活跃天数
+      sentAt: Date,                 // 发送时间
+      wasRead: { type: Boolean, default: false }, // 是否已读
+      userReturned: { type: Boolean, default: false }, // 用户是否回来了
+    },
+    
+    // ========== A/B测试相关 ==========
+    experimentId: { type: mongoose.Schema.Types.ObjectId, ref: 'PromptExperiment' },
+    variantId: String,
+    
     createdAt: { type: Date, default: Date.now }
   }
 );

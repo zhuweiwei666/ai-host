@@ -13,6 +13,8 @@ const ugcImageService = require('../services/ugcImageService');
 const profileService = require('../services/profileService'); // 用户画像服务 - 长期记忆
 const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const recommendationEngine = require('../services/recommendationEngine'); // AI自进化系统 - 推荐引擎
+const abTestService = require('../services/abTestService'); // AI自进化系统 - A/B测试
+const paceController = require('../services/paceController'); // AI自进化系统 - 尺度控制
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 
@@ -408,6 +410,30 @@ router.post('/', async (req, res) => {
     } catch (strategyErr) {
       console.error('[Chat] 获取对话策略失败:', strategyErr.message);
     }
+    
+    // ========== 获取实时个性化阈值（AI自进化系统 Phase 3） ==========
+    let personalizedThresholds = { intimacyMultiplier: 1, contentLevelOffset: 0 };
+    try {
+      personalizedThresholds = await paceController.getPersonalizedThresholds(userId, agentId);
+      if (personalizedThresholds.adjustmentReason !== 'default' && personalizedThresholds.adjustmentReason !== 'cached') {
+        console.log(`[Chat] Personalized: x${personalizedThresholds.intimacyMultiplier.toFixed(2)} (${personalizedThresholds.adjustmentReason})`);
+      }
+    } catch (paceErr) {
+      console.error('[Chat] 获取个性化阈值失败:', paceErr.message);
+    }
+    
+    // ========== A/B 测试：获取实验变体 Prompt ==========
+    let experimentPrompt = null;
+    let experimentInfo = null;
+    try {
+      experimentInfo = await abTestService.getPromptForUser(userId, agentId);
+      if (experimentInfo) {
+        experimentPrompt = experimentInfo.prompt;
+        console.log(`[Chat] A/B Test: ${experimentInfo.variantName} (${experimentInfo.isControl ? 'Control' : 'Experiment'})`);
+      }
+    } catch (abErr) {
+      console.error('[Chat] A/B测试获取失败:', abErr.message);
+    }
 
     // ... Stage selection logic based on Intimacy AND User Type ...
     let stageInstruction = '';
@@ -417,10 +443,13 @@ router.post('/', async (req, res) => {
     const t1Base = agent.stage1Threshold || 20;
     const t2Base = agent.stage2Threshold || 60;
     
-    // 应用个性化策略的节奏倍率
-    const paceMultiplier = conversationStrategy.adjustments?.paceMultiplier || 1;
-    const t1 = Math.floor(t1Base / paceMultiplier);
-    const t2 = Math.floor(t2Base / paceMultiplier);
+    // 应用个性化策略的节奏倍率 + 实时个性化阈值
+    const strategyMultiplier = conversationStrategy.adjustments?.paceMultiplier || 1;
+    const personalizedMultiplier = personalizedThresholds.intimacyMultiplier || 1;
+    const combinedMultiplier = strategyMultiplier * personalizedMultiplier;
+    
+    const t1 = Math.floor(t1Base / combinedMultiplier);
+    const t2 = Math.floor(t2Base / combinedMultiplier);
 
     // ========== 根据用户类型调整推进速度 ==========
     if (detectionStatus.userType === 'direct') {
@@ -489,8 +518,8 @@ router.post('/', async (req, res) => {
     const identityHeader = `You are ${agent.name}.`;
     const description = agent.description ? `Description: ${agent.description}` : "";
     
-    // 使用新的核心协议（如果 agent 没有自定义的话）
-    const corePrompt = agent.corePrompt || CORE_PROMPT_TEMPLATE;
+    // 使用核心协议：优先 A/B 测试 > Agent 自定义 > 默认模板
+    const corePrompt = experimentPrompt || agent.customPrompt || agent.corePrompt || CORE_PROMPT_TEMPLATE;
     
     // ========== 用户画像 - 长期记忆 ==========
     // 获取用户画像，注入到系统提示中实现长期记忆
@@ -882,8 +911,18 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       content: reply,
       imageUrl: imageUrl,
       inputTokens: usage.prompt_tokens,
-      outputTokens: usage.completion_tokens
+      outputTokens: usage.completion_tokens,
+      // A/B 测试追踪
+      experimentId: experimentInfo?.experimentId,
+      variantId: experimentInfo?.variantId,
     });
+    
+    // 记录 A/B 测试指标
+    if (experimentInfo) {
+      abTestService.recordMetric(agentId, userId, 'message').catch(err => 
+        console.error('[Chat] A/B metric error:', err.message)
+      );
+    }
     
     // 🔔 事件埋点：AI 回复消息
     eventCollector.trackMessageReceived(userId, agentId, {

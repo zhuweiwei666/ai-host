@@ -6,6 +6,9 @@ const cron = require('node-cron');
 const contentAnalyzer = require('../services/contentAnalyzer');
 const conversationEvaluator = require('../services/conversationEvaluator');
 const userAnalyzer = require('../services/userAnalyzer');
+const abTestService = require('../services/abTestService');
+const paceController = require('../services/paceController');
+const recallService = require('../services/recallService');
 
 class JobScheduler {
   constructor() {
@@ -116,8 +119,38 @@ class JobScheduler {
     
     // ========== 每周任务 ==========
     
-    // 每周一凌晨4点：生成Prompt优化建议
+    // 每天凌晨6点：更新个性化阈值
+    this.jobs.push(cron.schedule('0 6 * * *', async () => {
+      console.log('⏰ [Scheduler] 更新个性化阈值...');
+      try {
+        const updated = await paceController.updateAllThresholds();
+        console.log(`✅ [Scheduler] 个性化阈值更新: ${updated} 用户`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 个性化阈值更新失败:', err.message);
+      }
+    }));
+    
+    // 每天早上10点：执行用户召回
+    this.jobs.push(cron.schedule('0 10 * * *', async () => {
+      console.log('⏰ [Scheduler] 执行用户召回...');
+      try {
+        const result = await recallService.executeBatchRecall(100);
+        console.log(`✅ [Scheduler] 召回完成: 发送 ${result.sent}, 跳过 ${result.skipped}`);
+      } catch (err) {
+        console.error('❌ [Scheduler] 用户召回失败:', err.message);
+      }
+    }));
+    
+    // 每周一凌晨4点：评估A/B测试和生成Prompt优化建议
     this.jobs.push(cron.schedule('0 4 * * 1', async () => {
+      console.log('⏰ [Scheduler] 评估A/B测试...');
+      try {
+        const abResults = await abTestService.evaluateAllExperiments();
+        console.log(`✅ [Scheduler] A/B测试评估: ${abResults.filter(r => r.concluded).length} 个已结束`);
+      } catch (err) {
+        console.error('❌ [Scheduler] A/B测试评估失败:', err.message);
+      }
+      
       console.log('⏰ [Scheduler] 生成Prompt优化建议...');
       try {
         const Agent = require('../models/Agent');
@@ -127,7 +160,6 @@ class JobScheduler {
           const optimization = await conversationEvaluator.generatePromptOptimization(agent._id);
           if (optimization && !optimization.error && optimization.optimizedPrompt) {
             console.log(`📝 [Scheduler] ${agent.name}: 生成了优化建议`);
-            // TODO: 保存建议到数据库，等待人工审核
           }
         }
         
@@ -145,8 +177,10 @@ class JobScheduler {
     console.log('  - 每日 03:00: 标记表现不佳内容');
     console.log('  - 每日 04:00: 用户画像更新');
     console.log('  - 每日 05:00: 流失风险更新');
+    console.log('  - 每日 06:00: 个性化阈值更新');
     console.log('  - 每日 08:00: 生成日报');
-    console.log('  - 每周一 04:00: Prompt优化建议');
+    console.log('  - 每日 10:00: 用户召回');
+    console.log('  - 每周一 04:00: A/B测试评估、Prompt优化');
   }
   
   /**
@@ -192,6 +226,18 @@ class JobScheduler {
       
       case 'updateChurnRisks':
         return await userAnalyzer.updateChurnRisks();
+      
+      case 'updateThresholds':
+        return await paceController.updateAllThresholds();
+      
+      case 'executeRecall':
+        return await recallService.executeBatchRecall(100);
+      
+      case 'evaluateABTests':
+        return await abTestService.evaluateAllExperiments();
+      
+      case 'recallEffectiveness':
+        return await recallService.analyzeRecallEffectiveness(7);
       
       default:
         throw new Error(`未知任务: ${taskName}`);
