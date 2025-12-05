@@ -59,7 +59,7 @@ router.post('/send', requireAuth, async (req, res) => {
     }
     
     // 4. 扣费
-    await walletService.spend(userId, gift.price, `送礼物给${agent.name}: ${gift.name}`);
+    await walletService.consume(userId, gift.price, 'gift', gift._id.toString());
     
     // 5. 增加亲密度
     if (gift.intimacyBonus > 0) {

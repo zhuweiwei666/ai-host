@@ -152,7 +152,7 @@ router.post('/unlock', requireAuth, async (req, res) => {
     }
     
     // 5. 扣费
-    await walletService.spend(userId, outfit.unlockValue, `解锁衣服: ${outfit.name}`);
+    await walletService.consume(userId, outfit.unlockValue, 'outfit_unlock', outfit._id.toString());
     
     // 6. 记录解锁
     await UserProfile.findOneAndUpdate(
