@@ -18,14 +18,11 @@ const relationshipService = require('../services/relationshipService');
 const imageGenerationService = require('../services/imageGenerationService');
 const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
+const { requireAuth } = require('../middleware/auth');
 
 // GET /api/outfit/list/:agentId - 获取 AI 主播的所有衣服/场景（含解锁状态）
-router.get('/list/:agentId', async (req, res) => {
+router.get('/list/:agentId', requireAuth, async (req, res) => {
   const { agentId } = req.params;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {
@@ -93,12 +90,8 @@ router.get('/list/:agentId', async (req, res) => {
 });
 
 // POST /api/outfit/unlock - 用金币解锁衣服/场景
-router.post('/unlock', async (req, res) => {
+router.post('/unlock', requireAuth, async (req, res) => {
   const { agentId, outfitId } = req.body;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
   
   if (!agentId || !outfitId) {
@@ -193,12 +186,8 @@ router.post('/unlock', async (req, res) => {
 });
 
 // GET /api/outfit/unlocked/:agentId - 获取已解锁的衣服/场景
-router.get('/unlocked/:agentId', async (req, res) => {
+router.get('/unlocked/:agentId', requireAuth, async (req, res) => {
   const { agentId } = req.params;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {

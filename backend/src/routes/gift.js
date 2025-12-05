@@ -17,6 +17,7 @@ const walletService = require('../services/walletService');
 const relationshipService = require('../services/relationshipService');
 const eventCollector = require('../services/eventCollector'); // AI自进化系统 - 事件收集
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
+const { requireAuth } = require('../middleware/auth');
 
 // GET /api/gift/list - 获取所有可用礼物
 router.get('/list', async (req, res) => {
@@ -30,12 +31,8 @@ router.get('/list', async (req, res) => {
 });
 
 // POST /api/gift/send - 送礼物给 AI 主播
-router.post('/send', async (req, res) => {
+router.post('/send', requireAuth, async (req, res) => {
   const { agentId, giftId } = req.body;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
   
   if (!agentId || !giftId) {
@@ -150,12 +147,8 @@ router.post('/send', async (req, res) => {
 });
 
 // GET /api/gift/history/:agentId - 获取送礼历史
-router.get('/history/:agentId', async (req, res) => {
+router.get('/history/:agentId', requireAuth, async (req, res) => {
   const { agentId } = req.params;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {

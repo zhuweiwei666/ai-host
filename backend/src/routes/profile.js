@@ -11,14 +11,11 @@ const router = express.Router();
 const UserProfile = require('../models/UserProfile');
 const relationshipService = require('../services/relationshipService');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
+const { requireAuth } = require('../middleware/auth');
 
 // GET /api/profile/:agentId - 获取完整用户画像
-router.get('/:agentId', async (req, res) => {
+router.get('/:agentId', requireAuth, async (req, res) => {
   const { agentId } = req.params;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {
@@ -52,13 +49,9 @@ router.get('/:agentId', async (req, res) => {
 });
 
 // POST /api/profile/:agentId/pet-name - 设置专属昵称
-router.post('/:agentId/pet-name', async (req, res) => {
+router.post('/:agentId/pet-name', requireAuth, async (req, res) => {
   const { agentId } = req.params;
   const { petName, userCallsMe } = req.body;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {
@@ -96,12 +89,8 @@ router.post('/:agentId/pet-name', async (req, res) => {
 });
 
 // GET /api/profile/:agentId/relationship - 获取关系概览
-router.get('/:agentId/relationship', async (req, res) => {
+router.get('/:agentId/relationship', requireAuth, async (req, res) => {
   const { agentId } = req.params;
-  
-  if (!req.user || !req.user.id) {
-    return errors.unauthorized(res);
-  }
   const userId = req.user.id;
 
   try {
