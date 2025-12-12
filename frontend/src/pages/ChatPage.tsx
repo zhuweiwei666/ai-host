@@ -6,6 +6,7 @@ import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from 
 import { DEFAULT_MOTION_PROFILE } from '../components/motionProfile';
 import SpatialBackdrop from '../components/SpatialBackdrop';
 import WebGLSpatialAvatar from '../components/WebGLSpatialAvatar';
+import Apple3DPhoto from '../components/Apple3DPhoto';
 import GiftPanel from '../components/GiftPanel';
 import OutfitGallery from '../components/OutfitGallery';
 import RelationshipPanel from '../components/RelationshipPanel';
@@ -688,25 +689,38 @@ const ChatPage: React.FC = () => {
 
         {/* Chat Content (z-10 to sit above background) */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 relative z-10">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto flex gap-8">
+          {/* Chat column */}
+          <div className="flex-1 max-w-3xl space-y-6">
           {messages.length === 0 && (
             <div className="text-center py-8">
               {/* Agent Avatar */}
-              <SpatialAvatar
-                src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')}
-                alt={agent.name}
-                width={96}
-                height={96}
-                layers={DEFAULT_AVATAR_LAYERS}
-                // Safe tweaks: increase variance before amplitude.
-                motion={{
-                  ...DEFAULT_MOTION_PROFILE,
-                  parallaxPx: 9, // why: depth response (clamped internally for subtlety)
-                  breathAmpPx: 1.1, // why: tiny lift only
-                  driftAmpPx: 1.0, // why: micro-life without floating
-                }}
-                className="mx-auto mb-4 border-4 border-white shadow-lg"
-              />
+              {agent.avatarSpatialMetaUrl ? (
+                <div className="mx-auto mb-4 w-[240px] sm:w-[280px]">
+                  <WebGLSpatialAvatar
+                    metaUrl={agent.avatarSpatialMetaUrl}
+                    width="100%"
+                    height={320}
+                    className="shadow-lg"
+                  />
+                </div>
+              ) : (
+                <SpatialAvatar
+                  src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')}
+                  alt={agent.name}
+                  width={96}
+                  height={96}
+                  layers={DEFAULT_AVATAR_LAYERS}
+                  // Safe tweaks: increase variance before amplitude.
+                  motion={{
+                    ...DEFAULT_MOTION_PROFILE,
+                    parallaxPx: 9, // why: depth response (clamped internally for subtlety)
+                    breathAmpPx: 1.1, // why: tiny lift only
+                    driftAmpPx: 1.0, // why: micro-life without floating
+                  }}
+                  className="mx-auto mb-4 border-4 border-white shadow-lg"
+                />
+              )}
               <h3 className="text-xl font-bold text-gray-900 mb-1">{agent.name}</h3>
               <p className="text-gray-500 text-sm max-w-md mx-auto mb-4">{agent.description}</p>
               
@@ -906,6 +920,36 @@ const ChatPage: React.FC = () => {
               </div>
             </div>
           )}
+          </div>
+
+          {/* Visual column (desktop): persistent large avatar card for \"spatial photo\" presence */}
+          <aside className="hidden lg:block w-[340px] flex-shrink-0">
+            <div className="sticky top-6">
+              <div className="bg-white/70 backdrop-blur-md border border-white/40 rounded-2xl shadow-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-semibold text-gray-800">Avatar</div>
+                  <div className="text-xs text-gray-500">move cursor</div>
+                </div>
+                {agent.avatarSpatialMetaUrl ? (
+                  <WebGLSpatialAvatar metaUrl={agent.avatarSpatialMetaUrl} width="100%" height={420} />
+                ) : (
+                  <Apple3DPhoto
+                    src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')}
+                    width="100%"
+                    height={420}
+                    interactive
+                    tiltDeg={8}
+                    translatePx={10}
+                    glare={0.9}
+                    className=""
+                  />
+                )}
+                <div className="mt-3 text-xs text-gray-500 leading-relaxed">
+                  这是更大视图的空间头像展示区：空间感、光照和动效在这里更明显。
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </main>
 
