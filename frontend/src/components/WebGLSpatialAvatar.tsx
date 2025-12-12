@@ -10,11 +10,15 @@ export type SpatialMeta = {
   depthUrl: string;
   normalUrl: string;
   cutoutUrl: string;
+  fxTextureUrl?: string;
   shader?: {
     parallaxStrength?: number;
     normalStrength?: number;
     rimStrength?: number;
     glareStrength?: number;
+    fxStrength?: number;
+    fxSpeed?: number;
+    fxScale?: number;
   };
 };
 
@@ -89,6 +93,20 @@ function createTexture(gl: WebGLRenderingContext, unit: number, bitmap: ImageBit
   return tex;
 }
 
+function createSolidTexture(gl: WebGLRenderingContext, unit: number, rgba: [number, number, number, number]) {
+  const tex = gl.createTexture();
+  if (!tex) throw new Error('texture alloc failed');
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const data = new Uint8Array(rgba);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  return tex;
+}
+
 const VS = `
 attribute vec2 aPos;
 varying vec2 vUv;
@@ -110,6 +128,7 @@ uniform sampler2D uBase;
 uniform sampler2D uDepth;
 uniform sampler2D uNormal;
 uniform sampler2D uCutout;
+uniform sampler2D uFx;
 
 uniform vec2 uPointer;     // [-1..1]
 uniform float uTime;
@@ -118,6 +137,9 @@ uniform float uParallax;
 uniform float uNormalStr;
 uniform float uRimStr;
 uniform float uGlareStr;
+uniform float uFxStrength;
+uniform float uFxSpeed;
+uniform float uFxScale;
 
 float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
@@ -154,6 +176,19 @@ void main(){
   col *= (0.92 + 0.18 * ndl);
   col += spec * vec3(1.0, 1.0, 1.0);
   col += rim * vec3(1.0, 0.95, 0.90) * edge;
+
+  // ===== Dynamic Skin FX Overlay (energy / particles / flares) =====
+  // WHY: brings \"王者荣耀动态皮肤\" vibe without video assets.
+  vec2 fxUv = uv * uFxScale + vec2(uTime * 0.08 * uFxSpeed, uTime * 0.05 * uFxSpeed) + uPointer * 0.02;
+  float nfx = luma(texture2D(uFx, fxUv).rgb);
+  float streak = smoothstep(0.62, 0.95, nfx);
+  float sparkle = smoothstep(0.92, 1.0, nfx) * (0.5 + 0.5 * sin(uTime * 18.0 + nfx * 12.0));
+  float fxMask = alpha * (0.25 + 0.75 * edge); // mostly near edges, stays subtle
+  float fx = (0.55 * streak + 0.45 * sparkle) * uFxStrength * fxMask;
+
+  vec3 fxCol = mix(vec3(0.25, 0.75, 1.0), vec3(0.90, 0.35, 1.0), 0.5 + 0.5 * sin(uTime * 0.7));
+  // Screen blend
+  col = 1.0 - (1.0 - col) * (1.0 - fxCol * fx);
 
   // Background: if alpha low, slightly desaturate/dim to push subject forward
   float bg = 1.0 - alpha;
@@ -192,11 +227,12 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
 
       try {
         const meta = await fetchJson<SpatialMeta>(metaUrl);
-        const [baseBmp, depthBmp, normalBmp, cutBmp] = await Promise.all([
+        const [baseBmp, depthBmp, normalBmp, cutBmp, fxBmp] = await Promise.all([
           loadImageBitmap(meta.baseUrl),
           loadImageBitmap(meta.depthUrl),
           loadImageBitmap(meta.normalUrl),
           loadImageBitmap(meta.cutoutUrl),
+          meta.fxTextureUrl ? loadImageBitmap(meta.fxTextureUrl) : Promise.resolve(null as any),
         ]);
 
         if (destroyed) return;
@@ -226,22 +262,39 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
         createTexture(gl, 3, cutBmp);
         gl.uniform1i(gl.getUniformLocation(program, 'uCutout'), 3);
 
+        // FX texture (or fallback black)
+        if (meta.fxTextureUrl && fxBmp) {
+          createTexture(gl, 4, fxBmp);
+        } else {
+          createSolidTexture(gl, 4, [0, 0, 0, 255]);
+        }
+        gl.uniform1i(gl.getUniformLocation(program, 'uFx'), 4);
+
         const uPointer = gl.getUniformLocation(program, 'uPointer');
         const uTime = gl.getUniformLocation(program, 'uTime');
         const uParallax = gl.getUniformLocation(program, 'uParallax');
         const uNormalStr = gl.getUniformLocation(program, 'uNormalStr');
         const uRimStr = gl.getUniformLocation(program, 'uRimStr');
         const uGlareStr = gl.getUniformLocation(program, 'uGlareStr');
+        const uFxStrength = gl.getUniformLocation(program, 'uFxStrength');
+        const uFxSpeed = gl.getUniformLocation(program, 'uFxSpeed');
+        const uFxScale = gl.getUniformLocation(program, 'uFxScale');
 
         const parallax = meta.shader?.parallaxStrength ?? 0.018;
         const normalStr = meta.shader?.normalStrength ?? 1.0;
         const rimStr = meta.shader?.rimStrength ?? 0.35;
         const glareStr = meta.shader?.glareStrength ?? 0.8;
+        const fxStrength = meta.shader?.fxStrength ?? 0.0;
+        const fxSpeed = meta.shader?.fxSpeed ?? 1.0;
+        const fxScale = meta.shader?.fxScale ?? 1.2;
 
         gl.uniform1f(uParallax, parallax);
         gl.uniform1f(uNormalStr, normalStr);
         gl.uniform1f(uRimStr, rimStr);
         gl.uniform1f(uGlareStr, glareStr);
+        gl.uniform1f(uFxStrength, fxStrength);
+        gl.uniform1f(uFxSpeed, fxSpeed);
+        gl.uniform1f(uFxScale, fxScale);
 
         const resize = () => {
           const dpr = Math.min(2, window.devicePixelRatio || 1);

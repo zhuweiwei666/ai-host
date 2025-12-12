@@ -89,6 +89,25 @@ async function depthToNormalPng(depthPngBuffer, { strength = 2.2 } = {}) {
 }
 
 /**
+ * Generate a small FX noise texture (PNG).
+ * WHY: gives the shader something to animate into energy streaks/sparkles without heavy video assets.
+ */
+async function generateFxTexturePng({ size = 256 } = {}) {
+  // Single-channel noise -> expand to RGB via sharp.
+  const noise = Buffer.alloc(size * size);
+  crypto.randomFillSync(noise);
+
+  // Create a slightly blurred, tile-friendly noise texture.
+  const png = await sharp(noise, { raw: { width: size, height: size, channels: 1 } })
+    .resize(size, size, { fit: 'fill' })
+    .blur(0.8)
+    .png()
+    .toBuffer();
+
+  return png;
+}
+
+/**
  * Generate an avatar "asset pack" via fal.ai.
  * Output is suitable for WebGL: base + depth + normal + cutout/mask + meta.
  */
@@ -129,7 +148,11 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
   const normalBuf = await depthToNormalPng(depthBuf, { strength: 2.2 });
   const uploadedNormalUrl = await uploadToOSS(normalBuf, `${prefix}-normal.png`, 'image/png');
 
-  // 4) Meta JSON for frontend renderer
+  // 4) Generate + upload FX texture (procedural)
+  const fxBuf = await generateFxTexturePng({ size: 256 });
+  const uploadedFxUrl = await uploadToOSS(fxBuf, `${prefix}-fx.png`, 'image/png');
+
+  // 5) Meta JSON for frontend renderer
   const meta = {
     version: 1,
     jobId,
@@ -141,6 +164,7 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
     depthUrl: uploadedDepthUrl,
     normalUrl: uploadedNormalUrl,
     cutoutUrl: uploadedCutoutUrl,
+    fxTextureUrl: uploadedFxUrl,
 
     // Suggested shader params (can be tuned per skin)
     shader: {
@@ -148,6 +172,10 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
       normalStrength: 1.0,
       rimStrength: 0.35,
       glareStrength: 0.8,
+      // FX overlay (\"dynamic skin\" feel)
+      fxStrength: 0.75,
+      fxSpeed: 1.0,
+      fxScale: 1.35,
     },
   };
 
