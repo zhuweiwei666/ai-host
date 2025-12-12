@@ -2,12 +2,40 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Agent, getAgent, chatWithAgent, getChatHistory, generateTTS, generateVideo, generateImage, http } from '../api'; // Import generateImage
 import { normalizeImageUrl } from '../utils/imageUrl';
+import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from '../components/SpatialAvatar';
+import { DEFAULT_MOTION_PROFILE } from '../components/motionProfile';
 import GiftPanel from '../components/GiftPanel';
 import OutfitGallery from '../components/OutfitGallery';
 import RelationshipPanel from '../components/RelationshipPanel';
  
 
 const ENABLE_VIDEO_FEATURE = import.meta.env.VITE_ENABLE_VIDEO === 'true';
+
+// Example layer setup (rect slices) for a typical centered portrait avatar.
+// WHY: we duplicate the same PNG and clip regions so different depths can parallax independently.
+const DEFAULT_AVATAR_LAYERS: SpatialAvatarLayer[] = [
+  {
+    id: 'hair',
+    rect: { x: 0.12, y: 0.00, w: 0.76, h: 0.36 },
+    z: 0.9, // closer => reacts more to cursor (2.5D)
+    breath: 0.05, // hair shouldn't “breathe”
+    axis: { x: 1.15, y: 0.55 }, // not symmetric => avoids sync feel
+  },
+  {
+    id: 'face',
+    rect: { x: 0.16, y: 0.06, w: 0.68, h: 0.46 },
+    z: 0.65,
+    breath: 0.20, // face follows breath slightly (presence) but not like a bobblehead
+    axis: { x: 1.10, y: 0.70 },
+  },
+  {
+    id: 'torso',
+    rect: { x: 0.06, y: 0.32, w: 0.88, h: 0.68 },
+    z: 0.25,
+    breath: 0.95, // torso carries the breath signal
+    axis: { x: 0.90, y: 0.95 },
+  },
+];
 
 interface ChatMessage {
   role: string;
@@ -549,11 +577,21 @@ const ChatPage: React.FC = () => {
             </svg>
           </button>
           
-          <img 
-            src={normalizeImageUrl(agent.avatarUrl)} 
-            alt={agent.name} 
-            className="w-10 h-10 rounded-full object-cover object-[50%_20%] bg-gray-200"
-            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64'; }}
+          <SpatialAvatar
+            src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/64')}
+            alt={agent.name}
+            width={40}
+            height={40}
+            // Use the exported portrait defaults; tweak per-agent later if needed.
+            layers={DEFAULT_PORTRAIT_LAYERS}
+            motion={{
+              ...DEFAULT_MOTION_PROFILE,
+              // Header avatars should be extra subtle.
+              parallaxPx: 7,
+              breathAmpPx: 0.9,
+              driftAmpPx: 0.8,
+            }}
+            className="w-10 h-10 rounded-full bg-gray-200"
           />
           <div>
             <h1 className="text-lg font-bold text-gray-900">{agent.name}</h1>
@@ -647,11 +685,20 @@ const ChatPage: React.FC = () => {
           {messages.length === 0 && (
             <div className="text-center py-8">
               {/* Agent Avatar */}
-              <img 
-                src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')} 
+              <SpatialAvatar
+                src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')}
                 alt={agent.name}
-                className="w-24 h-24 rounded-full object-cover object-[50%_20%] mx-auto mb-4 border-4 border-white shadow-lg"
-                onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120'; }}
+                width={96}
+                height={96}
+                layers={DEFAULT_AVATAR_LAYERS}
+                // Safe tweaks: increase variance before amplitude.
+                motion={{
+                  ...DEFAULT_MOTION_PROFILE,
+                  parallaxPx: 9, // why: depth response (clamped internally for subtlety)
+                  breathAmpPx: 1.1, // why: tiny lift only
+                  driftAmpPx: 1.0, // why: micro-life without floating
+                }}
+                className="mx-auto mb-4 border-4 border-white shadow-lg"
               />
               <h3 className="text-xl font-bold text-gray-900 mb-1">{agent.name}</h3>
               <p className="text-gray-500 text-sm max-w-md mx-auto mb-4">{agent.description}</p>

@@ -1,0 +1,100 @@
+/*
+  SpatialAvatar
+  - No canvas, no heavy filters; only transforms + a tiny overlay.
+  - Designed to be subtle and non-looping (motion comes from JS signals).
+*/
+
+.sa {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 9999px;
+
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  background-repeat: no-repeat;
+
+  /* Helps the parallax feel like depth rather than UI translation */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.sa:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.7);
+  outline-offset: 3px;
+}
+
+.sa__layer {
+  position: absolute;
+  inset: 0;
+
+  background-size: 100% 100%;
+  background-position: var(--sa-bg-x, 0%) var(--sa-bg-y, 0%);
+  background-repeat: no-repeat;
+
+  will-change: transform;
+  /*
+    Transform composition from global vars:
+    - WHY: one rAF writes global signals; each layer applies its own depth z.
+    - Uses only transform (GPU-friendly), avoids layout.
+  */
+  transform:
+    translate3d(
+      calc(
+        (var(--px, 0) * var(--parallaxPx, 0) * var(--gain, 1) * var(--z, 0) * var(--ax, 1)) * 1px
+        + (var(--dx, 0) * var(--driftAmpPx, 0) * var(--z, 0)) * 1px
+      ),
+      calc(
+        (var(--py, 0) * var(--parallaxPx, 0) * var(--gain, 1) * var(--z, 0) * var(--ay, 1)) * 1px
+        + (var(--dy, 0) * var(--driftAmpPx, 0) * var(--z, 0)) * 1px
+        + (var(--b, 0) * var(--breathAmpPx, 0) * var(--breath, 0)) * 1px
+      ),
+      0
+    )
+    rotate(calc((var(--rot, 0) * var(--driftRotDeg, 0) * var(--z, 0)) * 1deg))
+    scale(calc(1 + (var(--s, 0) * var(--breathScale, 0) * var(--breath, 0))));
+
+  pointer-events: none;
+}
+
+/*
+  Ambient overlay:
+  - why: hides seams at sub-pixel offsets
+  - why: adds soft "air" so the avatar doesn't feel like a sticker
+*/
+.sa__ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  background:
+    radial-gradient(120% 120% at 50% 35%, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 50%),
+    radial-gradient(120% 120% at 50% 120%, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0) 55%);
+
+  mix-blend-mode: soft-light;
+  opacity: 0.75;
+}
+
+/*
+  Sheen:
+  - why: a tiny interactive feedback without obvious animation
+*/
+.sa__sheen {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+
+  background: radial-gradient(closest-side at 35% 25%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 55%);
+
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.sa--active .sa__sheen {
+  opacity: 1;
+}
+
+.sa--active {
+  /* Interaction feedback: subtle gain + slight contrast/sat (spec). */
+  filter: contrast(1.03) saturate(1.02);
+}

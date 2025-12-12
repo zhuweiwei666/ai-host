@@ -13,6 +13,7 @@ import ApiDocs from './pages/ApiDocs';
 import AdminLogin from './pages/AdminLogin';
 import Settings from './pages/Settings';
 import OperationsDashboard from './pages/OperationsDashboard';
+import SpatialAvatarLab from './pages/SpatialAvatarLab';
 import './index.css';
 
 // Suppress browser extension errors in console
@@ -59,6 +60,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/operations" element={<OperationsDashboard />} />
+          <Route path="/avatar-lab" element={<SpatialAvatarLab />} />
         </Route>
         
         {/* 其他受保护页面 */}

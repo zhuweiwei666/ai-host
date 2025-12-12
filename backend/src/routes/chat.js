@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Agent = require('../models/Agent');
 const Message = require('../models/Message');
-const UsageLog = require('../models/UsageLog');
+const UsageLog = require('../models/UsageLog'); 
 const UserProfile = require('../models/UserProfile'); 
 const costCalculator = require('../utils/costCalculator');
 const ProviderFactory = require('../providers/providerFactory');
@@ -604,7 +604,7 @@ router.post('/', async (req, res) => {
     // Use agent defined thresholds or defaults
     const t1Base = agent.stage1Threshold || 20;
     const t2Base = agent.stage2Threshold || 60;
-    
+
     // 应用个性化策略的节奏倍率 + 实时个性化阈值
     const strategyMultiplier = conversationStrategy.adjustments?.paceMultiplier || 1;
     const personalizedMultiplier = personalizedThresholds.intimacyMultiplier || 1;
@@ -646,13 +646,13 @@ router.post('/', async (req, res) => {
         }
     } else {
         // 未确定类型（侦测中）：使用默认阶段，略偏暧昧
-        if (currentIntimacy <= t1) {
+    if (currentIntimacy <= t1) {
             stageInstruction = agent.stage1Prompt || STAGE_1_PROMPT;
             isNSFWStage = false;
-        } else if (currentIntimacy <= t2) {
+    } else if (currentIntimacy <= t2) {
             stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT;
             isNSFWStage = false;
-        } else {
+    } else {
             stageInstruction = agent.stage2Prompt || STAGE_2_PROMPT; // 未确定类型前不进NSFW
             isNSFWStage = false;
         }
@@ -1100,7 +1100,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     // Return current balance and intimacy so frontend can update
     // Get final balance (may have changed due to image generation)
     const finalBalance = await walletService.getBalance(userId);
-    const finalIntimacy = await relationshipService.getIntimacy(userId, agentId);
+    const finalIntimacy = await relationshipService.getIntimacy(userId, agentId); 
     
     // 获取最新的侦测状态和选项
     const finalDetectionStatus = await profileService.getDetectionStatus(userId, agentId);
