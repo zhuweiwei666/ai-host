@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const sharp = require('sharp');
 
-const { falQueueSubmit } = require('./falQueueClient');
+const { falRun } = require('./falQueueClient');
 const { downloadAndUploadToOSS, uploadToOSS } = require('../utils/ossUpload');
 
 function clamp(v, min, max) {
@@ -102,14 +102,14 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
   // - Depth: marigold depth
   // - Mask/cutout: rembg (returns PNG with alpha)
   const [depthJob, cutoutJob] = await Promise.all([
-    falQueueSubmit('fal-ai/imageutils/marigold-depth', {
+    falRun('fal-ai/imageutils/marigold-depth', {
       image_url: imageUrl,
       // Keep costs reasonable; can raise for hero skins.
       num_inference_steps: 10,
       ensemble_size: 6,
       processing_res: 768,
     }),
-    falQueueSubmit('fal-ai/imageutils/rembg', {
+    falRun('fal-ai/imageutils/rembg', {
       image_url: imageUrl,
     }),
   ]);

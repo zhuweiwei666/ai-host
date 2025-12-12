@@ -132,7 +132,10 @@ const SpatialAvatarLab: React.FC = () => {
                     const res = await http.post('/avatar-assets/generate', { imageUrl: src });
                     setAssetPack(res.data);
                   } catch (e: any) {
-                    setGenError(e?.response?.data?.message || e?.message || '生成失败');
+                    const serverMsg = e?.response?.data?.message;
+                    const raw = e?.response?.data;
+                    const rawText = typeof raw === 'string' ? raw.slice(0, 240) : null;
+                    setGenError(serverMsg || rawText || e?.message || '生成失败');
                   } finally {
                     setGenerating(false);
                   }

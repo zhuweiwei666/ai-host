@@ -5,64 +5,61 @@ function sleep(ms) {
 }
 
 /**
- * Minimal fal.ai Queue API client (server-side).
- * Docs: https://docs.fal.ai/model-endpoints/queue/
+ * fal.ai model runner (server-side) using the same pattern already used in this repo:
+ * - POST https://fal.run/{modelId} with the model inputs as a flat JSON payload (NOT {input:{...}}).
+ * - If it returns request_id, poll https://queue.fal.run/requests/{id} until COMPLETED.
  */
-async function falQueueSubmit(modelId, input, { timeoutMs = 180_000 } = {}) {
-  if (!process.env.FAL_KEY) {
-    throw new Error('FAL_KEY not configured');
-  }
+async function falRun(modelId, payload, { timeoutMs = 240_000, pollIntervalMs = 1500 } = {}) {
+  if (!process.env.FAL_KEY) throw new Error('FAL_KEY not configured');
 
-  const url = `https://queue.fal.run/${modelId}`;
-  const res = await axios.post(
-    url,
-    { input },
-    {
-      headers: {
-        Authorization: `Key ${process.env.FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 30_000,
+  const endpoint = `https://fal.run/${modelId}`;
+
+  const res = await axios.post(endpoint, payload, {
+    headers: {
+      Authorization: `Key ${process.env.FAL_KEY}`,
+      'Content-Type': 'application/json',
     },
-  );
+    timeout: 60_000,
+  });
 
-  const data = res.data;
-  if (!data?.request_id || !data?.status_url || !data?.response_url) {
-    throw new Error(`Unexpected fal queue submit response: ${JSON.stringify(data).slice(0, 500)}`);
+  // Immediate response
+  if (res.data && !res.data.request_id) {
+    return { requestId: null, result: res.data };
   }
 
+  const requestId = res.data?.request_id;
+  if (!requestId) {
+    throw new Error(`Unexpected fal response: ${JSON.stringify(res.data).slice(0, 500)}`);
+  }
+
+  const statusUrl = `https://queue.fal.run/requests/${requestId}/status`;
+  const resultUrl = `https://queue.fal.run/requests/${requestId}`;
   const deadline = Date.now() + timeoutMs;
-  let backoffMs = 700;
 
   while (Date.now() < deadline) {
-    const statusRes = await axios.get(data.status_url, {
+    await sleep(pollIntervalMs);
+    const statusRes = await axios.get(statusUrl, {
       headers: { Authorization: `Key ${process.env.FAL_KEY}` },
       timeout: 20_000,
     });
 
     const status = statusRes.data?.status;
     if (status === 'COMPLETED') {
-      const outRes = await axios.get(data.response_url, {
+      const outRes = await axios.get(resultUrl, {
         headers: { Authorization: `Key ${process.env.FAL_KEY}` },
         timeout: 30_000,
       });
-      return {
-        requestId: data.request_id,
-        result: outRes.data,
-      };
+      return { requestId, result: outRes.data };
     }
 
     if (status === 'FAILED' || status === 'CANCELED') {
-      throw new Error(`fal request ${data.request_id} ${status}: ${JSON.stringify(statusRes.data).slice(0, 800)}`);
+      throw new Error(`fal request ${requestId} ${status}: ${JSON.stringify(statusRes.data).slice(0, 800)}`);
     }
-
-    await sleep(backoffMs);
-    backoffMs = Math.min(2500, Math.floor(backoffMs * 1.15));
   }
 
   throw new Error(`fal request timeout after ${timeoutMs}ms (model=${modelId})`);
 }
 
 module.exports = {
-  falQueueSubmit,
+  falRun,
 };

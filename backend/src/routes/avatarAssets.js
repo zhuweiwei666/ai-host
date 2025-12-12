@@ -23,8 +23,14 @@ router.post('/generate', requireAuth, async (req, res) => {
     return sendSuccess(res, HTTP_STATUS.OK, out);
   } catch (err) {
     console.error('[avatar-assets] generate failed:', err);
-    return errors.badGateway(res, 'Avatar asset generation failed', {
+    const details = {
       error: err.message,
+    };
+    if (err.response?.data) {
+      details.falResponse = err.response.data;
+    }
+    return errors.badGateway(res, 'Avatar asset generation failed', {
+      ...details,
     });
   }
 });
