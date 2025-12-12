@@ -105,9 +105,10 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
     falRun('fal-ai/imageutils/marigold-depth', {
       image_url: imageUrl,
       // Keep costs reasonable; can raise for hero skins.
-      num_inference_steps: 10,
-      ensemble_size: 6,
-      processing_res: 768,
+      // NOTE: lower defaults to avoid Cloudflare timeout; can be increased later.
+      num_inference_steps: 8,
+      ensemble_size: 4,
+      processing_res: 512,
     }),
     falRun('fal-ai/imageutils/rembg', {
       image_url: imageUrl,

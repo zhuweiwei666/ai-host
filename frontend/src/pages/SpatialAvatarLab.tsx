@@ -135,7 +135,10 @@ const SpatialAvatarLab: React.FC = () => {
                     const serverMsg = e?.response?.data?.message;
                     const raw = e?.response?.data;
                     const rawText = typeof raw === 'string' ? raw.slice(0, 240) : null;
-                    setGenError(serverMsg || rawText || e?.message || '生成失败');
+                    const status = e?.response?.status;
+                    setGenError(
+                      (status ? `HTTP ${status}: ` : '') + (serverMsg || rawText || e?.message || '生成失败')
+                    );
                   } finally {
                     setGenerating(false);
                   }
