@@ -5,6 +5,7 @@ import { normalizeImageUrl } from '../utils/imageUrl';
 import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from '../components/SpatialAvatar';
 import { DEFAULT_MOTION_PROFILE } from '../components/motionProfile';
 import SpatialBackdrop from '../components/SpatialBackdrop';
+import WebGLSpatialAvatar from '../components/WebGLSpatialAvatar';
 import GiftPanel from '../components/GiftPanel';
 import OutfitGallery from '../components/OutfitGallery';
 import RelationshipPanel from '../components/RelationshipPanel';
@@ -565,6 +566,15 @@ const ChatPage: React.FC = () => {
 
   if (!agent) return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading agent...</div>;
 
+  const savedMetaUrl = (() => {
+    try {
+      if (!id) return null;
+      return localStorage.getItem(`avatarAssetMetaUrl:${id}`);
+    } catch {
+      return null;
+    }
+  })();
+
   return (
     <div className="h-screen overflow-hidden bg-gray-100 flex flex-col">
       <header className="bg-white shadow-sm px-6 py-4 flex items-center justify-between z-10 flex-shrink-0">
@@ -578,22 +588,26 @@ const ChatPage: React.FC = () => {
             </svg>
           </button>
           
-          <SpatialAvatar
-            src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/64')}
-            alt={agent.name}
-            width={40}
-            height={40}
-            // Use the exported portrait defaults; tweak per-agent later if needed.
-            layers={DEFAULT_PORTRAIT_LAYERS}
-            motion={{
-              ...DEFAULT_MOTION_PROFILE,
-              // Header avatars should be extra subtle.
-              parallaxPx: 7,
-              breathAmpPx: 0.9,
-              driftAmpPx: 0.8,
-            }}
-            className="w-10 h-10 rounded-full bg-gray-200"
-          />
+          {savedMetaUrl ? (
+            <WebGLSpatialAvatar metaUrl={savedMetaUrl} width={40} height={40} className="w-10 h-10 rounded-full" />
+          ) : (
+            <SpatialAvatar
+              src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/64')}
+              alt={agent.name}
+              width={40}
+              height={40}
+              // Use the exported portrait defaults; tweak per-agent later if needed.
+              layers={DEFAULT_PORTRAIT_LAYERS}
+              motion={{
+                ...DEFAULT_MOTION_PROFILE,
+                // Header avatars should be extra subtle.
+                parallaxPx: 7,
+                breathAmpPx: 0.9,
+                driftAmpPx: 0.8,
+              }}
+              className="w-10 h-10 rounded-full bg-gray-200"
+            />
+          )}
           <div>
             <h1 className="text-lg font-bold text-gray-900">{agent.name}</h1>
             <p className="text-xs text-gray-500">{agent.modelName}</p>

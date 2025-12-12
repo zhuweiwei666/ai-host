@@ -5,13 +5,14 @@ import Apple3DPhoto from '../components/Apple3DPhoto';
 import { http } from '../api/http';
 import { getAgents, type Agent } from '../api';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import WebGLSpatialAvatar from '../components/WebGLSpatialAvatar';
 
 const SpatialAvatarLab: React.FC = () => {
   const [src, setSrc] = useState<string>('https://via.placeholder.com/512x512.png?text=Avatar');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('custom');
   const [interactive, setInteractive] = useState(true);
-  const [mode, setMode] = useState<'layers' | 'apple3d'>('apple3d');
+  const [mode, setMode] = useState<'layers' | 'apple3d' | 'webgl'>('apple3d');
   const [assetPack, setAssetPack] = useState<any>(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -166,6 +167,7 @@ const SpatialAvatarLab: React.FC = () => {
                 value={mode}
                 onChange={(e) => setMode(e.target.value as any)}
               >
+                <option value="webgl">空间照片 WebGL（depth/normal/mask）</option>
                 <option value="apple3d">苹果风格 3D 照片（倾斜 + 光泽 + 阴影）</option>
                 <option value="layers">2.5D 分层（clip-path 切片 + 视差）</option>
               </select>
@@ -189,6 +191,20 @@ const SpatialAvatarLab: React.FC = () => {
                 <div><b>depth</b>: <a className="text-indigo-600 hover:underline" href={assetPack.depthUrl} target="_blank" rel="noreferrer">open</a></div>
                 <div><b>normal</b>: <a className="text-indigo-600 hover:underline" href={assetPack.normalUrl} target="_blank" rel="noreferrer">open</a></div>
                 <div><b>cutout/mask</b>: <a className="text-indigo-600 hover:underline" href={assetPack.cutoutUrl} target="_blank" rel="noreferrer">open</a></div>
+                {selectedAgentId !== 'custom' && assetPack?.metaUrl && (
+                  <div className="pt-2">
+                    <button
+                      className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-black"
+                      onClick={() => {
+                        const key = `avatarAssetMetaUrl:${selectedAgentId}`;
+                        localStorage.setItem(key, assetPack.metaUrl);
+                        alert('已保存：聊天页会优先使用 WebGL 空间照片头像（本地存储）');
+                      }}
+                    >
+                      保存到该主播（聊天页优先用 WebGL）
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -202,7 +218,13 @@ const SpatialAvatarLab: React.FC = () => {
             </div>
 
             <div className="flex justify-center">
-              {mode === 'layers' ? (
+              {mode === 'webgl' ? (
+                assetPack?.metaUrl ? (
+                  <WebGLSpatialAvatar metaUrl={assetPack.metaUrl} width={260} height={260} className="shadow-lg" />
+                ) : (
+                  <div className="text-sm text-gray-500">先点击上面的按钮生成资产包（meta.json）</div>
+                )
+              ) : mode === 'layers' ? (
                 <SpatialAvatar
                   src={src}
                   width={220}
