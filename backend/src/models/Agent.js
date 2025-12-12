@@ -26,6 +26,10 @@ const AgentSchema = new mongoose.Schema({
   avatarUrls: { type: [String], default: [] }, // Array of image URLs
   coverVideoUrls: { type: [String], default: [] }, // Array of video URLs
   privatePhotoUrls: { type: [String], default: [] }, // Array of NSFW/Paid image URLs
+
+  // ========== 空间照片 / 动态皮肤资产包 ==========
+  // Stores the fal-generated meta.json URL (base/depth/normal/cutout + shader params)
+  avatarSpatialMetaUrl: { type: String, default: '' },
   
   // ========== 视频预览系统 ==========
   previewVideos: [PreviewVideoSchema],              // 预览视频列表（带元数据）

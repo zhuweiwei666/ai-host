@@ -566,14 +566,7 @@ const ChatPage: React.FC = () => {
 
   if (!agent) return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading agent...</div>;
 
-  const savedMetaUrl = (() => {
-    try {
-      if (!id) return null;
-      return localStorage.getItem(`avatarAssetMetaUrl:${id}`);
-    } catch {
-      return null;
-    }
-  })();
+  const savedMetaUrl = agent?.avatarSpatialMetaUrl || null;
 
   return (
     <div className="h-screen overflow-hidden bg-gray-100 flex flex-col">

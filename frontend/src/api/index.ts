@@ -13,6 +13,8 @@ export interface Agent {
   avatarUrls?: string[]; // Array of image URLs
   coverVideoUrls?: string[]; // Array of video URLs
   privatePhotoUrls?: string[]; // Array of NSFW/Paid image URLs
+  // WebGL spatial photo asset pack (meta.json URL)
+  avatarSpatialMetaUrl?: string;
   description: string;
   modelName: string;
   temperature: number;

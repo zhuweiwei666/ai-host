@@ -220,6 +220,29 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/agents/:id/avatar-spatial-meta - Set spatial avatar meta URL (Admin only)
+// Body: { metaUrl: string }
+router.post('/:id/avatar-spatial-meta', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { metaUrl } = req.body || {};
+    if (typeof metaUrl !== 'string') {
+      return errors.badRequest(res, 'Missing metaUrl');
+    }
+
+    const updatedAgent = await Agent.findOneAndUpdate(
+      { _id: req.params.id },
+      { $set: { avatarSpatialMetaUrl: metaUrl } },
+      { new: true, runValidators: true, strict: false }
+    );
+
+    if (!updatedAgent) return errors.notFound(res, 'Agent not found');
+    return sendSuccess(res, HTTP_STATUS.OK, updatedAgent);
+  } catch (err) {
+    console.error('[POST /agents/:id/avatar-spatial-meta] Error:', err);
+    return errors.badRequest(res, err.message || 'Update failed');
+  }
+});
+
 // DELETE /api/agents/:id - Delete agent (Admin only)
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {

@@ -195,13 +195,17 @@ const SpatialAvatarLab: React.FC = () => {
                   <div className="pt-2">
                     <button
                       className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-black"
-                      onClick={() => {
-                        const key = `avatarAssetMetaUrl:${selectedAgentId}`;
-                        localStorage.setItem(key, assetPack.metaUrl);
-                        alert('已保存：聊天页会优先使用 WebGL 空间照片头像（本地存储）');
+                      onClick={async () => {
+                        try {
+                          await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { metaUrl: assetPack.metaUrl });
+                          alert('已保存到服务器：全局生效（所有用户聊天页都会使用 WebGL 空间照片）');
+                        } catch (e: any) {
+                          const msg = e?.response?.data?.message || e?.message || '保存失败';
+                          alert(`保存失败：${msg}`);
+                        }
                       }}
                     >
-                      保存到该主播（聊天页优先用 WebGL）
+                      保存到该主播（全局生效）
                     </button>
                   </div>
                 )}
