@@ -10,13 +10,15 @@ function sleep(ms) {
  * - If it returns request_id, poll https://queue.fal.run/requests/{id} until COMPLETED.
  */
 async function falRun(modelId, payload, { timeoutMs = 240_000, pollIntervalMs = 1500 } = {}) {
-  if (!process.env.FAL_KEY) throw new Error('FAL_KEY not configured');
+  // Reuse existing Fal key env used by image/video generation in this repo.
+  const apiKey = process.env.IMAGE_GEN_API_KEY || process.env.FAL_KEY;
+  if (!apiKey) throw new Error('IMAGE_GEN_API_KEY (Fal.ai) is not configured');
 
   const endpoint = `https://fal.run/${modelId}`;
 
   const res = await axios.post(endpoint, payload, {
     headers: {
-      Authorization: `Key ${process.env.FAL_KEY}`,
+      Authorization: `Key ${apiKey}`,
       'Content-Type': 'application/json',
     },
     timeout: 60_000,
@@ -39,14 +41,14 @@ async function falRun(modelId, payload, { timeoutMs = 240_000, pollIntervalMs = 
   while (Date.now() < deadline) {
     await sleep(pollIntervalMs);
     const statusRes = await axios.get(statusUrl, {
-      headers: { Authorization: `Key ${process.env.FAL_KEY}` },
+      headers: { Authorization: `Key ${apiKey}` },
       timeout: 20_000,
     });
 
     const status = statusRes.data?.status;
     if (status === 'COMPLETED') {
       const outRes = await axios.get(resultUrl, {
-        headers: { Authorization: `Key ${process.env.FAL_KEY}` },
+        headers: { Authorization: `Key ${apiKey}` },
         timeout: 30_000,
       });
       return { requestId, result: outRes.data };
