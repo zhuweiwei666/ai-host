@@ -107,6 +107,7 @@ export default function SpatialAvatar({
   const pointerStateRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
 
   const breathRef = useRef({ phase: 0 });
+  const blinkRef = useRef({ nextT: 0, startT: 0, dur: 0.11, double: false });
 
   // Precompute per-layer seeds + weights so layers never move in sync.
   const layerRuntime = useMemo(() => {
@@ -136,6 +137,8 @@ export default function SpatialAvatar({
         _clipPath: clipPath,
         _bgX: bgX,
         _bgY: bgY,
+        _blinkW: /eye|eyes/i.test(l.id) ? 1 : 0,
+        _mouthW: /mouth|lip/i.test(l.id) ? 1 : 0,
       };
     });
   }, [layers, profile.seed]);
@@ -170,6 +173,11 @@ export default function SpatialAvatar({
       root.style.setProperty('--dy', '0');
       root.style.setProperty('--rot', '0');
       root.style.setProperty('--s', '0');
+      root.style.setProperty('--blink', '0');
+      root.style.setProperty('--mouth', '0');
+      root.style.setProperty('--rootTx', '0');
+      root.style.setProperty('--rootTy', '0');
+      root.style.setProperty('--rootRot', '0');
       return;
     }
 
@@ -235,6 +243,38 @@ export default function SpatialAvatar({
       // Reduced motion factor is applied to all motion signals.
       const rm = prefersReducedMotion ? profile.reducedMotionFactor : 1;
 
+      // --- Blink + micro mouth events (WHY: \"alive\" cues) ---
+      // Blink scheduling (randomized, non-periodic)
+      if (blinkRef.current.nextT === 0) {
+        blinkRef.current.nextT = now + 2.6 + Math.abs(fbm1D(now * 0.2, profile.seed + 401)) * 3.8;
+      }
+      if (now >= blinkRef.current.nextT) {
+        blinkRef.current.startT = now;
+        blinkRef.current.dur = 0.09 + Math.abs(fbm1D(now * 0.3, profile.seed + 402)) * 0.06; // 90–150ms
+        blinkRef.current.double = fbm1D(now * 0.7, profile.seed + 403) > 0.55; // occasional double blink
+        const gap = blinkRef.current.double ? 0.18 : 0;
+        blinkRef.current.nextT = now + (blinkRef.current.double ? (blinkRef.current.dur + gap + 2.4) : 2.6) + Math.abs(fbm1D(now * 0.2 + 11.7, profile.seed + 404)) * 3.8;
+      }
+      const bt = now - blinkRef.current.startT;
+      let blink = 0;
+      if (bt >= 0 && bt <= blinkRef.current.dur) {
+        const u = bt / blinkRef.current.dur;
+        // quick close-open curve
+        blink = u < 0.5 ? (u / 0.5) : (1 - (u - 0.5) / 0.5);
+      }
+      // double blink second pulse
+      if (blinkRef.current.double) {
+        const bt2 = bt - (blinkRef.current.dur + 0.10);
+        if (bt2 >= 0 && bt2 <= blinkRef.current.dur * 0.9) {
+          const u2 = bt2 / (blinkRef.current.dur * 0.9);
+          const b2 = u2 < 0.5 ? (u2 / 0.5) : (1 - (u2 - 0.5) / 0.5);
+          blink = Math.max(blink, b2 * 0.9);
+        }
+      }
+
+      // Micro mouth (very subtle, always-on but noisy)
+      const mouth = clamp(fbm1D(now * 0.35 + 3.3, profile.seed + 501) * 0.6, -1, 1);
+
       // Clamp ranges (spec): keep subtle.
       root.style.setProperty('--px', String(clamp(p.x, -1, 1)));
       root.style.setProperty('--py', String(clamp(p.y, -1, 1)));
@@ -244,6 +284,13 @@ export default function SpatialAvatar({
       root.style.setProperty('--dy', String(clamp(driftY * rm, -1, 1)));
       root.style.setProperty('--rot', String(clamp(rot * rm, -1, 1)));
       root.style.setProperty('--gain', String(gain));
+      root.style.setProperty('--blink', String(clamp(blink * rm, 0, 1)));
+      root.style.setProperty('--mouth', String(clamp(mouth * rm, -1, 1)));
+
+      // Whole-avatar micro motion (subtle)
+      root.style.setProperty('--rootTx', String(clamp(driftX * driftAmpPx * 0.18, -0.5, 0.5)));
+      root.style.setProperty('--rootTy', String(clamp((driftY * driftAmpPx * 0.18) + (breathSignal * 0.15), -0.6, 0.6)));
+      root.style.setProperty('--rootRot', String(clamp(rot * driftRotDeg * 0.18, -0.12, 0.12)));
 
       rafRef.current = window.requestAnimationFrame(tick);
     };
@@ -319,6 +366,8 @@ export default function SpatialAvatar({
             ['--ax' as any]: String(lr._axisX),
             ['--ay' as any]: String(lr._axisY),
             ['--breath' as any]: String(lr._breath),
+            ['--blinkW' as any]: String(lr._blinkW),
+            ['--mouthW' as any]: String(lr._mouthW),
             ['--sa-bg-x' as any]: lr._bgX,
             ['--sa-bg-y' as any]: lr._bgY,
           }}

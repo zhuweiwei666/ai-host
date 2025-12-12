@@ -4,6 +4,7 @@ import { Agent, getAgent, chatWithAgent, getChatHistory, generateTTS, generateVi
 import { normalizeImageUrl } from '../utils/imageUrl';
 import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from '../components/SpatialAvatar';
 import { DEFAULT_MOTION_PROFILE } from '../components/motionProfile';
+import SpatialBackdrop from '../components/SpatialBackdrop';
 import GiftPanel from '../components/GiftPanel';
 import OutfitGallery from '../components/OutfitGallery';
 import RelationshipPanel from '../components/RelationshipPanel';
@@ -668,11 +669,10 @@ const ChatPage: React.FC = () => {
                     playsInline
                 />
             ) : (
-                <img 
-                    src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')} 
-                    alt={agent.name}
-                    className="w-full h-full object-cover object-[50%_20%] opacity-30" 
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x600'; }}
+                <SpatialBackdrop
+                  src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')}
+                  className="sb"
+                  opacity={0.30}
                 />
             )}
             {/* Overlay to ensure text readability */}

@@ -1,10 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from '../components/SpatialAvatar';
 import { DEFAULT_MOTION_PROFILE, type MotionProfile } from '../components/motionProfile';
+import Apple3DPhoto from '../components/Apple3DPhoto';
+import { http } from '../api/http';
 
 const SpatialAvatarLab: React.FC = () => {
   const [src, setSrc] = useState<string>('https://via.placeholder.com/512x512.png?text=Avatar');
   const [interactive, setInteractive] = useState(true);
+  const [mode, setMode] = useState<'layers' | 'apple3d'>('apple3d');
+  const [assetPack, setAssetPack] = useState<any>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   // Motion tuning knobs (safe ranges; prefer variance over amplitude).
   const [parallaxPx, setParallaxPx] = useState(DEFAULT_MOTION_PROFILE.parallaxPx);
@@ -52,9 +58,49 @@ const SpatialAvatarLab: React.FC = () => {
               />
             </label>
 
+            <div className="flex items-center gap-2">
+              <button
+                className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                disabled={generating || !src}
+                onClick={async () => {
+                  setGenerating(true);
+                  setGenError(null);
+                  try {
+                    // Backend will use FAL_KEY server-side to generate depth/cutout/normal pack.
+                    const res = await http.post('/avatar-assets/generate', { imageUrl: src });
+                    setAssetPack(res.data);
+                  } catch (e: any) {
+                    setGenError(e?.response?.data?.message || e?.message || '生成失败');
+                  } finally {
+                    setGenerating(false);
+                  }
+                }}
+              >
+                {generating ? '生成中…' : '用 fal.ai 生成空间资产包（depth/normal/mask）'}
+              </button>
+              {assetPack?.metaUrl && (
+                <a className="text-sm text-indigo-600 hover:underline" href={assetPack.metaUrl} target="_blank" rel="noreferrer">
+                  查看 meta.json
+                </a>
+              )}
+            </div>
+            {genError && <div className="text-sm text-red-600">{genError}</div>}
+
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
               允许交互（hover / focus / pointer parallax）
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-gray-500 mb-1">模式</div>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as any)}
+              >
+                <option value="apple3d">苹果风格 3D 照片（倾斜 + 光泽 + 阴影）</option>
+                <option value="layers">2.5D 分层（clip-path 切片 + 视差）</option>
+              </select>
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -69,6 +115,14 @@ const SpatialAvatarLab: React.FC = () => {
             <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
               layers(默认 3 层): <code className="px-1">bg:-0.2</code> <code className="px-1">body:0.2</code> <code className="px-1">face:0.6</code>
             </div>
+
+            {assetPack && (
+              <div className="text-xs text-gray-600 pt-2 border-t border-gray-100 space-y-1">
+                <div><b>depth</b>: <a className="text-indigo-600 hover:underline" href={assetPack.depthUrl} target="_blank" rel="noreferrer">open</a></div>
+                <div><b>normal</b>: <a className="text-indigo-600 hover:underline" href={assetPack.normalUrl} target="_blank" rel="noreferrer">open</a></div>
+                <div><b>cutout/mask</b>: <a className="text-indigo-600 hover:underline" href={assetPack.cutoutUrl} target="_blank" rel="noreferrer">open</a></div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -80,15 +134,29 @@ const SpatialAvatarLab: React.FC = () => {
             </div>
 
             <div className="flex justify-center">
-              <SpatialAvatar
-                src={src}
-                width={220}
-                height={220}
-                layers={layers}
-                motion={motion}
-                interactive={interactive}
-                className="shadow-lg"
-              />
+              {mode === 'layers' ? (
+                <SpatialAvatar
+                  src={src}
+                  width={220}
+                  height={220}
+                  layers={layers}
+                  motion={motion}
+                  interactive={interactive}
+                  className="shadow-lg"
+                />
+              ) : (
+                <Apple3DPhoto
+                  src={src}
+                  width={260}
+                  height={260}
+                  interactive={interactive}
+                  tiltDeg={8}
+                  translatePx={10}
+                  glare={0.9}
+                  seed={seed}
+                  className="shadow-lg"
+                />
+              )}
             </div>
 
             <div className="mt-4 text-xs text-gray-500">

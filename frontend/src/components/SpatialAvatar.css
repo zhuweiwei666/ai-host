@@ -14,8 +14,11 @@
   background-position: 0% 0%;
   background-repeat: no-repeat;
 
-  /* Helps the parallax feel like depth rather than UI translation */
-  transform: translateZ(0);
+  /* Whole-avatar micro motion (WHY: person feels like a presence, not static sticker) */
+  transform:
+    translate3d(calc(var(--rootTx, 0) * 1px), calc(var(--rootTy, 0) * 1px), 0)
+    rotate(calc(var(--rootRot, 0) * 1deg))
+    translateZ(0);
   will-change: transform;
 }
 
@@ -33,6 +36,7 @@
   background-repeat: no-repeat;
 
   will-change: transform;
+  transform-origin: 50% 45%;
   /*
     Transform composition from global vars:
     - WHY: one rAF writes global signals; each layer applies its own depth z.
@@ -52,7 +56,10 @@
       0
     )
     rotate(calc((var(--rot, 0) * var(--driftRotDeg, 0) * var(--z, 0)) * 1deg))
-    scale(calc(1 + (var(--s, 0) * var(--breathScale, 0) * var(--breath, 0))));
+    scale(calc(1 + (var(--s, 0) * var(--breathScale, 0) * var(--breath, 0))))
+    /* blink + micro mouth (optional per-layer weights) */
+    scaleY(calc(1 - (var(--blink, 0) * var(--blinkW, 0) * 0.85)))
+    scaleX(calc(1 + (var(--mouth, 0) * var(--mouthW, 0) * 0.06)));
 
   pointer-events: none;
 }
