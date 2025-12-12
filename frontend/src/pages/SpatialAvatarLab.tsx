@@ -1,11 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from '../components/SpatialAvatar';
 import { DEFAULT_MOTION_PROFILE, type MotionProfile } from '../components/motionProfile';
 import Apple3DPhoto from '../components/Apple3DPhoto';
 import { http } from '../api/http';
+import { getAgents, type Agent } from '../api';
+import { normalizeImageUrl } from '../utils/imageUrl';
 
 const SpatialAvatarLab: React.FC = () => {
   const [src, setSrc] = useState<string>('https://via.placeholder.com/512x512.png?text=Avatar');
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('custom');
   const [interactive, setInteractive] = useState(true);
   const [mode, setMode] = useState<'layers' | 'apple3d'>('apple3d');
   const [assetPack, setAssetPack] = useState<any>(null);
@@ -38,6 +42,41 @@ const SpatialAvatarLab: React.FC = () => {
     [parallaxPx, breathAmpPx, breathScale, driftAmpPx, driftRotDeg, seed],
   );
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await getAgents();
+        const raw: any = res.data;
+        const list: Agent[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+        if (!mounted) return;
+        setAgents(list);
+      } catch (e) {
+        if (!mounted) return;
+        setAgents([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const agentAvatarUrl = useMemo(() => {
+    const agent = agents.find((a) => a._id === selectedAgentId);
+    if (!agent) return null;
+    const url = agent.avatarUrls?.[0] || agent.avatarUrl;
+    return normalizeImageUrl(url, 'https://via.placeholder.com/512x512.png?text=Avatar');
+  }, [agents, selectedAgentId]);
+
+  useEffect(() => {
+    if (selectedAgentId !== 'custom' && agentAvatarUrl) {
+      setSrc(agentAvatarUrl);
+      setAssetPack(null);
+      setGenError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgentId, agentAvatarUrl]);
+
   return (
     <div className="p-6">
       <div className="flex items-start justify-between gap-6 flex-wrap">
@@ -49,12 +88,35 @@ const SpatialAvatarLab: React.FC = () => {
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
             <label className="block">
+              <div className="text-xs text-gray-500 mb-1">选择现有 AI 主播</div>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+              >
+                <option value="custom">自定义 URL</option>
+                {agents.map((a) => (
+                  <option key={a._id} value={a._id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+              {selectedAgentId !== 'custom' && agentAvatarUrl && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                  <img src={agentAvatarUrl} alt="" className="w-8 h-8 rounded-md object-cover bg-gray-100" />
+                  <span className="truncate">已选头像：{agentAvatarUrl}</span>
+                </div>
+              )}
+            </label>
+
+            <label className="block">
               <div className="text-xs text-gray-500 mb-1">PNG URL</div>
               <input
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 value={src}
                 onChange={(e) => setSrc(e.target.value)}
                 placeholder="https://.../avatar.png"
+                disabled={selectedAgentId !== 'custom'}
               />
             </label>
 
