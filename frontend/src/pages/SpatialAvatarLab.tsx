@@ -3,7 +3,7 @@ import SpatialAvatar, { DEFAULT_PORTRAIT_LAYERS, type SpatialAvatarLayer } from 
 import { DEFAULT_MOTION_PROFILE, type MotionProfile } from '../components/motionProfile';
 import Apple3DPhoto from '../components/Apple3DPhoto';
 import { http } from '../api/http';
-import { getAgents, type Agent } from '../api';
+import { getAgent, getAgents, type Agent } from '../api';
 import { normalizeImageUrl } from '../utils/imageUrl';
 import WebGLSpatialAvatar from '../components/WebGLSpatialAvatar';
 
@@ -16,6 +16,7 @@ const SpatialAvatarLab: React.FC = () => {
   const [assetPack, setAssetPack] = useState<any>(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [currentBoundMeta, setCurrentBoundMeta] = useState<string>('');
 
   // Motion tuning knobs (safe ranges; prefer variance over amplitude).
   const [parallaxPx, setParallaxPx] = useState(DEFAULT_MOTION_PROFILE.parallaxPx);
@@ -77,6 +78,27 @@ const SpatialAvatarLab: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAgentId, agentAvatarUrl]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (selectedAgentId === 'custom') {
+        if (mounted) setCurrentBoundMeta('');
+        return;
+      }
+      try {
+        const res = await getAgent(selectedAgentId);
+        if (!mounted) return;
+        setCurrentBoundMeta(res.data?.avatarSpatialMetaUrl || '');
+      } catch {
+        if (!mounted) return;
+        setCurrentBoundMeta('');
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedAgentId]);
 
   return (
     <div className="p-6">
@@ -147,6 +169,37 @@ const SpatialAvatarLab: React.FC = () => {
               >
                 {generating ? '生成中…' : '用 fal.ai 生成空间资产包（depth/normal/mask）'}
               </button>
+              {selectedAgentId !== 'custom' && (
+                <button
+                  className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-black disabled:opacity-50"
+                  disabled={generating || !src}
+                  onClick={async () => {
+                    setGenerating(true);
+                    setGenError(null);
+                    try {
+                      // One-click: generate + bind globally on the agent (admin only).
+                      const res = await http.post('/avatar-assets/generate', {
+                        imageUrl: src,
+                        agentId: selectedAgentId,
+                        bindToAgent: true,
+                      });
+                      setAssetPack(res.data);
+                      setCurrentBoundMeta(res.data?.metaUrl || '');
+                      alert('已生成并绑定：全局生效');
+                    } catch (e: any) {
+                      const serverMsg = e?.response?.data?.message;
+                      const raw = e?.response?.data;
+                      const rawText = typeof raw === 'string' ? raw.slice(0, 240) : null;
+                      const status = e?.response?.status;
+                      setGenError((status ? `HTTP ${status}: ` : '') + (serverMsg || rawText || e?.message || '生成失败'));
+                    } finally {
+                      setGenerating(false);
+                    }
+                  }}
+                >
+                  一键生成并绑定（全局）
+                </button>
+              )}
               {assetPack?.metaUrl && (
                 <a className="text-sm text-indigo-600 hover:underline" href={assetPack.metaUrl} target="_blank" rel="noreferrer">
                   查看 meta.json
@@ -154,6 +207,32 @@ const SpatialAvatarLab: React.FC = () => {
               )}
             </div>
             {genError && <div className="text-sm text-red-600">{genError}</div>}
+
+            {selectedAgentId !== 'custom' && (
+              <div className="text-xs text-gray-600 border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="truncate">
+                    <b>当前绑定（全局）</b>：{currentBoundMeta ? currentBoundMeta : '未绑定'}
+                  </div>
+                  <button
+                    className="px-2 py-1 rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    disabled={!currentBoundMeta}
+                    onClick={async () => {
+                      try {
+                        await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { metaUrl: '' });
+                        setCurrentBoundMeta('');
+                        alert('已清除绑定（全局）');
+                      } catch (e: any) {
+                        const msg = e?.response?.data?.message || e?.message || '清除失败';
+                        alert(`清除失败：${msg}`);
+                      }
+                    }}
+                  >
+                    清除绑定
+                  </button>
+                </div>
+              </div>
+            )}
 
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />

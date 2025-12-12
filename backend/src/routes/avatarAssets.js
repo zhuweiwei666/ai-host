@@ -2,14 +2,16 @@ const express = require('express');
 const router = express.Router();
 
 const { requireAuth } = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/admin');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 const { generateAvatarAssetPack } = require('../services/avatarAssetService');
+const Agent = require('../models/Agent');
 
 // POST /api/avatar-assets/generate
-// Body: { imageUrl: string, agentId?: string }
+// Body: { imageUrl: string, agentId?: string, bindToAgent?: boolean }
 router.post('/generate', requireAuth, async (req, res) => {
   try {
-    const { imageUrl, agentId } = req.body || {};
+    const { imageUrl, agentId, bindToAgent } = req.body || {};
     if (!imageUrl) {
       return errors.badRequest(res, 'Missing imageUrl');
     }
@@ -19,6 +21,18 @@ router.post('/generate', requireAuth, async (req, res) => {
       userId: req.user?.id,
       agentId,
     });
+
+    // Optional: bind metaUrl to agent globally (admin only)
+    if (bindToAgent && agentId) {
+      if (req.user?.role !== 'admin') {
+        return errors.adminRequired(res);
+      }
+      await Agent.findOneAndUpdate(
+        { _id: agentId },
+        { $set: { avatarSpatialMetaUrl: out.metaUrl } },
+        { new: false, strict: false }
+      );
+    }
 
     return sendSuccess(res, HTTP_STATUS.OK, out);
   } catch (err) {
