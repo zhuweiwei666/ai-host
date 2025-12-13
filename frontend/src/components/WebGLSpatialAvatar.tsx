@@ -131,7 +131,10 @@ const VS = `
 attribute vec2 aPos;
 varying vec2 vUv;
 void main(){
-  vUv = (aPos * 0.5) + 0.5;
+  // Flip Y in shader for consistent image orientation across decoders/CDNs.
+  // WHY: avoids upside-down rendering caused by differing image origin conventions.
+  vec2 uv = (aPos * 0.5) + 0.5;
+  vUv = vec2(uv.x, 1.0 - uv.y);
   gl_Position = vec4(aPos, 0.0, 1.0);
 }
 `;
