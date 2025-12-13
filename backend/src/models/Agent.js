@@ -30,6 +30,17 @@ const AgentSchema = new mongoose.Schema({
   // ========== 空间照片 / 动态皮肤资产包 ==========
   // Stores the fal-generated meta.json URL (base/depth/normal/cutout + shader params)
   avatarSpatialMetaUrl: { type: String, default: '' },
+  // Optional per-agent shader overrides (global tuning without regenerating assets)
+  // WHY: lets us tune FX intensity/speed/scale and lighting per agent instantly.
+  avatarSpatialShader: {
+    parallaxStrength: { type: Number },
+    normalStrength: { type: Number },
+    rimStrength: { type: Number },
+    glareStrength: { type: Number },
+    fxStrength: { type: Number },
+    fxSpeed: { type: Number },
+    fxScale: { type: Number },
+  },
   
   // ========== 视频预览系统 ==========
   previewVideos: [PreviewVideoSchema],              // 预览视频列表（带元数据）

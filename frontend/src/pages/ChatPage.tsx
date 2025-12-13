@@ -583,7 +583,13 @@ const ChatPage: React.FC = () => {
           </button>
           
           {savedMetaUrl ? (
-            <WebGLSpatialAvatar metaUrl={savedMetaUrl} width={40} height={40} className="w-10 h-10 rounded-full" />
+            <WebGLSpatialAvatar
+              metaUrl={savedMetaUrl}
+              width={40}
+              height={40}
+              className="w-10 h-10 rounded-full"
+              shaderOverrides={agent.avatarSpatialShader}
+            />
           ) : (
             <SpatialAvatar
               src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/64')}
@@ -702,6 +708,7 @@ const ChatPage: React.FC = () => {
                     width="100%"
                     height={320}
                     className="shadow-lg"
+                    shaderOverrides={agent.avatarSpatialShader}
                   />
                 </div>
               ) : (
@@ -931,7 +938,12 @@ const ChatPage: React.FC = () => {
                   <div className="text-xs text-gray-500">move cursor</div>
                 </div>
                 {agent.avatarSpatialMetaUrl ? (
-                  <WebGLSpatialAvatar metaUrl={agent.avatarSpatialMetaUrl} width="100%" height={420} />
+                  <WebGLSpatialAvatar
+                    metaUrl={agent.avatarSpatialMetaUrl}
+                    width="100%"
+                    height={420}
+                    shaderOverrides={agent.avatarSpatialShader}
+                  />
                 ) : (
                   <Apple3DPhoto
                     src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')}

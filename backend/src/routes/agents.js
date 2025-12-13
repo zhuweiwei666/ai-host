@@ -221,17 +221,35 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // POST /api/agents/:id/avatar-spatial-meta - Set spatial avatar meta URL (Admin only)
-// Body: { metaUrl: string }
+// Body: { metaUrl?: string, shader?: object|null }
 router.post('/:id/avatar-spatial-meta', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { metaUrl } = req.body || {};
-    if (typeof metaUrl !== 'string') {
-      return errors.badRequest(res, 'Missing metaUrl');
+    const body = req.body || {};
+    const { metaUrl, shader } = body;
+    const hasMetaUrl = Object.prototype.hasOwnProperty.call(body, 'metaUrl');
+    const hasShader = Object.prototype.hasOwnProperty.call(body, 'shader');
+    if (!hasMetaUrl && !hasShader) return errors.badRequest(res, 'Missing metaUrl/shader');
+
+    const update = {};
+    const unset = {};
+    if (hasMetaUrl) {
+      if (typeof metaUrl !== 'string') return errors.badRequest(res, 'metaUrl must be string');
+      update.avatarSpatialMetaUrl = metaUrl;
+    }
+    if (hasShader) {
+      if (shader === null) {
+        unset.avatarSpatialShader = 1;
+      } else if (typeof shader === 'object') {
+        update.avatarSpatialShader = shader;
+      } else {
+        return errors.badRequest(res, 'shader must be object or null');
+      }
     }
 
+    const updateQuery = Object.keys(unset).length ? { $set: update, $unset: unset } : { $set: update };
     const updatedAgent = await Agent.findOneAndUpdate(
       { _id: req.params.id },
-      { $set: { avatarSpatialMetaUrl: metaUrl } },
+      updateQuery,
       { new: true, runValidators: true, strict: false }
     );
 

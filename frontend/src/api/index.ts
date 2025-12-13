@@ -15,6 +15,16 @@ export interface Agent {
   privatePhotoUrls?: string[]; // Array of NSFW/Paid image URLs
   // WebGL spatial photo asset pack (meta.json URL)
   avatarSpatialMetaUrl?: string;
+  // Optional per-agent shader overrides (global tuning)
+  avatarSpatialShader?: {
+    parallaxStrength?: number;
+    normalStrength?: number;
+    rimStrength?: number;
+    glareStrength?: number;
+    fxStrength?: number;
+    fxSpeed?: number;
+    fxScale?: number;
+  };
   description: string;
   modelName: string;
   temperature: number;

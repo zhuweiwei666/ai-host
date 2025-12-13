@@ -29,6 +29,8 @@ export type WebGLSpatialAvatarProps = {
   height?: number | string;
   className?: string;
   interactive?: boolean;
+  /** Per-agent overrides (persisted in DB). Applied on top of meta.shader. */
+  shaderOverrides?: SpatialMeta['shader'];
 };
 
 function clamp(v: number, min: number, max: number) {
@@ -198,9 +200,18 @@ void main(){
 }
 `;
 
-export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220, className, interactive = true }: WebGLSpatialAvatarProps) {
+export default function WebGLSpatialAvatar({
+  metaUrl,
+  width = 220,
+  height = 220,
+  className,
+  interactive = true,
+  shaderOverrides,
+}: WebGLSpatialAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const shaderOverridesRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
+  const shaderBaseRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
 
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -209,6 +220,11 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
 
   const pointerTarget = useRef({ x: 0, y: 0, inside: false, lastMoveT: 0 });
   const pointer = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+
+  // Update overrides without reloading textures/shaders.
+  useEffect(() => {
+    shaderOverridesRef.current = shaderOverrides;
+  }, [shaderOverrides]);
 
   useEffect(() => {
     let destroyed = false;
@@ -227,6 +243,7 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
 
       try {
         const meta = await fetchJson<SpatialMeta>(metaUrl);
+        shaderBaseRef.current = meta.shader;
         const [baseBmp, depthBmp, normalBmp, cutBmp, fxBmp] = await Promise.all([
           loadImageBitmap(meta.baseUrl),
           loadImageBitmap(meta.depthUrl),
@@ -280,21 +297,26 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
         const uFxSpeed = gl.getUniformLocation(program, 'uFxSpeed');
         const uFxScale = gl.getUniformLocation(program, 'uFxScale');
 
-        const parallax = meta.shader?.parallaxStrength ?? 0.018;
-        const normalStr = meta.shader?.normalStrength ?? 1.0;
-        const rimStr = meta.shader?.rimStrength ?? 0.35;
-        const glareStr = meta.shader?.glareStrength ?? 0.8;
-        const fxStrength = meta.shader?.fxStrength ?? 0.0;
-        const fxSpeed = meta.shader?.fxSpeed ?? 1.0;
-        const fxScale = meta.shader?.fxScale ?? 1.2;
+        const applyShaderUniforms = () => {
+          // defaults -> meta.shader -> overrides
+          const base = shaderBaseRef.current || {};
+          const ov = shaderOverridesRef.current || {};
+          const parallax = ov.parallaxStrength ?? base.parallaxStrength ?? 0.018;
+          const normalStr = ov.normalStrength ?? base.normalStrength ?? 1.0;
+          const rimStr = ov.rimStrength ?? base.rimStrength ?? 0.35;
+          const glareStr = ov.glareStrength ?? base.glareStrength ?? 0.8;
+          const fxStrength = ov.fxStrength ?? base.fxStrength ?? 0.0;
+          const fxSpeed = ov.fxSpeed ?? base.fxSpeed ?? 1.0;
+          const fxScale = ov.fxScale ?? base.fxScale ?? 1.2;
 
-        gl.uniform1f(uParallax, parallax);
-        gl.uniform1f(uNormalStr, normalStr);
-        gl.uniform1f(uRimStr, rimStr);
-        gl.uniform1f(uGlareStr, glareStr);
-        gl.uniform1f(uFxStrength, fxStrength);
-        gl.uniform1f(uFxSpeed, fxSpeed);
-        gl.uniform1f(uFxScale, fxScale);
+          gl.uniform1f(uParallax, parallax);
+          gl.uniform1f(uNormalStr, normalStr);
+          gl.uniform1f(uRimStr, rimStr);
+          gl.uniform1f(uGlareStr, glareStr);
+          gl.uniform1f(uFxStrength, fxStrength);
+          gl.uniform1f(uFxSpeed, fxSpeed);
+          gl.uniform1f(uFxScale, fxScale);
+        };
 
         const resize = () => {
           const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -339,6 +361,8 @@ export default function WebGLSpatialAvatar({ metaUrl, width = 220, height = 220,
           const px = clamp(pointer.current.x * rm, -1, 1);
           const py = clamp(pointer.current.y * rm, -1, 1);
 
+          // Apply shader uniforms every frame so Lab sliders feel instant.
+          applyShaderUniforms();
           gl.uniform2f(uPointer, px, py);
           gl.uniform1f(uTime, now - t0);
 

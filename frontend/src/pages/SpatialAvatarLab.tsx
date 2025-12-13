@@ -17,6 +17,10 @@ const SpatialAvatarLab: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [currentBoundMeta, setCurrentBoundMeta] = useState<string>('');
+  // WebGL "dynamic skin" FX tuning (safe defaults)
+  const [fxStrength, setFxStrength] = useState(0.75);
+  const [fxSpeed, setFxSpeed] = useState(1.0);
+  const [fxScale, setFxScale] = useState(1.35);
 
   // Motion tuning knobs (safe ranges; prefer variance over amplitude).
   const [parallaxPx, setParallaxPx] = useState(DEFAULT_MOTION_PROFILE.parallaxPx);
@@ -42,6 +46,15 @@ const SpatialAvatarLab: React.FC = () => {
       seed,
     }),
     [parallaxPx, breathAmpPx, breathScale, driftAmpPx, driftRotDeg, seed],
+  );
+
+  const currentShaderOverrides = useMemo(
+    () => ({
+      fxStrength,
+      fxSpeed,
+      fxScale,
+    }),
+    [fxStrength, fxSpeed, fxScale],
   );
 
   useEffect(() => {
@@ -90,6 +103,10 @@ const SpatialAvatarLab: React.FC = () => {
         const res = await getAgent(selectedAgentId);
         if (!mounted) return;
         setCurrentBoundMeta(res.data?.avatarSpatialMetaUrl || '');
+        const s: any = res.data?.avatarSpatialShader || {};
+        if (typeof s.fxStrength === 'number') setFxStrength(s.fxStrength);
+        if (typeof s.fxSpeed === 'number') setFxSpeed(s.fxSpeed);
+        if (typeof s.fxScale === 'number') setFxScale(s.fxScale);
       } catch {
         if (!mounted) return;
         setCurrentBoundMeta('');
@@ -185,6 +202,8 @@ const SpatialAvatarLab: React.FC = () => {
                       });
                       setAssetPack(res.data);
                       setCurrentBoundMeta(res.data?.metaUrl || '');
+                      // Also persist current shader overrides (global) without regenerating.
+                      await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { shader: currentShaderOverrides });
                       alert('已生成并绑定：全局生效');
                     } catch (e: any) {
                       const serverMsg = e?.response?.data?.message;
@@ -219,7 +238,7 @@ const SpatialAvatarLab: React.FC = () => {
                     disabled={!currentBoundMeta}
                     onClick={async () => {
                       try {
-                        await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { metaUrl: '' });
+                        await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { metaUrl: '', shader: null });
                         setCurrentBoundMeta('');
                         alert('已清除绑定（全局）');
                       } catch (e: any) {
@@ -276,7 +295,10 @@ const SpatialAvatarLab: React.FC = () => {
                       className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-black"
                       onClick={async () => {
                         try {
-                          await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { metaUrl: assetPack.metaUrl });
+                          await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, {
+                            metaUrl: assetPack.metaUrl,
+                            shader: currentShaderOverrides,
+                          });
                           alert('已保存到服务器：全局生效（所有用户聊天页都会使用 WebGL 空间照片）');
                         } catch (e: any) {
                           const msg = e?.response?.data?.message || e?.message || '保存失败';
@@ -288,6 +310,33 @@ const SpatialAvatarLab: React.FC = () => {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+            {selectedAgentId !== 'custom' && (
+              <div className="pt-3 border-t border-gray-100">
+                <div className="text-xs font-semibold text-gray-700 mb-2">WebGL 动态皮肤（FX）调参（全局）</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Knob label="fxStrength" value={fxStrength} min={0} max={1.6} step={0.05} onChange={setFxStrength} note="强度（0=关闭）" />
+                  <Knob label="fxSpeed" value={fxSpeed} min={0} max={2.5} step={0.05} onChange={setFxSpeed} note="速度（建议 0.7~1.6）" />
+                  <Knob label="fxScale" value={fxScale} min={0.6} max={2.6} step={0.05} onChange={setFxScale} note="纹理尺度（越大越细碎）" />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                    disabled={selectedAgentId === 'custom'}
+                    onClick={async () => {
+                      try {
+                        await http.post(`/agents/${selectedAgentId}/avatar-spatial-meta`, { shader: currentShaderOverrides });
+                        alert('已保存 FX 参数：全局生效');
+                      } catch (e: any) {
+                        const msg = e?.response?.data?.message || e?.message || '保存失败';
+                        alert(`保存失败：${msg}`);
+                      }
+                    }}
+                  >
+                    保存 FX 参数（全局）
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -302,8 +351,14 @@ const SpatialAvatarLab: React.FC = () => {
 
             <div className="flex justify-center">
               {mode === 'webgl' ? (
-                assetPack?.metaUrl ? (
-                  <WebGLSpatialAvatar metaUrl={assetPack.metaUrl} width={260} height={260} className="shadow-lg" />
+                assetPack?.metaUrl || currentBoundMeta ? (
+                  <WebGLSpatialAvatar
+                    metaUrl={assetPack?.metaUrl || currentBoundMeta}
+                    width={260}
+                    height={260}
+                    className="shadow-lg"
+                    shaderOverrides={currentShaderOverrides}
+                  />
                 ) : (
                   <div className="text-sm text-gray-500">先点击上面的按钮生成资产包（meta.json）</div>
                 )
