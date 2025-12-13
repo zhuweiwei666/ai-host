@@ -194,15 +194,30 @@ Set up uptime monitoring (e.g., UptimeRobot, Pingdom, or Cloudflare Health Check
 
 ### 5.3 DB Backup
 
+**Option A: MongoDB Atlas (recommended)**
 MongoDB Atlas handles backups automatically. Verify:
 1. Atlas Dashboard → Backup → Continuous Backup enabled
 2. Point-in-time recovery available
 
-For self-hosted MongoDB:
+**Option B: Self-hosted MongoDB (local Docker container)**
+
+Use the provided backup scripts:
+
 ```bash
-# Nightly backup script
-0 3 * * * mongodump --uri="$MONGO_URI" --out=/backups/$(date +\%Y\%m\%d)
+# Manual backup
+./deploy/backup_db.sh
+
+# Manual restore
+./deploy/restore_db.sh /root/ai-host-backups/ai-host-db-YYYY-MM-DD_HHMMSS.archive.gz
 ```
+
+Set up nightly cron backup:
+```bash
+# Add to crontab (crontab -e)
+0 3 * * * /root/ai-host/deploy/backup_db.sh >> /var/log/ai-host-backup.log 2>&1
+```
+
+Backups are stored in `/root/ai-host-backups/` with 7-day retention.
 
 ---
 
