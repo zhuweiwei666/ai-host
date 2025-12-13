@@ -244,6 +244,64 @@ curl -sS -X POST "https://cling-ai.com/api/chat/tts" \
 
 ---
 
+### 4.5 LiveSkin（视频优先：动态皮肤 / 沉浸式交互）
+
+> 适用于 iOS 使用 `AVPlayerLayer` 全屏播放角色视频，配合“字幕式文字 + TTS + 视频动作切换”，彻底抛弃气泡式聊天。
+
+#### 4.5.1 获取 LiveSkin Manifest（推荐）
+- **GET** `/api/agents/:id/live-skin-manifest`
+- **Public**（无需认证）
+- **用途**：
+  - 服务端把该角色的 8–10 个视频（`previewVideos` / `coverVideoUrls`）整理成动作库：`idle / talk / react_*`
+  - iOS 按 `tags` 做状态机切换（IDLE/LISTEN/SPEAK）
+- **Response.data**（简化）：
+```json
+{
+  "version": 1,
+  "agentId": "693cee1f8ec1d7080a5a75c9",
+  "agentName": "Ashley",
+  "defaultIndex": 0,
+  "defaultClip": { "id": "xxx", "url": "https://...mp4", "tags": ["idle","loopable"] },
+  "clips": {
+    "idle": [ { "url": "https://...mp4", "tags": ["idle","loopable"] } ],
+    "talk": [ { "url": "https://...mp4", "tags": ["talk"] } ],
+    "react": { "happy": [], "shy": [], "angry": [], "surprised": [], "sad": [], "flirty": [] }
+  },
+  "playback": { "crossfadeMs": 200, "loopIdle": true, "idleMinHoldMs": 1200 },
+  "ui": { "subtitleSafeArea": { "x": 0.08, "y": 0.72, "w": 0.84, "h": 0.18 }, "recommendedTextMode": "subtitle" }
+}
+```
+
+#### 4.5.2 沉浸式 Chat（推荐：一次请求返回 TTS + 可编排指令）
+- **POST** `/api/chat`
+- **Auth**：Bearer Token
+- **Body 增强字段**：
+  - `immersive: true`：返回 `immersive.cues`（视频切换/镜头/字幕建议）
+  - `requestTTS: true`：同一次请求里生成 TTS 并返回 `audioUrl`（减少二次请求）
+
+**Request**：
+```json
+{ "agentId": "xxx", "prompt": "今天好累", "immersive": true, "requestTTS": true }
+```
+
+**Response（简化）**：
+```json
+{
+  "reply": "抱抱你…",
+  "audioUrl": "https://...mp3",
+  "immersive": {
+    "mood": { "primary": "caring", "intensity": 0.75 },
+    "cues": {
+      "mode": "video-first",
+      "state": "SPEAK",
+      "clip": { "preferTags": ["talk", "react_caring"], "fallbackTags": ["idle","loopable"], "crossfadeMs": 200, "loopIdle": true },
+      "camera": { "zoomSpeaking": 1.04, "zoomListening": 1.02, "drift": { "x": 0.006, "y": 0.004, "speed": 0.12 } },
+      "subtitle": { "mode": "typewriter", "fadeOutMs": 900 }
+    }
+  }
+}
+```
+
 ## 5) Wallet（余额 / 广告奖励 / IAP）
 > `backend/src/routes/wallet.js`：整组 `router.use(requireAuth)`，都要 Bearer。
 

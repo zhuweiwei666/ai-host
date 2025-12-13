@@ -162,6 +162,50 @@ const cleanTextForTTS = (text) => {
   return cleaned;
 };
 
+// ============================================================
+// Immersive (Video-first) cues helpers
+// ============================================================
+const clamp01 = (n) => Math.max(0, Math.min(1, n));
+
+const inferMoodFromStage = ({ isNSFWStage, intimacy }) => {
+  if (isNSFWStage) return { primary: 'flirty', intensity: 0.9 };
+  const i = typeof intimacy === 'number' ? intimacy : 0;
+  if (i <= 20) return { primary: 'shy', intensity: 0.55 };
+  if (i <= 60) return { primary: 'caring', intensity: 0.75 };
+  return { primary: 'flirty', intensity: 0.85 };
+};
+
+const buildImmersiveCues = ({ agentId, mood, hasAudio }) => {
+  // For AVPlayerLayer based UI:
+  // - prefer switching to talk/react clips while speaking
+  // - otherwise stay on idle loop
+  const preferTags = [];
+  if (hasAudio) preferTags.push('talk');
+  if (mood?.primary) preferTags.push(`react_${mood.primary}`);
+
+  return {
+    mode: 'video-first',
+    state: hasAudio ? 'SPEAK' : 'TEXT',
+    clip: {
+      preferTags,
+      fallbackTags: ['idle', 'loopable'],
+      crossfadeMs: 200,
+      loopIdle: true,
+    },
+    camera: {
+      // iOS applies on container view (CGAffineTransform) for AVPlayerLayer
+      zoomSpeaking: 1.04,
+      zoomListening: 1.02,
+      drift: { x: 0.006, y: 0.004, speed: 0.12 },
+    },
+    subtitle: {
+      mode: 'typewriter',
+      fadeOutMs: 900,
+    },
+    agentId,
+  };
+};
+
 // GET /api/chat/history/:agentId
 router.get('/history/:agentId', async (req, res) => {
   const { agentId } = req.params;
@@ -533,7 +577,16 @@ function getDefaultSuggestions(lastAiMessage, agentName) {
 }
 
 router.post('/', async (req, res) => {
-  const { agentId, prompt, history, skipImageGen } = req.body;
+  const {
+    agentId,
+    prompt,
+    history,
+    skipImageGen,
+    // New (optional): immersive video-first mode
+    immersive = false,
+    // New (optional): generate TTS for the reply in the same call
+    requestTTS = false,
+  } = req.body;
   
   // Get userId from authenticated user
   if (!req.user || !req.user.id) {
@@ -1065,12 +1118,42 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
     if (!reply) reply = "...";
 
+    // Optionally generate TTS here (reduces round-trip for immersive clients)
+    let audioUrl = null;
+    if (requestTTS) {
+      const ttsText = cleanTextForTTS(reply);
+      if (ttsText) {
+        // Check balance for Voice (Cost: 5)
+        await walletService.consume(userId, 5, 'ai_voice', agentId);
+        audioUrl = await fishAudioService.generateAudio(ttsText, agent.voiceId);
+        // LOG TTS COST
+        try {
+          const charCount = ttsText.length;
+          const ttsModel = 'fish-audio';
+          const ttsCost = costCalculator.calculateTTS(ttsModel, charCount);
+          await UsageLog.create({
+            agentId,
+            userId,
+            type: 'tts',
+            provider: 'fish-audio',
+            model: ttsModel,
+            inputUnits: charCount,
+            outputUnits: 1,
+            cost: ttsCost,
+          });
+        } catch (logErr) {
+          console.error('TTS Log Error', logErr);
+        }
+      }
+    }
+
     // 保存 AI 回复 - 关键：必须包含 userId 实现数据隔离
     const aiMessage = await Message.create({
       agentId,
       userId,
       role: 'assistant',
       content: reply,
+      audioUrl: audioUrl,
       imageUrl: imageUrl,
       inputTokens: usage.prompt_tokens,
       outputTokens: usage.completion_tokens,
@@ -1109,12 +1192,21 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       replyOptions = profileService.generateReplyOptions(finalDetectionStatus.round + 1, agent.name);
     }
     
+    const mood = inferMoodFromStage({ isNSFWStage, intimacy: finalIntimacy });
+    const immersivePayload = immersive
+      ? {
+          mood,
+          cues: buildImmersiveCues({ agentId, mood, hasAudio: !!audioUrl }),
+        }
+      : null;
+
     sendSuccess(res, HTTP_STATUS.OK, { 
       reply, 
-      audioUrl: null, 
+      audioUrl: audioUrl, 
       imageUrl, 
       balance: finalBalance, 
       intimacy: finalIntimacy,
+      immersive: immersivePayload,
       // 侦测系统相关
       detection: {
         round: finalDetectionStatus.round,

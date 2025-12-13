@@ -451,4 +451,116 @@ router.post('/:id/ugc-images/batch-delete', requireAuth, requireAdmin, async (re
   }
 });
 
+// ============================================================
+// LiveSkin (Video-first) Manifest
+// ============================================================
+// GET /api/agents/:id/live-skin-manifest
+// Public (optionalAuth) - used by iOS to build immersive video-first UI
+router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
+  try {
+    checkDBConnection();
+
+    const agentId = req.params.id;
+    const agent = await Agent.findById(agentId).select(
+      'name avatarUrls previewVideos coverVideoUrls defaultPreviewIndex'
+    );
+    if (!agent) return errors.notFound(res, 'Agent not found');
+
+    const normalizeVideo = (v, index) => ({
+      id: v?._id?.toString?.() || `legacy_${index}`,
+      url: v?.url || v,
+      thumbnailUrl: v?.thumbnailUrl || agent.avatarUrls?.[index] || agent.avatarUrls?.[0] || '',
+      duration: v?.duration || 0,
+      width: v?.width || 0,
+      height: v?.height || 0,
+      isVertical: typeof v?.isVertical === 'boolean' ? v.isVertical : true,
+      sortOrder: typeof v?.sortOrder === 'number' ? v.sortOrder : index,
+      tags: Array.isArray(v?.tags) ? v.tags : [],
+      scaleLevel: typeof v?.scaleLevel === 'number' ? v.scaleLevel : 1,
+      index,
+    });
+
+    let videos = [];
+    if (Array.isArray(agent.previewVideos) && agent.previewVideos.length > 0) {
+      videos = agent.previewVideos.map((v, i) => normalizeVideo(v, i));
+    } else if (Array.isArray(agent.coverVideoUrls) && agent.coverVideoUrls.length > 0) {
+      videos = agent.coverVideoUrls.map((url, i) => normalizeVideo(url, i));
+    }
+
+    videos.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    // Categorize by tags (best-effort, iOS can still fallback to defaultIndex)
+    const hasTag = (v, t) => (v.tags || []).includes(t);
+    const hasPrefix = (v, p) => (v.tags || []).some((x) => typeof x === 'string' && x.startsWith(p));
+
+    const idle = videos.filter((v) => hasTag(v, 'idle') || hasTag(v, 'loopable'));
+    const talk = videos.filter((v) => hasTag(v, 'talk') || hasTag(v, 'speak'));
+    const react = {
+      happy: videos.filter((v) => hasTag(v, 'react_happy')),
+      shy: videos.filter((v) => hasTag(v, 'react_shy')),
+      angry: videos.filter((v) => hasTag(v, 'react_angry')),
+      surprised: videos.filter((v) => hasTag(v, 'react_surprised')),
+      sad: videos.filter((v) => hasTag(v, 'react_sad')),
+      flirty: videos.filter((v) => hasTag(v, 'react_flirty')),
+    };
+
+    // Any react_* tags that aren't in the preset map
+    const otherReact = videos
+      .filter((v) => hasPrefix(v, 'react_'))
+      .filter((v) => !Object.values(react).some((arr) => arr.some((x) => x.id === v.id)));
+
+    const defaultIndex = typeof agent.defaultPreviewIndex === 'number' ? agent.defaultPreviewIndex : 0;
+    const defaultClip = videos[defaultIndex] || videos[0] || null;
+
+    // Recommended playback + UI defaults (iOS can override)
+    const manifest = {
+      version: 1,
+      agentId,
+      agentName: agent.name,
+      defaultIndex,
+      defaultClip,
+      clips: {
+        all: videos,
+        idle: idle.length ? idle : (defaultClip ? [defaultClip] : []),
+        talk,
+        react,
+        otherReact,
+      },
+      playback: {
+        // For AVPlayerLayer-based implementation
+        crossfadeMs: 200,
+        loopIdle: true,
+        idleMinHoldMs: 1200,
+      },
+      ui: {
+        // Relative safe area (0..1) for subtitle placement
+        subtitleSafeArea: { x: 0.08, y: 0.72, w: 0.84, h: 0.18 },
+        // Keep UI minimal: no chat bubbles in immersive mode
+        recommendedTextMode: 'subtitle',
+      },
+      tagsSpec: {
+        recommended: [
+          'idle',
+          'loopable',
+          'talk',
+          'react_happy',
+          'react_shy',
+          'react_angry',
+          'react_surprised',
+          'react_sad',
+          'react_flirty',
+          'closeup',
+          'halfbody',
+          'fullbody',
+        ],
+      },
+    };
+
+    return sendSuccess(res, HTTP_STATUS.OK, manifest);
+  } catch (err) {
+    console.error('[GET /agents/:id/live-skin-manifest] Error:', err);
+    return errors.internalError(res, err.message || 'Failed to build live skin manifest');
+  }
+});
+
 module.exports = router;
