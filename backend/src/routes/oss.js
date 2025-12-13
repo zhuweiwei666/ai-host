@@ -3,6 +3,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -197,6 +198,95 @@ router.post('/upload', optionalAuth, upload.single('file'), async (req, res) => 
       error: errorMessage,
       stack: isDev ? err?.stack : undefined
     });
+  }
+});
+
+// GET /api/oss/proxy?url=https://...
+// WHY: fix browser CORS issues when loading R2/OSS assets from WebGL (meta + textures).
+router.get('/proxy', optionalAuth, async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || '');
+    if (!rawUrl) return errors.badRequest(res, 'url is required');
+
+    let u;
+    try {
+      u = new URL(rawUrl);
+    } catch {
+      return errors.badRequest(res, 'invalid url');
+    }
+
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+      return errors.badRequest(res, 'unsupported protocol');
+    }
+
+    const host = (u.hostname || '').toLowerCase();
+    if (!host) return errors.badRequest(res, 'invalid host');
+
+    // Basic SSRF protection: block localhost-ish hosts.
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      host.endsWith('.local')
+    ) {
+      return errors.badRequest(res, 'blocked host');
+    }
+
+    // Allowlist common storage hosts + env-configured public domains.
+    const allowHosts = new Set();
+    const addHostFromEnvUrl = (envUrl) => {
+      if (!envUrl) return;
+      try {
+        const uu = new URL(String(envUrl).startsWith('http') ? String(envUrl) : `https://${envUrl}`);
+        if (uu.hostname) allowHosts.add(uu.hostname.toLowerCase());
+      } catch {
+        // ignore
+      }
+    };
+    addHostFromEnvUrl(process.env.R2_PUBLIC_URL);
+    addHostFromEnvUrl(process.env.R2_DEV_URL);
+
+    const ossEndpoint = (process.env.OSS_ENDPOINT || '').replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+    const ossBucket = (process.env.OSS_BUCKET || '').toLowerCase();
+    if (ossEndpoint) allowHosts.add(ossEndpoint);
+    if (ossEndpoint && ossBucket) allowHosts.add(`${ossBucket}.${ossEndpoint}`);
+
+    // Also allow known storage suffixes used by this app.
+    const allowedBySuffix =
+      host.endsWith('.r2.dev') ||
+      host.endsWith('.r2.cloudflarestorage.com') ||
+      host.endsWith('.aliyuncs.com');
+
+    const allowed = allowedBySuffix || allowHosts.has(host);
+    if (!allowed) return errors.badRequest(res, `host not allowed: ${host}`);
+
+    const upstream = await axios.get(rawUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30_000,
+      maxContentLength: 12 * 1024 * 1024,
+      maxBodyLength: 12 * 1024 * 1024,
+      headers: {
+        // Avoid sending any user credentials/cookies to upstream.
+        'User-Agent': 'ai-host-proxy',
+      },
+      validateStatus: () => true,
+    });
+
+    if (upstream.status < 200 || upstream.status >= 300) {
+      return errors.badRequest(res, `upstream error: ${upstream.status}`, {
+        status: upstream.status,
+        contentType: upstream.headers?.['content-type'],
+      });
+    }
+
+    const ct = upstream.headers?.['content-type'] || 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.status(200).send(Buffer.from(upstream.data));
+  } catch (err) {
+    console.error('[GET /api/oss/proxy] Error:', err);
+    return errors.badRequest(res, err?.message || 'proxy failed');
   }
 });
 

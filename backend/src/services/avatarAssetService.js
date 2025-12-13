@@ -117,6 +117,12 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
   const jobId = crypto.randomUUID();
   const prefix = `avatar-assets/${agentId || userId || 'anon'}/${jobId}`;
 
+  // 0) Upload base image to our storage as PNG
+  // WHY: avoid browser CORS/mixed-content issues; keep asset pack self-contained.
+  const baseBuf = await downloadBuffer(imageUrl);
+  const basePngBuf = await sharp(baseBuf).png().toBuffer();
+  const uploadedBaseUrl = await uploadToOSS(basePngBuf, `${prefix}-base.png`, 'image/png');
+
   // 1) Run fal jobs in parallel
   // - Depth: marigold depth
   // - Mask/cutout: rembg (returns PNG with alpha)
@@ -160,7 +166,7 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
     userId: userId || null,
     createdAt: new Date().toISOString(),
 
-    baseUrl: imageUrl,
+    baseUrl: uploadedBaseUrl,
     depthUrl: uploadedDepthUrl,
     normalUrl: uploadedNormalUrl,
     cutoutUrl: uploadedCutoutUrl,
@@ -184,7 +190,7 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
 
   return {
     jobId,
-    baseUrl: imageUrl,
+    baseUrl: uploadedBaseUrl,
     depthUrl: uploadedDepthUrl,
     normalUrl: uploadedNormalUrl,
     cutoutUrl: uploadedCutoutUrl,

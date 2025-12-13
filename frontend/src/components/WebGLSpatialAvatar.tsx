@@ -38,16 +38,32 @@ function clamp(v: number, min: number, max: number) {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+  const res = await fetch(resolveAssetUrl(url), { mode: 'cors', credentials: 'omit' });
   if (!res.ok) throw new Error(`Failed to fetch meta: ${res.status}`);
   return res.json();
 }
 
 async function loadImageBitmap(url: string): Promise<ImageBitmap> {
-  const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  const resolved = resolveAssetUrl(url);
+  const res = await fetch(resolved, { mode: 'cors', credentials: 'omit' });
+  if (!res.ok) throw new Error(`Failed to fetch image (${url}): ${res.status}`);
   const blob = await res.blob();
   return createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
+}
+
+function resolveAssetUrl(url: string): string {
+  // For absolute cross-origin URLs, route through same-origin proxy to avoid CORS issues.
+  if (typeof window === 'undefined') return url;
+  if (!url) return url;
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  try {
+    const u = new URL(url, window.location.href);
+    const sameOrigin = u.origin === window.location.origin;
+    if (sameOrigin) return u.toString();
+    return `/api/oss/proxy?url=${encodeURIComponent(u.toString())}`;
+  } catch {
+    return url;
+  }
 }
 
 function createShader(gl: WebGLRenderingContext, type: number, source: string) {
