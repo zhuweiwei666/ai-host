@@ -27,6 +27,7 @@ export interface Agent {
     focusX?: number;
     focusY?: number;
     blinkStrength?: number;
+    bgColor?: string; // hex like "#F2F2F2"
   };
   description: string;
   modelName: string;

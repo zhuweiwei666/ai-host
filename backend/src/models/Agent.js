@@ -44,6 +44,8 @@ const AgentSchema = new mongoose.Schema({
     focusX: { type: Number }, // 0..1 in UV space
     focusY: { type: Number }, // 0..1 in UV space (matches shader vUv)
     blinkStrength: { type: Number }, // 0..1.5
+    // Background override (separate subject from background)
+    bgColor: { type: String }, // hex like "#F2F2F2"
   },
   
   // ========== 视频预览系统 ==========

@@ -25,6 +25,7 @@ const SpatialAvatarLab: React.FC = () => {
   const [focusX, setFocusX] = useState(0.5);
   const [focusY, setFocusY] = useState(0.7);
   const [blinkStrength, setBlinkStrength] = useState(0.85);
+  const [bgColor, setBgColor] = useState('#F2F2F2');
 
   // Motion tuning knobs (safe ranges; prefer variance over amplitude).
   const [parallaxPx, setParallaxPx] = useState(DEFAULT_MOTION_PROFILE.parallaxPx);
@@ -60,8 +61,9 @@ const SpatialAvatarLab: React.FC = () => {
       focusX,
       focusY,
       blinkStrength,
+      bgColor,
     }),
-    [fxStrength, fxSpeed, fxScale, focusX, focusY, blinkStrength],
+    [fxStrength, fxSpeed, fxScale, focusX, focusY, blinkStrength, bgColor],
   );
 
   useEffect(() => {
@@ -117,6 +119,7 @@ const SpatialAvatarLab: React.FC = () => {
         if (typeof s.focusX === 'number') setFocusX(s.focusX);
         if (typeof s.focusY === 'number') setFocusY(s.focusY);
         if (typeof s.blinkStrength === 'number') setBlinkStrength(s.blinkStrength);
+        if (typeof s.bgColor === 'string') setBgColor(s.bgColor);
       } catch {
         if (!mounted) return;
         setCurrentBoundMeta('');
@@ -338,6 +341,17 @@ const SpatialAvatarLab: React.FC = () => {
                   <Knob label="blinkStrength" value={blinkStrength} min={0} max={1.5} step={0.05} onChange={setBlinkStrength} note="眨眼强度（0=关闭）" />
                   <Knob label="focusX" value={focusX} min={0} max={1} step={0.01} onChange={setFocusX} note="焦点X（0..1）" />
                   <Knob label="focusY" value={focusY} min={0} max={1} step={0.01} onChange={setFocusY} note="焦点Y（0..1）" />
+                </div>
+                <div className="mt-3 text-xs font-semibold text-gray-700 mb-2">背景（纯色，和人物完全分离）</div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={bgColor}
+                    onChange={(e) => setBgColor(e.target.value)}
+                    className="w-10 h-10 p-0 border border-gray-200 rounded-md bg-white"
+                    title="选择背景色"
+                  />
+                  <div className="text-xs text-gray-500">bgColor：{bgColor}</div>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <button

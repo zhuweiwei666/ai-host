@@ -23,6 +23,7 @@ export type SpatialMeta = {
     focusX?: number;
     focusY?: number;
     blinkStrength?: number;
+    bgColor?: string;
   };
 };
 
@@ -51,6 +52,18 @@ function hash01(s: string) {
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0) / 4294967296;
+}
+
+function parseHexColorToRgb01(input: string | undefined): [number, number, number] | null {
+  if (!input) return null;
+  const s = input.trim();
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(s);
+  if (!m) return null;
+  const hex = m[1];
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  return [r, g, b];
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -174,6 +187,7 @@ uniform vec2 uLook;        // [-1..1] (light direction / "eye contact")
 uniform vec2 uFocus;       // [0..1] (face/eyes focus point)
 uniform float uBlink;      // [0..1]
 uniform float uBlinkStr;   // strength
+uniform vec3 uBg;          // background color (linear-ish)
 uniform float uTime;
 
 uniform float uParallax;
@@ -272,7 +286,10 @@ void main(){
   // Tiny contrast to keep the image from looking washed.
   col = clamp((col - 0.5) * 1.06 + 0.5, 0.0, 1.0);
 
-  gl_FragColor = vec4(col, 1.0);
+  // Final composite: background is pure color, subject uses cutout alpha.
+  vec3 bg = uBg;
+  vec3 outCol = mix(bg, col, clamp(alpha, 0.0, 1.0));
+  gl_FragColor = vec4(outCol, 1.0);
 }
 `;
 
@@ -373,6 +390,7 @@ export default function WebGLSpatialAvatar({
         const uFocus = gl.getUniformLocation(program, 'uFocus');
         const uBlink = gl.getUniformLocation(program, 'uBlink');
         const uBlinkStr = gl.getUniformLocation(program, 'uBlinkStr');
+        const uBg = gl.getUniformLocation(program, 'uBg');
         const uTime = gl.getUniformLocation(program, 'uTime');
         const uParallax = gl.getUniformLocation(program, 'uParallax');
         const uNormalStr = gl.getUniformLocation(program, 'uNormalStr');
@@ -398,6 +416,8 @@ export default function WebGLSpatialAvatar({
           const focusX = clamp(ov.focusX ?? base.focusX ?? 0.5, 0, 1);
           const focusY = clamp(ov.focusY ?? base.focusY ?? 0.70, 0, 1);
           const blinkStr = clamp(ov.blinkStrength ?? base.blinkStrength ?? 0.85, 0, 1.5);
+          const bgHex = (ov as any).bgColor ?? (base as any).bgColor ?? '#F2F2F2';
+          const bg = parseHexColorToRgb01(String(bgHex)) || [0.95, 0.95, 0.95];
 
           gl.uniform1f(uParallax, parallax);
           gl.uniform1f(uNormalStr, normalStr);
@@ -409,6 +429,7 @@ export default function WebGLSpatialAvatar({
           gl.uniform1f(uExposure, exposure);
           gl.uniform2f(uFocus, focusX, focusY);
           gl.uniform1f(uBlinkStr, blinkStr);
+          gl.uniform3f(uBg, bg[0], bg[1], bg[2]);
         };
 
         const resize = () => {
