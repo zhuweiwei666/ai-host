@@ -107,6 +107,66 @@ async function verifyAppleReceipt(receiptData, isSandbox = false) {
 }
 
 /**
+ * Verify Apple subscription receipt and extract latest subscription status.
+ * NOTE: This uses verifyReceipt (legacy). For maximum robustness, migrate to App Store Server API + JWS later.
+ */
+async function verifyAppleSubscriptionReceipt(receiptData, isSandbox = false) {
+  const sharedSecret = process.env.APPLE_SHARED_SECRET;
+
+  const requestBody = {
+    'receipt-data': receiptData,
+    'exclude-old-transactions': true,
+  };
+  if (sharedSecret) requestBody.password = sharedSecret;
+
+  let url = isSandbox ? APPLE_SANDBOX_URL : APPLE_PRODUCTION_URL;
+
+  const response = await axios.post(url, requestBody, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000,
+  });
+
+  const result = response.data;
+  if (result.status === 21007 && !isSandbox) {
+    return verifyAppleSubscriptionReceipt(receiptData, true);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Apple receipt status=${result.status}`);
+  }
+
+  const infos = Array.isArray(result.latest_receipt_info) ? result.latest_receipt_info : (result.receipt?.in_app || []);
+  if (!infos || !infos.length) throw new Error('No subscription transaction found in receipt');
+
+  // Pick the newest by expires_date_ms if present, else by purchase_date_ms
+  const sorted = infos
+    .slice()
+    .sort((a, b) => Number(a.expires_date_ms || a.purchase_date_ms || 0) - Number(b.expires_date_ms || b.purchase_date_ms || 0));
+  const latest = sorted[sorted.length - 1];
+
+  const expiresMs = latest.expires_date_ms ? Number(latest.expires_date_ms) : null;
+  const now = Date.now();
+  const isActive = expiresMs ? expiresMs > now : false;
+
+  // pending_renewal_info may include auto_renew_status for subscriptions
+  const pri = Array.isArray(result.pending_renewal_info) ? result.pending_renewal_info : [];
+  const renewal = pri.find((x) => x.original_transaction_id === latest.original_transaction_id) || pri[0] || null;
+  const autoRenew = renewal ? renewal.auto_renew_status === '1' : null;
+
+  return {
+    valid: true,
+    environment: result.environment,
+    bundleId: result.receipt?.bundle_id,
+    productId: latest.product_id,
+    transactionId: latest.transaction_id,
+    originalTransactionId: latest.original_transaction_id,
+    purchaseDate: latest.purchase_date_ms ? new Date(Number(latest.purchase_date_ms)) : null,
+    expiresDate: expiresMs ? new Date(expiresMs) : null,
+    isActive,
+    autoRenew,
+  };
+}
+
+/**
  * Verify Google Play purchase
  * @param {string} purchaseToken - The purchase token from Google Play
  * @param {string} productId - The product ID
@@ -114,6 +174,10 @@ async function verifyAppleReceipt(receiptData, isSandbox = false) {
  * @returns {object} Verification result with purchase info
  */
 async function verifyGooglePurchase(purchaseToken, productId, packageName) {
+  const enabled = process.env.ENABLE_GOOGLE_PLAY === 'true';
+  if (!enabled) {
+    throw new Error('GOOGLE_PLAY_DISABLED');
+  }
   // Google Play verification requires OAuth2 credentials
   // This is a simplified version - in production, use googleapis library
   
@@ -125,23 +189,9 @@ async function verifyGooglePurchase(purchaseToken, productId, packageName) {
   }
   
   try {
-    // For now, return a mock verification
-    // In production, implement full Google Play verification:
-    // 1. Get OAuth2 token using service account
-    // 2. Call Google Play Developer API
-    
-    console.warn('[IAP] Google Play verification not fully implemented - returning mock success');
-    
-    return {
-      valid: true,
-      environment: 'production',
-      packageName: packageName,
-      productId: productId,
-      purchaseToken: purchaseToken,
-      purchaseState: 0, // 0 = Purchased
-      consumptionState: 0, // 0 = Not consumed
-      coins: PRODUCT_COINS_MAP[productId] || 0,
-    };
+    // TODO: implement Google Play Developer API verification.
+    // For now: fail closed to avoid crediting fraudulently.
+    throw new Error('GOOGLE_PLAY_NOT_IMPLEMENTED');
   } catch (error) {
     console.error('[IAP] Google purchase verification failed:', error.message);
     throw error;
@@ -168,6 +218,7 @@ function addProduct(productId, coins) {
 
 module.exports = {
   verifyAppleReceipt,
+  verifyAppleSubscriptionReceipt,
   verifyGooglePurchase,
   getCoinsForProduct,
   addProduct,

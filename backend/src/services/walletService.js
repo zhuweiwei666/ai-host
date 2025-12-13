@@ -1,71 +1,105 @@
-const UserAIBalance = require('../models/UserAIBalance');
-const WalletTransaction = require('../models/WalletTransaction');
-const WalletTrace = require('../models/WalletTrace');
+const crypto = require('crypto');
+
+const UserAIBalance = require('../models/UserAIBalance'); // legacy (migration fallback)
+const WalletTransaction = require('../models/WalletTransaction'); // legacy logs (kept for backward compatibility)
+const WalletTrace = require('../models/WalletTrace'); // legacy ad trace (kept for backward compatibility)
+
+const ledgerService = require('./ledgerService');
+const UserBalance = require('../models/UserBalance');
 
 class WalletService {
   
   /**
-   * Get user balance, creating wallet if not exists (with default 100 coins)
+   * Get user balance.
+   * Ledger is the source of truth; legacy UserAIBalance is used only for migration fallback.
    */
   async getBalance(userId) {
-    let wallet = await UserAIBalance.findOne({ userId });
-    if (!wallet) {
-      wallet = await UserAIBalance.create({ userId, balance: 100 });
-      // Log initial gift
-      await WalletTransaction.create({
+    // Fast path: new snapshot
+    const snap = await UserBalance.findOne({ userId }).lean();
+    if (snap) return snap.creditsBalance ?? 0;
+
+    // Migration fallback: if legacy balance exists, backfill once into ledger+snapshot
+    const legacy = await UserAIBalance.findOne({ userId }).lean();
+    if (legacy && Number.isFinite(legacy.balance) && legacy.balance > 0) {
+      const migrated = await ledgerService.applyCreditsMutation({
         userId,
-        type: 'reward',
-        amount: 100,
-        beforeBalance: 0,
-        afterBalance: 100,
-        itemType: 'new_user_gift',
-        meta: { note: 'Welcome bonus' }
+        delta: legacy.balance,
+        reason: 'open_balance_migration',
+        idempotencyKey: `migration:open_balance:${userId}`,
+        type: 'adjustment',
+        refType: 'legacy',
+        refId: userId,
       });
+      return migrated.balance;
     }
-    return wallet.balance;
+
+    // New user: grant welcome bonus (100) once
+    const welcome = await ledgerService.applyCreditsMutation({
+      userId,
+      delta: 100,
+      reason: 'new_user_gift',
+      idempotencyKey: `init:welcome:${userId}`,
+      type: 'credit',
+      refType: 'system',
+      refId: 'welcome',
+      meta: { note: 'Welcome bonus' },
+    });
+
+    // Keep legacy transaction log for admin/support tooling that reads it.
+    WalletTransaction.create({
+      userId,
+      type: 'reward',
+      amount: 100,
+      beforeBalance: 0,
+      afterBalance: 100,
+      itemType: 'new_user_gift',
+      meta: { note: 'Welcome bonus' },
+    }).catch(() => {});
+
+    return welcome.balance;
   }
 
   /**
    * Deduct coins. Throws error if insufficient funds.
-   * Uses atomic operation to prevent race conditions.
+   * Ledger-backed (atomic + auditable).
    */
-  async consume(userId, amount, itemType, refId = null) {
-    if (amount <= 0) return true; // No cost
+  async consume(userId, amount, itemType, refId = null, idempotencyKey = null) {
+    if (!amount || Number(amount) <= 0) return this.getBalance(userId);
 
-    // 1. Check balance first (optional optimization, but good for UX error message)
-    const wallet = await UserAIBalance.findOne({ userId });
-    if (!wallet || wallet.balance < amount) {
-      console.log(`[Wallet] Insufficient funds for ${userId}. Has: ${wallet?.balance}, Needs: ${amount}`);
-      throw new Error('INSUFFICIENT_FUNDS');
+    // Ensure user has been initialized/migrated
+    await this.getBalance(userId);
+
+    let res;
+    try {
+      res = await ledgerService.applyCreditsMutation({
+        userId,
+        delta: -Math.abs(Number(amount)),
+        reason: itemType || 'consume',
+        idempotencyKey: idempotencyKey || `consume:${crypto.randomUUID()}`,
+        type: 'debit',
+        refType: itemType || 'consume',
+        refId: refId ? String(refId) : undefined,
+      });
+    } catch (e) {
+      if (e?.code === 'INSUFFICIENT_FUNDS') {
+        // Keep backward compatibility with existing callers checking err.message.
+        throw new Error('INSUFFICIENT_FUNDS');
+      }
+      throw e;
     }
 
-    // 2. Atomic update: verify balance >= amount AND deduct
-    const updatedWallet = await UserAIBalance.findOneAndUpdate(
-      { userId, balance: { $gte: amount } },
-      { $inc: { balance: -amount } },
-      { new: true } // return updated doc
-    );
-
-    if (!updatedWallet) {
-      // Double check fail - means concurrent deduction made balance insufficient
-      console.log(`[Wallet] Concurrent insufficient funds for ${userId}`);
-      throw new Error('INSUFFICIENT_FUNDS');
-    }
-
-    console.log(`[Wallet] Consumed ${amount} for ${userId}. New Balance: ${updatedWallet.balance}`);
-
-    // Async log transaction
+    // Legacy log (best-effort)
     WalletTransaction.create({
       userId,
       type: 'consume',
-      amount: -amount,
-      beforeBalance: updatedWallet.balance + amount,
-      afterBalance: updatedWallet.balance,
-      itemType,
-      refId
-    }).catch(err => console.error('[Wallet] Transaction Log Error:', err));
+      amount: -Math.abs(Number(amount)),
+      beforeBalance: res.balance + Math.abs(Number(amount)),
+      afterBalance: res.balance,
+      itemType: itemType || 'consume',
+      refId: refId ? String(refId) : undefined,
+    }).catch(() => {});
 
-    return updatedWallet.balance;
+    return res.balance;
   }
 
   /**
@@ -76,10 +110,13 @@ class WalletService {
    * @param {string} refId - Optional reference ID (can be traceId for duplicate prevention)
    * @param {string} traceId - Optional trace ID for duplicate prevention (if provided, checks for duplicates)
    */
-  async reward(userId, amount, itemType, refId = null, traceId = null) {
-    if (amount <= 0) return;
+  async reward(userId, amount, itemType, refId = null, traceId = null, idempotencyKey = null) {
+    if (!amount || Number(amount) <= 0) return this.getBalance(userId);
 
-    // Check for duplicate traceId if provided
+    // Ensure user has been initialized/migrated
+    await this.getBalance(userId);
+
+    // Legacy duplicate prevention for ad rewards (kept)
     if (traceId) {
       const existingTrace = await WalletTrace.findOne({ traceId });
       if (existingTrace) {
@@ -87,37 +124,42 @@ class WalletService {
       }
     }
 
-    // Atomic upsert
-    const updatedWallet = await UserAIBalance.findOneAndUpdate(
-        { userId },
-        { $inc: { balance: amount } },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
+    const key =
+      idempotencyKey ||
+      (traceId ? `${itemType || 'reward'}:${traceId}` : `reward:${crypto.randomUUID()}`);
 
-    console.log(`[Wallet] Rewarded ${amount} to ${userId}. New Balance: ${updatedWallet.balance}`);
+    const res = await ledgerService.applyCreditsMutation({
+      userId,
+      delta: Math.abs(Number(amount)),
+      reason: itemType || 'reward',
+      idempotencyKey: key,
+      type: 'credit',
+      refType: itemType || 'reward',
+      refId: (refId || traceId) ? String(refId || traceId) : undefined,
+    });
 
-    // Record traceId if provided (for duplicate prevention)
+    // Record traceId if provided (legacy)
     if (traceId) {
       await WalletTrace.create({
         traceId,
         userId,
         itemType,
-        amount
-      }).catch(err => console.error('[Wallet] Trace Log Error:', err));
+        amount: Math.abs(Number(amount)),
+      }).catch(() => {});
     }
 
-    // Log transaction
+    // Legacy log (best-effort)
     WalletTransaction.create({
       userId,
       type: 'reward',
-      amount: amount,
-      beforeBalance: updatedWallet.balance - amount,
-      afterBalance: updatedWallet.balance,
-      itemType,
-      refId: refId || traceId
-    }).catch(err => console.error('[Wallet] Transaction Log Error:', err));
+      amount: Math.abs(Number(amount)),
+      beforeBalance: res.balance - Math.abs(Number(amount)),
+      afterBalance: res.balance,
+      itemType: itemType || 'reward',
+      refId: (refId || traceId) ? String(refId || traceId) : undefined,
+    }).catch(() => {});
 
-    return updatedWallet.balance;
+    return res.balance;
   }
 }
 

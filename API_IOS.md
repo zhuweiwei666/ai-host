@@ -280,6 +280,62 @@ curl -sS -X POST "https://cling-ai.com/api/chat/tts" \
 ### 5.5 获取交易记录
 - **GET** `/api/wallet/transactions?limit=20&page=1`
 
+### 5.6 账本（Ledger）流水（用于客服/对账/审计）
+- **GET** `/api/wallet/ledger?limit=50&cursor=<optional>`
+- **Response.data**：
+  - `rows: LedgerEntry[]`（按时间倒序）
+  - `nextCursor?: string`
+
+### 5.7 Billing 商品目录（后端定义，订阅/充值统一入口）
+- **GET** `/api/billing/products?platform=ios|android|stripe|internal`
+- **Response.data**：`{ products: Product[] }`
+
+### 5.8 Billing 权益（是否订阅、套餐、折扣）
+- **GET** `/api/billing/entitlements`
+- **Response.data**：
+  - `balance: number`
+  - `isSubscriber: boolean`
+  - `plan?: { provider, productId, status, currentPeriodStart, currentPeriodEnd, autoRenew, tier, monthlyCredits, discountPercent }`
+
+### 5.9 Billing 充值验签并入账（推荐新接口）
+- **POST** `/api/billing/purchase/verify`
+- **Body（iOS）**：
+```json
+{ "platform":"ios", "receiptData":"<base64_receipt>" }
+```
+- **Body（Android）**：
+```json
+{ "platform":"android", "purchaseToken":"...", "productId":"...", "packageName":"optional" }
+```
+- **Response.data**：`{ verified, alreadyProcessed, coins, balance, transactionId }`
+
+### 5.10 Billing 订阅恢复/绑定（iOS）
+> iOS App 启动或用户点击“恢复购买”时调用，用于把订阅状态落到服务器，并按套餐发放月度额度（Ledger 幂等）。
+
+- **POST** `/api/billing/subscription/restore`
+- **Body**：
+```json
+{ "platform":"ios", "receiptData":"<base64_receipt>" }
+```
+- **Response.data**：
+  - `subscription: { provider, providerSubId, productId, status, currentPeriodStart, currentPeriodEnd, autoRenew }`
+  - `balance: number`
+
+### 5.11 Billing Webhooks（服务端异步同步订阅/支付状态）
+- **POST** `/api/billing/webhooks/apple`
+  - **Body**：`{ "signedPayload": "<jws>" }`
+  - 推荐加 Header：`x-webhook-secret: <APPLE_WEBHOOK_SECRET>`
+- **POST** `/api/billing/webhooks/google`（占位）
+- **POST** `/api/billing/webhooks/stripe`（占位）
+
+### 5.12 Admin 发放/扣减（运营补偿）
+- **POST** `/api/admin/wallet/grant`
+- **Body**：
+```json
+{ "userId":"...", "delta": 500, "reason":"compensation", "idempotencyKey":"optional" }
+```
+- `delta` 可正可负（负数相当于扣减）
+
 ---
 
 ## 6) Gift（礼物）

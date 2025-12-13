@@ -2,29 +2,10 @@ const express = require('express');
 const router = express.Router();
 const walletService = require('../services/walletService');
 const iapService = require('../services/iapService');
+const Purchase = require('../models/Purchase');
+const ledgerService = require('../services/ledgerService');
 const { requireAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
-
-// Model for tracking IAP transactions
-const mongoose = require('mongoose');
-
-// Simple IAP transaction log schema (inline)
-const IAPTransactionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  platform: { type: String, enum: ['ios', 'android'], required: true },
-  transactionId: { type: String, required: true, unique: true },
-  originalTransactionId: { type: String },
-  productId: { type: String, required: true },
-  coins: { type: Number, required: true },
-  environment: { type: String }, // 'Sandbox' or 'Production'
-  status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'completed' },
-  rawReceipt: { type: String }, // Store receipt for audit
-}, { timestamps: true });
-
-IAPTransactionSchema.index({ userId: 1, createdAt: -1 });
-IAPTransactionSchema.index({ transactionId: 1 });
-
-const IAPTransaction = mongoose.models.IAPTransaction || mongoose.model('IAPTransaction', IAPTransactionSchema);
 
 // Apply authentication middleware to all routes
 router.use(requireAuth);
@@ -121,14 +102,14 @@ router.post('/verify-purchase', async (req, res) => {
     }
 
     // Check if this transaction was already processed
-    const existingTransaction = await IAPTransaction.findOne({ transactionId });
-    if (existingTransaction) {
+    const existingPurchase = await Purchase.findOne({ provider: platform, providerTxnId: transactionId });
+    if (existingPurchase) {
       // Return success but don't credit coins again
       const balance = await walletService.getBalance(userId);
       return sendSuccess(res, HTTP_STATUS.OK, {
         verified: true,
         alreadyProcessed: true,
-        coins: existingTransaction.coins,
+        coins: existingPurchase.raw?.coins || existingPurchase.raw?.credits || null,
         balance: balance,
         transactionId: transactionId
       });
@@ -144,20 +125,31 @@ router.post('/verify-purchase', async (req, res) => {
       });
     }
 
-    // Credit coins to user
-    const newBalance = await walletService.reward(userId, coins, 'iap_purchase', verificationResult.productId);
+    // Credit coins to user (idempotent)
+    const idempotencyKey = `purchase:${platform}:${transactionId}`;
+    const newBalance = await walletService.reward(
+      userId,
+      coins,
+      'iap_purchase',
+      verificationResult.productId,
+      null,
+      idempotencyKey
+    );
 
-    // Record the transaction
-    await IAPTransaction.create({
-      userId: userId,
-      platform: platform,
-      transactionId: transactionId,
-      originalTransactionId: verificationResult.originalTransactionId,
+    // Record purchase (auditable) - raw receipt/token is redacted to a short prefix
+    await Purchase.create({
+      provider: platform,
+      providerTxnId: transactionId,
+      userId,
       productId: verificationResult.productId,
-      coins: coins,
-      environment: verificationResult.environment,
       status: 'completed',
-      rawReceipt: platform === 'ios' ? receiptData?.substring(0, 500) : purchaseToken?.substring(0, 500) // Store partial for audit
+      environment: verificationResult.environment,
+      raw: {
+        coins,
+        originalTransactionId: verificationResult.originalTransactionId,
+        receiptPrefix: platform === 'ios' ? receiptData?.substring(0, 120) : undefined,
+        tokenPrefix: platform === 'android' ? purchaseToken?.substring(0, 120) : undefined,
+      }
     });
 
     console.log(`[IAP] Credited ${coins} coins to user ${userId} for ${verificationResult.productId}`);
@@ -218,13 +210,13 @@ router.get('/transactions', async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    const transactions = await IAPTransaction.find({ userId })
+    const transactions = await Purchase.find({ userId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .select('-rawReceipt'); // Don't expose raw receipt
+      .lean();
 
-    const total = await IAPTransaction.countDocuments({ userId });
+    const total = await Purchase.countDocuments({ userId });
 
     sendSuccess(res, HTTP_STATUS.OK, {
       transactions,
@@ -238,6 +230,19 @@ router.get('/transactions', async (req, res) => {
   } catch (err) {
     console.error('Get transactions error:', err);
     errors.internalError(res, 'Failed to get transactions', { error: err.message });
+  }
+});
+
+// GET /api/wallet/ledger?limit=&cursor=
+router.get('/ledger', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 50, cursor = null } = req.query;
+    const out = await ledgerService.listLedger({ userId, limit, cursor });
+    sendSuccess(res, HTTP_STATUS.OK, out);
+  } catch (err) {
+    console.error('Get ledger error:', err);
+    errors.internalError(res, 'Failed to get ledger', { error: err.message });
   }
 });
 
