@@ -37,6 +37,16 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+function hash01(s: string) {
+  // tiny deterministic hash -> [0,1)
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(resolveAssetUrl(url), { mode: 'cors', credentials: 'omit' });
   if (!res.ok) throw new Error(`Failed to fetch meta: ${res.status}`);
@@ -168,13 +178,25 @@ uniform float uExposure;
 float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
 void main(){
+  // ===== Autonomous "alive" motion (non-interactive presence) =====
+  // WHY: should feel alive even when user is idle.
+  float b = (sin(uTime * 0.55) + 0.35 * sin(uTime * 1.31) + 0.18 * sin(uTime * 0.17)) / (1.0 + 0.35 + 0.18); // [-1..1]
+  vec2 uv0 = vUv;
+  vec2 c = vec2(0.5, 0.5);
+  // subtle breathing: tiny zoom + lift
+  uv0 = (uv0 - c) * (1.0 - b * 0.010) + c + vec2(0.0, b * 0.004);
+
   // depth assumed grayscale; fallback to luma
-  float d = luma(texture2D(uDepth, vUv).rgb);
+  float d = luma(texture2D(uDepth, uv0).rgb);
   // center depth around 0.5 for stability
   float depth = (d - 0.5);
 
+  // Micro depth wobble driven by FX noise (very small; removes "static poster" feel)
+  float wob = luma(texture2D(uFx, uv0 * 0.75 + vec2(uTime * 0.02, -uTime * 0.015)).rgb) - 0.5;
+  vec2 wobVec = vec2(wob, -wob) * 0.0022 * clamp(depth * 2.0, -1.0, 1.0);
+
   // Parallax: closer pixels move more (depth>0)
-  vec2 uv = vUv + (uPointer * uParallax) * depth;
+  vec2 uv = uv0 + (uPointer * uParallax) * depth + wobVec;
 
   vec4 base = texture2D(uBase, uv);
   vec4 cut = texture2D(uCutout, uv);
@@ -203,11 +225,13 @@ void main(){
 
   // ===== Dynamic Skin FX Overlay (energy / particles / flares) =====
   // WHY: brings \"王者荣耀动态皮肤\" vibe without video assets.
-  vec2 fxUv = uv * uFxScale + vec2(uTime * 0.08 * uFxSpeed, uTime * 0.05 * uFxSpeed) + uPointer * 0.02;
+  vec2 fxUv = uv * uFxScale + vec2(uTime * 0.10 * uFxSpeed, uTime * 0.06 * uFxSpeed) + uPointer * 0.025;
   float nfx = luma(texture2D(uFx, fxUv).rgb);
   float streak = smoothstep(0.62, 0.95, nfx);
   float sparkle = smoothstep(0.92, 1.0, nfx) * (0.5 + 0.5 * sin(uTime * 18.0 + nfx * 12.0));
-  float fxMask = alpha * (0.25 + 0.75 * edge); // mostly near edges, stays subtle
+  float fxMask = alpha * (0.20 + 0.80 * edge); // mostly near edges
+  // add depth bias so closer regions catch more energy
+  fxMask *= (0.75 + 0.5 * clamp(depth + 0.15, 0.0, 1.0));
   float fx = (0.55 * streak + 0.45 * sparkle) * uFxStrength * fxMask;
 
   vec3 fxCol = mix(vec3(0.25, 0.75, 1.0), vec3(0.90, 0.35, 1.0), 0.5 + 0.5 * sin(uTime * 0.7));
@@ -217,6 +241,10 @@ void main(){
   // Background: if alpha low, slightly desaturate/dim to push subject forward
   float bg = 1.0 - alpha;
   col = mix(col, mix(vec3(luma(col)), col, 0.65) * 0.85, bg);
+
+  // Soft vignette to reduce "flat cutout" feel
+  float vig = smoothstep(0.95, 0.35, length(uv0 - c));
+  col *= mix(0.92, 1.03, vig);
 
   // Tone-map + gamma to avoid blowout on bright portraits.
   col = vec3(1.0) - exp(-col * max(0.35, uExposure));
@@ -238,6 +266,7 @@ export default function WebGLSpatialAvatar({
   const [error, setError] = useState<string | null>(null);
   const shaderOverridesRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
   const shaderBaseRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
+  const seedRef = useRef<number>(0.123);
 
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -270,6 +299,7 @@ export default function WebGLSpatialAvatar({
       try {
         const meta = await fetchJson<SpatialMeta>(metaUrl);
         shaderBaseRef.current = meta.shader;
+        seedRef.current = hash01(meta.jobId || metaUrl) * 1000;
         const [baseBmp, depthBmp, normalBmp, cutBmp, fxBmp] = await Promise.all([
           loadImageBitmap(meta.baseUrl),
           loadImageBitmap(meta.depthUrl),
@@ -373,8 +403,13 @@ export default function WebGLSpatialAvatar({
           // Idle return
           const idleFor = now - pointerTarget.current.lastMoveT;
           const wantsReturn = !pointerTarget.current.inside || idleFor > 0.8;
-          const tx = wantsReturn ? 0 : pointerTarget.current.x;
-          const ty = wantsReturn ? 0 : pointerTarget.current.y;
+          const s = seedRef.current;
+          // Autonomous drift: non-obvious, slow, clamped
+          const autoX = 0.085 * Math.sin(now * (0.24 + (s % 7) * 0.01) + s) + 0.030 * Math.sin(now * 0.97 + s * 1.7);
+          const autoY = 0.060 * Math.sin(now * (0.19 + (s % 5) * 0.01) + s * 0.7) + 0.020 * Math.sin(now * 1.33 + s * 2.1);
+          const autoW = wantsReturn ? 1 : 0.25; // when user interacts, keep auto subtle
+          const tx = (wantsReturn ? 0 : pointerTarget.current.x) + autoX * autoW;
+          const ty = (wantsReturn ? 0 : pointerTarget.current.y) + autoY * autoW;
 
           // Spring smoothing
           const stiffness = 46;
