@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 const axios = require('axios');
+const net = require('net');
 
 const router = express.Router();
 
@@ -222,7 +223,7 @@ router.get('/proxy', optionalAuth, async (req, res) => {
     const host = (u.hostname || '').toLowerCase();
     if (!host) return errors.badRequest(res, 'invalid host');
 
-    // Basic SSRF protection: block localhost-ish hosts.
+    // SSRF protection: block localhost-ish hosts.
     if (
       host === 'localhost' ||
       host === '127.0.0.1' ||
@@ -233,33 +234,21 @@ router.get('/proxy', optionalAuth, async (req, res) => {
       return errors.badRequest(res, 'blocked host');
     }
 
-    // Allowlist common storage hosts + env-configured public domains.
-    const allowHosts = new Set();
-    const addHostFromEnvUrl = (envUrl) => {
-      if (!envUrl) return;
-      try {
-        const uu = new URL(String(envUrl).startsWith('http') ? String(envUrl) : `https://${envUrl}`);
-        if (uu.hostname) allowHosts.add(uu.hostname.toLowerCase());
-      } catch {
-        // ignore
-      }
-    };
-    addHostFromEnvUrl(process.env.R2_PUBLIC_URL);
-    addHostFromEnvUrl(process.env.R2_DEV_URL);
-
-    const ossEndpoint = (process.env.OSS_ENDPOINT || '').replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
-    const ossBucket = (process.env.OSS_BUCKET || '').toLowerCase();
-    if (ossEndpoint) allowHosts.add(ossEndpoint);
-    if (ossEndpoint && ossBucket) allowHosts.add(`${ossBucket}.${ossEndpoint}`);
-
-    // Also allow known storage suffixes used by this app.
-    const allowedBySuffix =
-      host.endsWith('.r2.dev') ||
-      host.endsWith('.r2.cloudflarestorage.com') ||
-      host.endsWith('.aliyuncs.com');
-
-    const allowed = allowedBySuffix || allowHosts.has(host);
-    if (!allowed) return errors.badRequest(res, `host not allowed: ${host}`);
+    // If hostname is an IP, block private/reserved ranges.
+    const ipType = net.isIP(host);
+    if (ipType) {
+      const isPrivate =
+        host.startsWith('10.') ||
+        host.startsWith('127.') ||
+        host.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+        host.startsWith('169.254.') || // link-local + metadata
+        host === '::1' ||
+        host.startsWith('fc') || // unique local IPv6
+        host.startsWith('fd') ||
+        host.startsWith('fe80'); // link-local IPv6
+      if (isPrivate) return errors.badRequest(res, 'blocked private ip');
+    }
 
     const upstream = await axios.get(rawUrl, {
       responseType: 'arraybuffer',
