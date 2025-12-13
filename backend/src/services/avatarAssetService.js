@@ -177,11 +177,12 @@ async function generateAvatarAssetPack({ imageUrl, userId, agentId }) {
       parallaxStrength: 0.018,
       normalStrength: 1.0,
       rimStrength: 0.35,
-      glareStrength: 0.8,
+      glareStrength: 0.6,
       // FX overlay (\"dynamic skin\" feel)
-      fxStrength: 0.75,
+      fxStrength: 0.38,
       fxSpeed: 1.0,
       fxScale: 1.35,
+      exposure: 1.0,
     },
   };
 

@@ -102,7 +102,9 @@ function createTexture(gl: WebGLRenderingContext, unit: number, bitmap: ImageBit
   if (!tex) throw new Error('texture alloc failed');
   gl.activeTexture(gl.TEXTURE0 + unit);
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+  // NOTE: vUv in our fullscreen quad already matches browser image orientation.
+  // Flipping here will invert the image (user sees upside-down).
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -158,6 +160,7 @@ uniform float uGlareStr;
 uniform float uFxStrength;
 uniform float uFxSpeed;
 uniform float uFxScale;
+uniform float uExposure;
 
 float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
@@ -184,7 +187,7 @@ void main(){
 
   // Soft specular
   vec3 h = normalize(l + vec3(0.0, 0.0, 1.0));
-  float spec = pow(clamp(dot(n, h), 0.0, 1.0), 28.0) * uGlareStr;
+  float spec = pow(clamp(dot(n, h), 0.0, 1.0), 28.0) * (uGlareStr * 0.55);
 
   // Rim light from alpha edge + normal
   float edge = smoothstep(0.4, 0.98, alpha) - smoothstep(0.98, 1.0, alpha);
@@ -206,11 +209,15 @@ void main(){
 
   vec3 fxCol = mix(vec3(0.25, 0.75, 1.0), vec3(0.90, 0.35, 1.0), 0.5 + 0.5 * sin(uTime * 0.7));
   // Screen blend
-  col = 1.0 - (1.0 - col) * (1.0 - fxCol * fx);
+  col = 1.0 - (1.0 - col) * (1.0 - fxCol * (fx * 0.65));
 
   // Background: if alpha low, slightly desaturate/dim to push subject forward
   float bg = 1.0 - alpha;
   col = mix(col, mix(vec3(luma(col)), col, 0.65) * 0.85, bg);
+
+  // Tone-map + gamma to avoid blowout on bright portraits.
+  col = vec3(1.0) - exp(-col * max(0.35, uExposure));
+  col = pow(col, vec3(1.0 / 2.2));
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -312,6 +319,7 @@ export default function WebGLSpatialAvatar({
         const uFxStrength = gl.getUniformLocation(program, 'uFxStrength');
         const uFxSpeed = gl.getUniformLocation(program, 'uFxSpeed');
         const uFxScale = gl.getUniformLocation(program, 'uFxScale');
+        const uExposure = gl.getUniformLocation(program, 'uExposure');
 
         const applyShaderUniforms = () => {
           // defaults -> meta.shader -> overrides
@@ -324,6 +332,7 @@ export default function WebGLSpatialAvatar({
           const fxStrength = ov.fxStrength ?? base.fxStrength ?? 0.0;
           const fxSpeed = ov.fxSpeed ?? base.fxSpeed ?? 1.0;
           const fxScale = ov.fxScale ?? base.fxScale ?? 1.2;
+          const exposure = (ov as any).exposure ?? (base as any).exposure ?? 1.0;
 
           gl.uniform1f(uParallax, parallax);
           gl.uniform1f(uNormalStr, normalStr);
@@ -332,6 +341,7 @@ export default function WebGLSpatialAvatar({
           gl.uniform1f(uFxStrength, fxStrength);
           gl.uniform1f(uFxSpeed, fxSpeed);
           gl.uniform1f(uFxScale, fxScale);
+          gl.uniform1f(uExposure, exposure);
         };
 
         const resize = () => {
