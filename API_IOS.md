@@ -527,6 +527,24 @@ struct AnyEncodable: Encodable {
 
 ---
 
+## 12) Health Check（监控用）
+
+### 12.1 健康检查
+- **GET** `/api/health`
+- **Public**（无需认证）
+- **Response**：
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-13T14:00:00.000Z",
+  "uptime": 3600.5,
+  "memory": { "rss": 123456789, "heapTotal": 98765432, "heapUsed": 87654321 }
+}
+```
+- **用途**：Uptime 监控（如 UptimeRobot、Cloudflare Health Checks）
+
+---
+
 ## 备注：最小可用清单（iOS MVP）
 - `/api/users/sync` → 拿 token
 - `/api/agents` + `/api/agents/:id`

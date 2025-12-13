@@ -15,6 +15,7 @@ RUN npm run build
 FROM nginx:latest
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY proxy_params.inc /etc/nginx/conf.d/proxy_params.inc
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Create SSL directory and copy certificates

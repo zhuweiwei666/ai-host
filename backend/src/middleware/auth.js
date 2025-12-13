@@ -6,6 +6,32 @@
 const jwt = require('jsonwebtoken');
 const { errors } = require('../utils/errorHandler');
 
+// Security: Get JWT secret with warning for missing/default values
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (!secret) {
+    if (isProduction) {
+      // Should never reach here - server.js validates at startup
+      throw new Error('JWT_SECRET not set in production');
+    }
+    console.warn('[Auth] WARNING: JWT_SECRET not set, using insecure default (dev only)');
+    return 'dev-secret-do-not-use-in-production';
+  }
+  
+  return secret;
+}
+
+/**
+ * Check if mock auth is allowed (development only, never in production)
+ */
+function isMockAuthAllowed() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction) return false;
+  return process.env.ENABLE_MOCK_AUTH === 'true';
+}
+
 /**
  * Require authentication middleware
  * Verifies JWT token from Authorization header
@@ -17,10 +43,8 @@ const requireAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // Allow mock header in development or if ENABLE_MOCK_AUTH is set
-      const allowMockAuth = process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_AUTH === 'true';
-      
-      if (allowMockAuth && req.headers['x-mock-user-id']) {
+      // Allow mock header ONLY in non-production with explicit flag
+      if (isMockAuthAllowed() && req.headers['x-mock-user-id']) {
         req.user = {
           id: req.headers['x-mock-user-id'],
           role: req.headers['x-mock-user-role'] || 'user'
@@ -34,7 +58,7 @@ const requireAuth = (req, res, next) => {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
     // Verify JWT token
-    const secret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const secret = getJwtSecret();
     const decoded = jwt.verify(token, secret);
     
     // Inject user info into request
@@ -68,7 +92,7 @@ const optionalAuth = (req, res, next) => {
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const secret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+      const secret = getJwtSecret();
       const decoded = jwt.verify(token, secret);
       
       req.user = {
@@ -76,9 +100,8 @@ const optionalAuth = (req, res, next) => {
         role: decoded.role || 'user'
       };
     } else {
-      // Allow mock header in development or if ENABLE_MOCK_AUTH is set
-      const allowMockAuth = process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_AUTH === 'true';
-      if (allowMockAuth && req.headers['x-mock-user-id']) {
+      // Allow mock header ONLY in non-production with explicit flag
+      if (isMockAuthAllowed() && req.headers['x-mock-user-id']) {
         req.user = {
           id: req.headers['x-mock-user-id'],
           role: req.headers['x-mock-user-role'] || 'user'

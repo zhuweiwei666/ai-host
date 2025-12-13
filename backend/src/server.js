@@ -1,6 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 
 // Global error handling for uncaught exceptions
@@ -15,6 +17,7 @@ process.on('unhandledRejection', (err) => {
 // Load environment variables
 // 1. Load default .env from backend directory
 const path = require('path');
+const fs = require('fs');
 const envPath = path.join(__dirname, '../.env');
 const envProdPath = path.join(__dirname, '../.env.production.local');
 
@@ -23,7 +26,6 @@ dotenv.config({ path: envPath });
 // 2. Load production local environment variables (overrides .env, not tracked by git)
 // Only load if file exists (won't fail if file doesn't exist)
 try {
-  const fs = require('fs');
   if (fs.existsSync(envProdPath)) {
     dotenv.config({ path: envProdPath, override: true });
     console.log('[ENV] Loaded .env.production.local');
@@ -34,12 +36,91 @@ try {
   console.warn('[ENV] Could not load .env.production.local:', err.message);
 }
 
+// ============================================================
+// Security: Validate critical environment variables
+// ============================================================
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  const jwtSecret = process.env.JWT_SECRET;
+  const defaultSecrets = ['your-secret-key-change-in-production', 'secret', 'jwt_secret', ''];
+  
+  if (!jwtSecret || defaultSecrets.includes(jwtSecret)) {
+    console.error('❌ FATAL: JWT_SECRET is not set or using default value in production!');
+    console.error('   Please set a strong random JWT_SECRET in your .env file.');
+    console.error('   Generate one with: openssl rand -hex 32');
+    process.exit(1);
+  }
+  
+  if (process.env.ENABLE_MOCK_AUTH === 'true') {
+    console.error('❌ FATAL: ENABLE_MOCK_AUTH=true is not allowed in production!');
+    process.exit(1);
+  }
+  
+  console.log('✅ Security checks passed');
+}
+
 // Initialize DB connection once
 connectDB();
 
 const app = express();
 
+// ============================================================
+// Security: Trust proxy (required behind Nginx/Cloudflare)
+// ============================================================
+// Trust first proxy (Nginx). For Cloudflare, use 'cf-connecting-ip' header.
+app.set('trust proxy', 1);
+
+// ============================================================
+// Security: Helmet - secure HTTP headers
+// ============================================================
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP for API server
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ============================================================
+// Security: Rate limiting (defense in depth, after Nginx)
+// ============================================================
+// General API rate limit
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, code: 'TOO_MANY_REQUESTS', message: 'Too many requests, please slow down' },
+  keyGenerator: (req) => {
+    // Use Cloudflare's real IP header if available
+    return req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.ip;
+  },
+});
+
+// Strict rate limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, code: 'TOO_MANY_REQUESTS', message: 'Too many auth attempts' },
+  keyGenerator: (req) => req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.ip,
+});
+
+// Very strict for expensive operations
+const expensiveLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, code: 'TOO_MANY_REQUESTS', message: 'Rate limit for expensive operations' },
+  keyGenerator: (req) => req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.ip,
+});
+
+// Apply general limiter to all routes
+app.use(generalLimiter);
+
+// ============================================================
 // CORS Configuration - Compatible with Nginx reverse proxy
+// ============================================================
 app.use(cors({
   origin: "*",
   methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -47,7 +128,11 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+// ============================================================
+// Body parsing with size limits
+// ============================================================
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware for debugging
 app.use((req, res, next) => {
@@ -61,15 +146,36 @@ app.use((req, res, next) => {
   next();
 });
 
+// ============================================================
+// Health check endpoint (for monitoring/uptime checks)
+// ============================================================
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
+});
+
+// ============================================================
+// Apply stricter rate limits to specific routes BEFORE loading them
+// ============================================================
+app.use('/api/users/sync', authLimiter);
+app.use('/api/generate-image', expensiveLimiter);
+app.use('/api/generate-video', expensiveLimiter);
+app.use('/api/avatar-assets', expensiveLimiter);
+
+// ============================================================
 // Routes - All APIs under /api prefix
-// Frontend: /api/agents → Backend: /api/agents
+// ============================================================
 // Load each route separately to avoid one failure affecting others
-const loadRoute = (path, routeName) => {
+const loadRoute = (routePath, routeName) => {
   try {
-    app.use(path, require(routeName));
-    console.log(`✓ Route loaded: ${path}`);
+    app.use(routePath, require(routeName));
+    console.log(`✓ Route loaded: ${routePath}`);
   } catch (err) {
-    console.error(`✗ Failed to load route ${path}:`, err.message);
+    console.error(`✗ Failed to load route ${routePath}:`, err.message);
   }
 };
 
