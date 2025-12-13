@@ -21,6 +21,10 @@ const SpatialAvatarLab: React.FC = () => {
   const [fxStrength, setFxStrength] = useState(0.75);
   const [fxSpeed, setFxSpeed] = useState(1.0);
   const [fxScale, setFxScale] = useState(1.35);
+  // WebGL micro-expression (focus + blink)
+  const [focusX, setFocusX] = useState(0.5);
+  const [focusY, setFocusY] = useState(0.7);
+  const [blinkStrength, setBlinkStrength] = useState(0.85);
 
   // Motion tuning knobs (safe ranges; prefer variance over amplitude).
   const [parallaxPx, setParallaxPx] = useState(DEFAULT_MOTION_PROFILE.parallaxPx);
@@ -53,8 +57,11 @@ const SpatialAvatarLab: React.FC = () => {
       fxStrength,
       fxSpeed,
       fxScale,
+      focusX,
+      focusY,
+      blinkStrength,
     }),
-    [fxStrength, fxSpeed, fxScale],
+    [fxStrength, fxSpeed, fxScale, focusX, focusY, blinkStrength],
   );
 
   useEffect(() => {
@@ -107,6 +114,9 @@ const SpatialAvatarLab: React.FC = () => {
         if (typeof s.fxStrength === 'number') setFxStrength(s.fxStrength);
         if (typeof s.fxSpeed === 'number') setFxSpeed(s.fxSpeed);
         if (typeof s.fxScale === 'number') setFxScale(s.fxScale);
+        if (typeof s.focusX === 'number') setFocusX(s.focusX);
+        if (typeof s.focusY === 'number') setFocusY(s.focusY);
+        if (typeof s.blinkStrength === 'number') setBlinkStrength(s.blinkStrength);
       } catch {
         if (!mounted) return;
         setCurrentBoundMeta('');
@@ -320,6 +330,15 @@ const SpatialAvatarLab: React.FC = () => {
                   <Knob label="fxSpeed" value={fxSpeed} min={0} max={2.5} step={0.05} onChange={setFxSpeed} note="速度（建议 0.7~1.6）" />
                   <Knob label="fxScale" value={fxScale} min={0.6} max={2.6} step={0.05} onChange={setFxScale} note="纹理尺度（越大越细碎）" />
                 </div>
+                <div className="mt-3 text-xs font-semibold text-gray-700 mb-2">微表情（让角色“活过来”）</div>
+                <div className="text-[11px] text-gray-500 mb-2">
+                  在右侧预览上 <b>双击脸/眼睛位置</b> 设置焦点（focus），眨眼会围绕此处发生。
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Knob label="blinkStrength" value={blinkStrength} min={0} max={1.5} step={0.05} onChange={setBlinkStrength} note="眨眼强度（0=关闭）" />
+                  <Knob label="focusX" value={focusX} min={0} max={1} step={0.01} onChange={setFocusX} note="焦点X（0..1）" />
+                  <Knob label="focusY" value={focusY} min={0} max={1} step={0.01} onChange={setFocusY} note="焦点Y（0..1）" />
+                </div>
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
@@ -358,6 +377,10 @@ const SpatialAvatarLab: React.FC = () => {
                     height={260}
                     className="shadow-lg"
                     shaderOverrides={currentShaderOverrides}
+                    onPickFocus={(x, y) => {
+                      setFocusX(x);
+                      setFocusY(y);
+                    }}
                   />
                 ) : (
                   <div className="text-sm text-gray-500">先点击上面的按钮生成资产包（meta.json）</div>

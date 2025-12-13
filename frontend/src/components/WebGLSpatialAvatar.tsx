@@ -20,6 +20,9 @@ export type SpatialMeta = {
     fxStrength?: number;
     fxSpeed?: number;
     fxScale?: number;
+    focusX?: number;
+    focusY?: number;
+    blinkStrength?: number;
   };
 };
 
@@ -32,6 +35,8 @@ export type WebGLSpatialAvatarProps = {
   interactive?: boolean;
   /** Per-agent overrides (persisted in DB). Applied on top of meta.shader. */
   shaderOverrides?: SpatialMeta['shader'];
+  /** In Lab: pick face/eyes focus point (UV space). */
+  onPickFocus?: (x: number, y: number) => void;
 };
 
 function clamp(v: number, min: number, max: number) {
@@ -166,6 +171,9 @@ uniform sampler2D uFx;
 
 uniform vec2 uPointer;     // [-1..1]
 uniform vec2 uLook;        // [-1..1] (light direction / "eye contact")
+uniform vec2 uFocus;       // [0..1] (face/eyes focus point)
+uniform float uBlink;      // [0..1]
+uniform float uBlinkStr;   // strength
 uniform float uTime;
 
 uniform float uParallax;
@@ -187,6 +195,13 @@ void main(){
   vec2 c = vec2(0.5, 0.5);
   // subtle breathing: tiny zoom + lift
   uv0 = (uv0 - c) * (1.0 - b * 0.010) + c + vec2(0.0, b * 0.004);
+
+  // Micro-expression: blink around focus point (requires focus calibration for best results)
+  float alpha0 = texture2D(uCutout, uv0).a;
+  vec2 df = (uv0 - uFocus) / vec2(0.09, 0.06); // ellipse around eyes/face center
+  float focusM = exp(-dot(df, df) * 1.6);
+  float blink = uBlink * uBlinkStr * focusM * smoothstep(0.25, 0.9, alpha0);
+  uv0.y = uFocus.y + (uv0.y - uFocus.y) * (1.0 - blink * 0.28);
 
   // depth assumed grayscale; fallback to luma
   float d = luma(texture2D(uDepth, uv0).rgb);
@@ -215,6 +230,7 @@ void main(){
   // Soft specular
   vec3 h = normalize(l + vec3(0.0, 0.0, 1.0));
   float spec = pow(clamp(dot(n, h), 0.0, 1.0), 28.0) * (uGlareStr * 0.55);
+  spec *= (1.0 - blink * 0.85);
 
   // Rim light from alpha edge + normal
   float edge = smoothstep(0.4, 0.98, alpha) - smoothstep(0.98, 1.0, alpha);
@@ -225,6 +241,7 @@ void main(){
   col *= (0.98 + 0.22 * ndl);
   col += spec * vec3(1.0, 1.0, 1.0);
   col += rim * vec3(1.0, 0.95, 0.90) * edge;
+  col *= (1.0 - blink * 0.10);
 
   // ===== Dynamic Skin FX Overlay (energy / particles / flares) =====
   // WHY: brings \"王者荣耀动态皮肤\" vibe without video assets.
@@ -236,6 +253,7 @@ void main(){
   // add depth bias so closer regions catch more energy
   fxMask *= (0.75 + 0.5 * clamp(depth + 0.15, 0.0, 1.0));
   float fx = (0.55 * streak + 0.45 * sparkle) * uFxStrength * fxMask;
+  fx *= (1.0 - blink * 0.65);
 
   vec3 fxCol = mix(vec3(0.25, 0.75, 1.0), vec3(0.90, 0.35, 1.0), 0.5 + 0.5 * sin(uTime * 0.7));
   // Screen blend
@@ -265,6 +283,7 @@ export default function WebGLSpatialAvatar({
   className,
   interactive = true,
   shaderOverrides,
+  onPickFocus,
 }: WebGLSpatialAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -280,6 +299,7 @@ export default function WebGLSpatialAvatar({
   const pointerTarget = useRef({ x: 0, y: 0, inside: false, lastMoveT: 0 });
   const pointer = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const look = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+  const blinkRef = useRef({ nextT: 0, startT: -1, dur: 0.12, phase: 0, value: 0, r: 12345 });
 
   // Update overrides without reloading textures/shaders.
   useEffect(() => {
@@ -350,6 +370,9 @@ export default function WebGLSpatialAvatar({
 
         const uPointer = gl.getUniformLocation(program, 'uPointer');
         const uLook = gl.getUniformLocation(program, 'uLook');
+        const uFocus = gl.getUniformLocation(program, 'uFocus');
+        const uBlink = gl.getUniformLocation(program, 'uBlink');
+        const uBlinkStr = gl.getUniformLocation(program, 'uBlinkStr');
         const uTime = gl.getUniformLocation(program, 'uTime');
         const uParallax = gl.getUniformLocation(program, 'uParallax');
         const uNormalStr = gl.getUniformLocation(program, 'uNormalStr');
@@ -372,6 +395,9 @@ export default function WebGLSpatialAvatar({
           const fxSpeed = ov.fxSpeed ?? base.fxSpeed ?? 1.0;
           const fxScale = ov.fxScale ?? base.fxScale ?? 1.2;
           const exposure = (ov as any).exposure ?? (base as any).exposure ?? 1.0;
+          const focusX = clamp(ov.focusX ?? base.focusX ?? 0.5, 0, 1);
+          const focusY = clamp(ov.focusY ?? base.focusY ?? 0.70, 0, 1);
+          const blinkStr = clamp(ov.blinkStrength ?? base.blinkStrength ?? 0.85, 0, 1.5);
 
           gl.uniform1f(uParallax, parallax);
           gl.uniform1f(uNormalStr, normalStr);
@@ -381,6 +407,8 @@ export default function WebGLSpatialAvatar({
           gl.uniform1f(uFxSpeed, fxSpeed);
           gl.uniform1f(uFxScale, fxScale);
           gl.uniform1f(uExposure, exposure);
+          gl.uniform2f(uFocus, focusX, focusY);
+          gl.uniform1f(uBlinkStr, blinkStr);
         };
 
         const resize = () => {
@@ -449,10 +477,35 @@ export default function WebGLSpatialAvatar({
           const lx = clamp(look.current.x * rm, -1, 1);
           const ly = clamp(look.current.y * rm, -1, 1);
 
+          // Blink events: randomized, quick, not perfectly periodic.
+          const br = blinkRef.current;
+          if (!br.nextT) {
+            br.r = Math.floor(seedRef.current * 1e6) ^ 0x9e3779b9;
+            br.nextT = now + 2.2 + (br.r % 1000) / 1000 * 2.8;
+          }
+          if (now >= br.nextT && br.startT < 0) {
+            br.startT = now;
+            br.dur = 0.11 + ((br.r >>> 8) % 1000) / 1000 * 0.05;
+            // LCG-ish
+            br.r = (br.r * 1664525 + 1013904223) >>> 0;
+            br.nextT = now + 2.4 + (br.r % 1000) / 1000 * 3.2;
+          }
+          let blinkV = 0;
+          if (br.startT >= 0) {
+            const p = (now - br.startT) / br.dur;
+            if (p >= 1) {
+              br.startT = -1;
+            } else {
+              const s1 = Math.sin(Math.PI * clamp(p, 0, 1));
+              blinkV = s1 * s1; // smooth close/open
+            }
+          }
+
           // Apply shader uniforms every frame so Lab sliders feel instant.
           applyShaderUniforms();
           gl.uniform2f(uPointer, px, py);
           gl.uniform2f(uLook, lx, ly);
+          gl.uniform1f(uBlink, prefersReducedMotion ? 0 : blinkV);
           gl.uniform1f(uTime, now - t0);
 
           gl.clearColor(0, 0, 0, 0);
@@ -499,6 +552,16 @@ export default function WebGLSpatialAvatar({
       }}
       onPointerLeave={() => {
         pointerTarget.current.inside = false;
+      }}
+      onDoubleClick={(e) => {
+        if (!onPickFocus) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const x = clamp((e.clientX - r.left) / r.width, 0, 1);
+        const y = clamp((e.clientY - r.top) / r.height, 0, 1);
+        // vUv is flipped in shader, so focusY should also be flipped.
+        onPickFocus(x, 1 - y);
       }}
     >
       <canvas ref={canvasRef} className="w-full h-full block" />

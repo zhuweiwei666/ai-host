@@ -40,6 +40,10 @@ const AgentSchema = new mongoose.Schema({
     fxStrength: { type: Number },
     fxSpeed: { type: Number },
     fxScale: { type: Number },
+    // Micro-expression tuning (\"alive\" feel)
+    focusX: { type: Number }, // 0..1 in UV space
+    focusY: { type: Number }, // 0..1 in UV space (matches shader vUv)
+    blinkStrength: { type: Number }, // 0..1.5
   },
   
   // ========== 视频预览系统 ==========

@@ -24,6 +24,9 @@ export interface Agent {
     fxStrength?: number;
     fxSpeed?: number;
     fxScale?: number;
+    focusX?: number;
+    focusY?: number;
+    blinkStrength?: number;
   };
   description: string;
   modelName: string;
