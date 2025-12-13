@@ -202,6 +202,17 @@ curl -sS -X POST "https://cling-ai.com/api/chat/tts" \
 
 > 注意：`bindToAgent=true` 需要管理员。
 
+### 4.2.1 批量为所有主播生成空间资产包（Admin / 运维用）
+- **POST** `/api/avatar-assets/generate-all`
+- **Body**：
+```json
+{ "force": false }
+```
+- 说明：
+  - `force=false`：只生成未绑定 `avatarSpatialMetaUrl` 的主播（推荐）
+  - `force=true`：全部重新生成（高成本）
+- **Response.data**：`{ total, ok, skipped, failed, results[] }`
+
 ### 4.3 绑定 metaUrl / 保存 shader（全局，Admin）
 - **POST** `/api/agents/:id/avatar-spatial-meta`
 - **Body**（二选一或同时传）：
