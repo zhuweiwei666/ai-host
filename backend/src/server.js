@@ -77,6 +77,8 @@ app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for API server
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false, // Allow cross-origin requests
+  crossOriginResourcePolicy: false, // Allow cross-origin resource loading
 }));
 
 // ============================================================
