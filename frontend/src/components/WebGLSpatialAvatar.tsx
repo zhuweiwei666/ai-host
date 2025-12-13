@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 export type SpatialMeta = {
   version: number;
+  jobId?: string;
   baseUrl: string;
   depthUrl: string;
   normalUrl: string;
