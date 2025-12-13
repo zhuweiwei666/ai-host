@@ -220,7 +220,8 @@ void main(){
   float rim = pow(1.0 - ndl, 2.0) * uRimStr;
 
   vec3 col = base.rgb;
-  col *= (0.92 + 0.18 * ndl);
+  // Keep base contrast; avoid "gray veil" look.
+  col *= (0.98 + 0.22 * ndl);
   col += spec * vec3(1.0, 1.0, 1.0);
   col += rim * vec3(1.0, 0.95, 0.90) * edge;
 
@@ -239,9 +240,8 @@ void main(){
   // Screen blend
   col = 1.0 - (1.0 - col) * (1.0 - fxCol * (fx * 0.65));
 
-  // Background: if alpha low, slightly desaturate/dim to push subject forward
-  float bg = 1.0 - alpha;
-  col = mix(col, mix(vec3(luma(col)), col, 0.65) * 0.85, bg);
+  // NOTE: Avoid background desat/dim here.
+  // WHY: some cutout alphas are soft across the whole subject, which can cause a "gray overlay" feeling.
 
   // Soft vignette to reduce "flat cutout" feel
   float vig = smoothstep(0.95, 0.35, length(uv0 - c));
@@ -250,6 +250,8 @@ void main(){
   // Tone-map + gamma to avoid blowout on bright portraits.
   col = vec3(1.0) - exp(-col * max(0.35, uExposure));
   col = pow(col, vec3(1.0 / 2.2));
+  // Tiny contrast to keep the image from looking washed.
+  col = clamp((col - 0.5) * 1.06 + 0.5, 0.0, 1.0);
 
   gl_FragColor = vec4(col, 1.0);
 }
