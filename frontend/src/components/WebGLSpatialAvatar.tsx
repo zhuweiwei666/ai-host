@@ -165,6 +165,7 @@ uniform sampler2D uCutout;
 uniform sampler2D uFx;
 
 uniform vec2 uPointer;     // [-1..1]
+uniform vec2 uLook;        // [-1..1] (light direction / "eye contact")
 uniform float uTime;
 
 uniform float uParallax;
@@ -207,8 +208,8 @@ void main(){
   vec3 n = texture2D(uNormal, uv).rgb * 2.0 - 1.0;
   n = normalize(mix(vec3(0.0,0.0,1.0), n, uNormalStr));
 
-  // Lighting direction follows pointer (feels "held")
-  vec3 l = normalize(vec3(uPointer.x * 0.8, -uPointer.y * 0.8, 1.0));
+  // Lighting direction follows uLook ("eye contact" / focus)
+  vec3 l = normalize(vec3(uLook.x * 0.9, -uLook.y * 0.9, 1.0));
   float ndl = clamp(dot(n, l), 0.0, 1.0);
 
   // Soft specular
@@ -278,6 +279,7 @@ export default function WebGLSpatialAvatar({
 
   const pointerTarget = useRef({ x: 0, y: 0, inside: false, lastMoveT: 0 });
   const pointer = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+  const look = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
 
   // Update overrides without reloading textures/shaders.
   useEffect(() => {
@@ -347,6 +349,7 @@ export default function WebGLSpatialAvatar({
         gl.uniform1i(gl.getUniformLocation(program, 'uFx'), 4);
 
         const uPointer = gl.getUniformLocation(program, 'uPointer');
+        const uLook = gl.getUniformLocation(program, 'uLook');
         const uTime = gl.getUniformLocation(program, 'uTime');
         const uParallax = gl.getUniformLocation(program, 'uParallax');
         const uNormalStr = gl.getUniformLocation(program, 'uNormalStr');
@@ -424,13 +427,32 @@ export default function WebGLSpatialAvatar({
           pointer.current.x += pointer.current.vx * dt;
           pointer.current.y += pointer.current.vy * dt;
 
+          // "Look-at" / focus: slow scan when idle, quick lock when user moves.
+          const scanX = 0.22 * Math.sin(now * 0.22 + s * 1.11) + 0.10 * Math.sin(now * 0.63 + s * 0.37);
+          const scanY = 0.16 * Math.sin(now * 0.18 + s * 0.77) + 0.08 * Math.sin(now * 0.52 + s * 0.91);
+          const lock = pointerTarget.current.inside && idleFor < 1.2 ? 1 : 0;
+          const ltx = lock ? pointerTarget.current.x : scanX;
+          const lty = lock ? pointerTarget.current.y : scanY;
+
+          const lookStiff = 70;
+          const lookDamp = 2 * Math.sqrt(lookStiff) * 1.12;
+          const lax = (ltx - look.current.x) * lookStiff - look.current.vx * lookDamp;
+          const lay = (lty - look.current.y) * lookStiff - look.current.vy * lookDamp;
+          look.current.vx += lax * dt;
+          look.current.vy += lay * dt;
+          look.current.x += look.current.vx * dt;
+          look.current.y += look.current.vy * dt;
+
           const rm = prefersReducedMotion ? 0.15 : 1;
           const px = clamp(pointer.current.x * rm, -1, 1);
           const py = clamp(pointer.current.y * rm, -1, 1);
+          const lx = clamp(look.current.x * rm, -1, 1);
+          const ly = clamp(look.current.y * rm, -1, 1);
 
           // Apply shader uniforms every frame so Lab sliders feel instant.
           applyShaderUniforms();
           gl.uniform2f(uPointer, px, py);
+          gl.uniform2f(uLook, lx, ly);
           gl.uniform1f(uTime, now - t0);
 
           gl.clearColor(0, 0, 0, 0);
