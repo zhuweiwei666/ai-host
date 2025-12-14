@@ -33,6 +33,11 @@ function resolveRunpodUrl(base, maybeRelative) {
   return `${b}${p}`;
 }
 
+function getGeneratePath() {
+  const p = process.env.RUNPOD_VIDEO_GENERATE_PATH || '/generate';
+  return p.startsWith('/') ? p : `/${p}`;
+}
+
 async function downloadToBuffer(url) {
   const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 300000 });
   return Buffer.from(resp.data);
@@ -57,7 +62,7 @@ async function generateVideoFromImage({
   form.append('frames', String(frames));
   form.append('loop', String(loop));
 
-  const endpoint = `${base.replace(/\/$/, '')}/generate`;
+  const endpoint = `${base.replace(/\/$/, '')}${getGeneratePath()}`;
   const resp = await axios.post(endpoint, form, {
     headers: form.getHeaders(),
     timeout: 300000,
