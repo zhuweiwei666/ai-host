@@ -4,6 +4,10 @@ WORKDIR /app
 
 COPY package*.json ./
 
+# Video post-processing (aspect ratio, iOS-friendly encoding)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN npm install
 
 COPY . .
