@@ -51,6 +51,13 @@ const AgentSchema = new mongoose.Schema({
   // ========== 视频预览系统 ==========
   previewVideos: [PreviewVideoSchema],              // 预览视频列表（带元数据）
   defaultPreviewIndex: { type: Number, default: 0 }, // 默认播放的视频索引
+
+  // ========== LiveSkin（视频优先沉浸式）生成状态 ==========
+  // These fields are optional; iOS reads from live-skin-manifest (derived from previewVideos),
+  // but having status helps ops/QA understand generation progress.
+  liveSkinStatus: { type: String, enum: ['pending', 'generating', 'ready', 'failed'], default: 'pending' },
+  liveSkinGeneratedAt: { type: Date },
+  liveSkinLastError: { type: String, default: '' },
   description: { type: String, default: '' },
   modelName: { type: String, required: true, default: 'grok-4-1-fast-reasoning' },
   temperature: { type: Number, default: 0.7 },

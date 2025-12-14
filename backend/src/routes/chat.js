@@ -1195,7 +1195,9 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     const mood = inferMoodFromStage({ isNSFWStage, intimacy: finalIntimacy });
     const immersivePayload = immersive
       ? {
+          // New + compat: some clients use emotion, some use mood
           mood,
+          emotion: mood,
           cues: buildImmersiveCues({ agentId, mood, hasAudio: !!audioUrl }),
         }
       : null;
@@ -1203,6 +1205,8 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     sendSuccess(res, HTTP_STATUS.OK, { 
       reply, 
       audioUrl: audioUrl, 
+      // Placeholder for clients that model audioDuration (client can measure via AVAudioPlayer)
+      audioDuration: null,
       imageUrl, 
       balance: finalBalance, 
       intimacy: finalIntimacy,

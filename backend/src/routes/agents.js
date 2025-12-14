@@ -532,12 +532,23 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
         loopIdle: true,
         idleMinHoldMs: 1200,
       },
+      // Compatibility aliases for iOS clients that expect different naming
+      transitions: {
+        crossfadeMs: 200,
+      },
+      cameraHints: {
+        idleZoom: 1.0,
+        speakZoom: 1.04,
+        transitionDuration: 0.8,
+      },
       ui: {
         // Relative safe area (0..1) for subtitle placement
         subtitleSafeArea: { x: 0.08, y: 0.72, w: 0.84, h: 0.18 },
         // Keep UI minimal: no chat bubbles in immersive mode
         recommendedTextMode: 'subtitle',
       },
+      // Another alias (some clients model subtitleSafeArea at top-level)
+      subtitleSafeArea: { x: 0.08, y: 0.72, w: 0.84, h: 0.18 },
       tagsSpec: {
         recommended: [
           'idle',
