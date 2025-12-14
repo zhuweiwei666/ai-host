@@ -61,6 +61,48 @@ export interface VoiceExtractResult {
   sourceUrl: string;
 }
 
+// ==================== Preview Videos (LiveSkin) ====================
+export interface PreviewVideoItem {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  fileSize?: number;
+  format?: string;
+  isVertical?: boolean;
+  sortOrder?: number;
+  tags?: string[];
+  scaleLevel?: number;
+  index?: number;
+}
+
+export interface PreviewVideosResponse {
+  agentId: string;
+  agentName?: string;
+  videos: PreviewVideoItem[];
+  defaultIndex?: number;
+  totalCount?: number;
+}
+
+export const getPreviewVideos = (agentId: string, params?: { maxScale?: number; tag?: string; limit?: number }) =>
+  http.get<PreviewVideosResponse>(`/preview/videos/${agentId}`, { params });
+
+export const migratePreviewVideos = (agentId: string) =>
+  http.post<{ message?: string; migratedCount?: number; videos?: unknown }>(`/preview/videos/${agentId}/migrate`, {});
+
+export const updatePreviewVideo = (
+  agentId: string,
+  videoId: string,
+  updates: Partial<
+    Pick<
+      PreviewVideoItem,
+      'tags' | 'sortOrder' | 'scaleLevel' | 'thumbnailUrl' | 'duration' | 'width' | 'height' | 'fileSize' | 'format' | 'isVertical'
+    >
+  >
+) => http.put<{ video: PreviewVideoItem }>(`/preview/videos/${agentId}/${videoId}`, updates);
+
 // User Interface
 export interface User {
   _id: string; // 内部用户ID

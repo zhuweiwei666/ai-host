@@ -5,7 +5,10 @@ import {
   createAgent,
   generateAvatarImage,
   getAgent,
+  getPreviewVideos,
+  migratePreviewVideos,
   updateAgent,
+  updatePreviewVideo,
   uploadImage,
   uploadFile,
 } from '../api';
@@ -127,6 +130,86 @@ const EditAgent: React.FC = () => {
     status: 'online',
   });
 
+  // ==================== LiveSkin tagging (previewVideos) ====================
+  const [previewVideos, setPreviewVideos] = useState<Array<{ id: string; url: string; tags?: string[] }>>([]);
+  const [previewVideosError, setPreviewVideosError] = useState<string>('');
+  const [previewVideosLoading, setPreviewVideosLoading] = useState(false);
+  const [previewVideosMigrating, setPreviewVideosMigrating] = useState(false);
+
+  const tagQuickOptions = useMemo(
+    () => [
+      'idle',
+      'loopable',
+      'talk',
+      'react_happy',
+      'react_shy',
+      'react_flirty',
+      'react_sad',
+      'react_angry',
+      'react_surprised',
+      'closeup',
+      'halfbody',
+      'fullbody',
+    ],
+    []
+  );
+
+  const previewMetaByUrl = useMemo(() => {
+    const m = new Map<string, { id: string; tags?: string[] }>();
+    previewVideos.forEach((v) => {
+      if (v.url) m.set(v.url, { id: v.id, tags: v.tags });
+    });
+    return m;
+  }, [previewVideos]);
+
+  const getVideoMeta = useMemo(() => {
+    return (videoUrl: string) => previewMetaByUrl.get(videoUrl) || null;
+  }, [previewMetaByUrl]);
+
+  const hasLegacyPreviewVideos = useMemo(() => {
+    return previewVideos.some((v) => v.id?.startsWith('legacy_'));
+  }, [previewVideos]);
+
+  const loadPreviewVideos = async () => {
+    if (!id) return;
+    setPreviewVideosError('');
+    setPreviewVideosLoading(true);
+    try {
+      const resp = await getPreviewVideos(id);
+      const videos = (resp.data?.videos || []).map((v) => ({ id: v.id, url: v.url, tags: v.tags || [] }));
+      setPreviewVideos(videos);
+    } catch (e: any) {
+      setPreviewVideosError(e?.response?.data?.message || e?.message || 'Failed to load preview videos');
+      setPreviewVideos([]);
+    } finally {
+      setPreviewVideosLoading(false);
+    }
+  };
+
+  const handleMigratePreviewVideos = async () => {
+    if (!id) return;
+    setPreviewVideosError('');
+    setPreviewVideosMigrating(true);
+    try {
+      await migratePreviewVideos(id);
+      await loadPreviewVideos();
+    } catch (e: any) {
+      setPreviewVideosError(e?.response?.data?.message || e?.message || 'Failed to migrate preview videos');
+    } finally {
+      setPreviewVideosMigrating(false);
+    }
+  };
+
+  const handleSetVideoTags = async (videoId: string, tags: string[]) => {
+    if (!id) return;
+    if (videoId.startsWith('legacy_')) {
+      setPreviewVideosError('当前视频仍是 legacy（来自 coverVideoUrls），请先点击“迁移到 previewVideos”后再打标签。');
+      return;
+    }
+    await updatePreviewVideo(id, videoId, { tags });
+    setPreviewVideos((prev) => prev.map((v) => (v.id === videoId ? { ...v, tags } : v)));
+  };
+
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false); // 防止重复提交
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -174,6 +257,13 @@ const EditAgent: React.FC = () => {
       }).catch(console.error);
     }
   }, [isEdit, id, dataLoaded]);
+
+  // Load preview videos for LiveSkin tagging
+  useEffect(() => {
+    if (!isEdit || !id) return;
+    loadPreviewVideos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, id]);
 
   // Auto-populate core prompt if empty and a recommendation exists
   const recommendedCorePrompt = useMemo(() => CORE_PROMPTS[formData.modelName], [formData.modelName]);
@@ -807,6 +897,45 @@ const EditAgent: React.FC = () => {
                   <h3 className="text-sm font-bold text-gray-900">主播相册</h3>
                   <p className="text-xs text-gray-500">视频和首帧图已绑定，拖动可调整顺序</p>
 
+                  {/* LiveSkin 标签（视频动作库） */}
+                  {isEdit && (
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-indigo-900">LiveSkin 标签（iOS 状态机选片）</div>
+                          <div className="text-xs text-indigo-800">
+                            在下方视频卡片里直接点标签即可保存。若提示 legacy，请先迁移再标注。
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={loadPreviewVideos}
+                            className="text-xs px-3 py-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                            disabled={previewVideosLoading}
+                          >
+                            {previewVideosLoading ? '刷新中…' : '刷新'}
+                          </button>
+                          {hasLegacyPreviewVideos && (
+                            <button
+                              type="button"
+                              onClick={handleMigratePreviewVideos}
+                              className="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+                              disabled={previewVideosMigrating}
+                              title="把旧 coverVideoUrls 迁移为 previewVideos（才能保存 tags）"
+                            >
+                              {previewVideosMigrating ? '迁移中…' : '迁移到 previewVideos'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {previewVideosError ? <div className="mt-2 text-xs text-red-700">{previewVideosError}</div> : null}
+                      <div className="mt-2 text-xs text-indigo-900">
+                        当前预览视频：{previewVideos.length} 个{hasLegacyPreviewVideos ? '（含 legacy）' : ''}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 统计信息 */}
                   <div className="flex gap-4 text-xs text-gray-600 mb-2">
                     <span>图片: {formData.avatarUrls?.length || 0} 张</span>
@@ -837,6 +966,9 @@ const EditAgent: React.FC = () => {
                       }));
                     }}
                     onPreview={setPreviewImage}
+                    getVideoMeta={getVideoMeta}
+                    onSetVideoTags={handleSetVideoTags}
+                    tagQuickOptions={tagQuickOptions}
                   />
 
                   {/* 私有图片单独显示 */}

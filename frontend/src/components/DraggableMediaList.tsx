@@ -6,6 +6,8 @@ interface MediaPair {
   videoUrl: string;
 }
 
+type VideoMeta = { id?: string; tags?: string[] } | null | undefined;
+
 interface MediaItemProps {
   pair: MediaPair;
   index: number;
@@ -14,6 +16,9 @@ interface MediaItemProps {
   onMoveDown: () => void;
   onDelete: () => void;
   onPreview: (url: string) => void;
+  getVideoMeta?: (videoUrl: string) => VideoMeta;
+  onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
+  tagQuickOptions?: string[];
 }
 
 const MediaItem: React.FC<MediaItemProps> = ({ 
@@ -23,10 +28,53 @@ const MediaItem: React.FC<MediaItemProps> = ({
   onMoveUp, 
   onMoveDown, 
   onDelete, 
-  onPreview 
+  onPreview,
+  getVideoMeta,
+  onSetVideoTags,
+  tagQuickOptions = [],
 }) => {
   const isFirst = index === 0;
   const isLast = index === total - 1;
+  const meta = pair.videoUrl && getVideoMeta ? getVideoMeta(pair.videoUrl) : null;
+  const videoId = meta?.id;
+  const [tagDraft, setTagDraft] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [tags, setTags] = React.useState<string[]>(Array.isArray(meta?.tags) ? meta!.tags! : []);
+
+  React.useEffect(() => {
+    setTags(Array.isArray(meta?.tags) ? meta!.tags! : []);
+  }, [meta?.tags?.join(',')]);
+
+  const toggleTag = async (t: string) => {
+    if (!videoId || !onSetVideoTags) return;
+    const next = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t];
+    setTags(next);
+    try {
+      setSaving(true);
+      await onSetVideoTags(videoId, next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTag = async () => {
+    if (!videoId || !onSetVideoTags) return;
+    const t = tagDraft.trim();
+    if (!t) return;
+    if (tags.includes(t)) {
+      setTagDraft('');
+      return;
+    }
+    const next = [...tags, t];
+    setTags(next);
+    setTagDraft('');
+    try {
+      setSaving(true);
+      await onSetVideoTags(videoId, next);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="relative flex flex-col gap-2 p-2 rounded-lg border-2 border-gray-200 bg-white">
@@ -78,6 +126,79 @@ const MediaItem: React.FC<MediaItemProps> = ({
         </div>
       </div>
 
+      {/* 视频标签（LiveSkin） */}
+      {pair.videoUrl ? (
+        <div className="w-20">
+          {videoId ? (
+            <div className="space-y-1">
+              <div className="flex flex-wrap gap-1">
+                {tagQuickOptions.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => toggleTag(t)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                      tags.includes(t)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-400'
+                    }`}
+                    title="点击切换标签"
+                  >
+                    {t.replace('react_', 'r_')}
+                  </button>
+                ))}
+              </div>
+
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {tags.map((t) => (
+                    <span key={t} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-700">
+                      {t}
+                      {onSetVideoTags ? (
+                        <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => toggleTag(t)} title="移除">
+                          ×
+                        </button>
+                      ) : null}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {onSetVideoTags ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addTag();
+                      }
+                    }}
+                    placeholder="tag"
+                    className="w-12 px-1 py-0.5 text-[10px] border border-gray-300 rounded"
+                  />
+                  <button
+                    type="button"
+                    onClick={addTag}
+                    className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 hover:bg-gray-300"
+                    disabled={saving}
+                    title="添加"
+                  >
+                    +
+                  </button>
+                  {saving ? <span className="text-[10px] text-gray-400">…</span> : null}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
+              需迁移后打标签
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {/* 上下移动按钮 */}
       <div className="flex justify-center gap-1 mt-1">
         <button
@@ -117,6 +238,9 @@ interface DraggableMediaListProps {
   onReorder: (newImageUrls: string[], newVideoUrls: string[]) => void;
   onDelete: (index: number) => void;
   onPreview: (url: string) => void;
+  getVideoMeta?: (videoUrl: string) => VideoMeta;
+  onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
+  tagQuickOptions?: string[];
 }
 
 const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
@@ -125,6 +249,9 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   onReorder,
   onDelete,
   onPreview,
+  getVideoMeta,
+  onSetVideoTags,
+  tagQuickOptions,
 }) => {
   // 创建配对数据（图片和视频一一对应）
   const pairs: MediaPair[] = [];
@@ -181,6 +308,9 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
             onMoveDown={() => handleSwap(index, index + 1)}
             onDelete={() => onDelete(index)}
             onPreview={onPreview}
+            getVideoMeta={getVideoMeta}
+            onSetVideoTags={onSetVideoTags}
+            tagQuickOptions={tagQuickOptions}
           />
         ))}
       </div>
