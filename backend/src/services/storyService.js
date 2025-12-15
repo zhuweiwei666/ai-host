@@ -11,6 +11,7 @@ const StorySession = require('../models/StorySession');
 const StoryImageCache = require('../models/StoryImageCache');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
+const grokImageProvider = require('../providers/grokImageProvider');
 const imageGenerationService = require('./imageGenerationService');
 
 /**
@@ -168,7 +169,7 @@ function parseAIResponse(response) {
 }
 
 /**
- * 生成图片 - 使用 img2img 保持人物一致性
+ * 生成图片 - Grok Aurora 优先，Fal.ai img2img 降级
  * 优先复用缓存，其次生成新图
  */
 async function generateImageWithConsistency(imagePrompt, agent, progress) {
@@ -195,20 +196,12 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
     }
   }
 
-  // 2. 获取参考图（主播头像）用于 img2img
-  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
-  
-  if (!referenceImage) {
-    console.warn('[StoryService] 无参考图，无法生成图片');
-    return null;
-  }
-
-  // 3. 构建高质量 prompt
+  // 2. 构建高质量 prompt（包含角色外貌描述）
   const config = agent.storyConfig || {};
   const appearance = config.appearance || agent.description || '';
   const style = agent.style === 'anime' 
     ? 'anime style, illustration, masterpiece, best quality, ' 
-    : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, ';
+    : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, beautiful woman, ';
   
   let fullPrompt = `${style}${appearance}, ${imagePrompt}`;
   
@@ -216,37 +209,60 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
     fullPrompt = `nsfw, sensual, ${fullPrompt}`;
   }
 
-  console.log(`[StoryService] 生成图片 (img2img): ${fullPrompt.substring(0, 60)}...`);
+  console.log(`[StoryService] 生成图片: ${fullPrompt.substring(0, 80)}...`);
 
-  // 4. 使用 Fal.ai img2img（保持人物一致性）
+  let imageUrl = null;
+
+  // 3. 优先使用 Grok Aurora 模型
   try {
-    const results = await imageGenerationService.generate(fullPrompt, {
-      referenceImage,
-      count: 1,
-      width: 768,
-      height: 1024,
-      strength: 0.55, // 保留更多原图特征
-      style: agent.style || 'realistic'
-    });
-
-    if (results && results.length > 0 && results[0].url) {
-      const imageUrl = results[0].url;
-      console.log('[StoryService] 图片生成成功');
-      
-      // 保存到缓存
-      try {
-        await StoryImageCache.saveToCache(agent._id, imageUrl, fullPrompt, tags, mood, rating);
-      } catch (saveErr) {
-        console.warn('[StoryService] 缓存保存失败:', saveErr.message);
-      }
-      
-      return imageUrl;
+    console.log('[StoryService] 尝试 Grok Aurora 生成图片...');
+    const grokResults = await grokImageProvider.generate(fullPrompt, { n: 1 });
+    if (grokResults && grokResults.length > 0 && grokResults[0].url) {
+      imageUrl = grokResults[0].url;
+      console.log('[StoryService] Grok Aurora 生成成功');
     }
-  } catch (genError) {
-    console.error('[StoryService] 图片生成失败:', genError.message);
+  } catch (grokError) {
+    console.warn('[StoryService] Grok Aurora 失败，降级到 Fal.ai:', grokError.message);
   }
 
-  return null;
+  // 4. Grok 失败则降级到 Fal.ai img2img
+  if (!imageUrl) {
+    const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+    
+    if (referenceImage) {
+      try {
+        console.log('[StoryService] 使用 Fal.ai img2img...');
+        const results = await imageGenerationService.generate(fullPrompt, {
+          referenceImage,
+          count: 1,
+          width: 768,
+          height: 1024,
+          strength: 0.55,
+          style: agent.style || 'realistic'
+        });
+
+        if (results && results.length > 0 && results[0].url) {
+          imageUrl = results[0].url;
+          console.log('[StoryService] Fal.ai 生成成功');
+        }
+      } catch (falError) {
+        console.error('[StoryService] Fal.ai 也失败:', falError.message);
+      }
+    } else {
+      console.warn('[StoryService] 无参考图，Fal.ai img2img 不可用');
+    }
+  }
+
+  // 5. 保存到缓存
+  if (imageUrl) {
+    try {
+      await StoryImageCache.saveToCache(agent._id, imageUrl, fullPrompt, tags, mood, rating);
+    } catch (saveErr) {
+      console.warn('[StoryService] 缓存保存失败:', saveErr.message);
+    }
+  }
+
+  return imageUrl;
 }
 
 /**
