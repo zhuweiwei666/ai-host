@@ -210,7 +210,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col gap-2 p-2 rounded-lg border-2 border-gray-200 bg-white">
+    <div className="relative flex gap-3 p-3 rounded-lg border-2 border-gray-200 bg-white min-w-[320px]">
       {/* 序号标签 */}
       <div className="absolute -top-2 -left-2 bg-indigo-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center z-10">
         {index + 1}
@@ -226,38 +226,73 @@ const MediaItem: React.FC<MediaItemProps> = ({
         ×
       </button>
 
-      {/* 图片预览 */}
-      <div className="relative">
-        <img
-          src={normalizeImageUrl(pair.imageUrl)}
-          alt={`图片 ${index + 1}`}
-          className="w-20 h-20 rounded-md object-cover border border-gray-300 cursor-pointer hover:opacity-80"
-          onClick={() => onPreview(normalizeImageUrl(pair.imageUrl))}
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80?text=No+Image';
-          }}
-        />
-        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs text-center py-0.5 rounded-b-md">
-          图片
+      {/* 左侧：媒体预览 */}
+      <div className="flex flex-col gap-2 flex-shrink-0">
+        {/* 图片预览 */}
+        <div className="relative">
+          <img
+            src={normalizeImageUrl(pair.imageUrl)}
+            alt={`图片 ${index + 1}`}
+            className="w-16 h-16 rounded-md object-cover border border-gray-300 cursor-pointer hover:opacity-80"
+            onClick={() => onPreview(normalizeImageUrl(pair.imageUrl))}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64?text=No';
+            }}
+          />
+          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-[9px] text-center py-0.5 rounded-b-md">
+            图片
+          </div>
+        </div>
+
+        {/* 视频预览 */}
+        <div className="relative">
+          <video
+            src={normalizeImageUrl(pair.videoUrl, '')}
+            className="w-16 h-16 rounded-md object-cover border border-blue-300"
+            muted
+            onMouseEnter={(e) => e.currentTarget.play()}
+            onMouseLeave={(e) => {
+              e.currentTarget.pause();
+              e.currentTarget.currentTime = 0;
+            }}
+          />
+          <div className="absolute bottom-0 left-0 right-0 bg-blue-600 bg-opacity-75 text-white text-[9px] text-center py-0.5 rounded-b-md">
+            视频
+          </div>
+        </div>
+
+        {/* 上下移动按钮 */}
+        <div className="flex justify-center gap-1">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={isFirst}
+            className={`w-7 h-5 flex items-center justify-center rounded text-[10px] font-bold transition-colors ${
+              isFirst 
+                ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+                : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
+            }`}
+            title="上移"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={isLast}
+            className={`w-7 h-5 flex items-center justify-center rounded text-[10px] font-bold transition-colors ${
+              isLast 
+                ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+                : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
+            }`}
+            title="下移"
+          >
+            ↓
+          </button>
         </div>
       </div>
 
-      {/* 视频预览 */}
-      <div className="relative">
-        <video
-          src={normalizeImageUrl(pair.videoUrl, '')}
-          className="w-20 h-20 rounded-md object-cover border border-blue-300"
-          muted
-          onMouseEnter={(e) => e.currentTarget.play()}
-          onMouseLeave={(e) => {
-            e.currentTarget.pause();
-            e.currentTarget.currentTime = 0;
-          }}
-        />
-        <div className="absolute bottom-0 left-0 right-0 bg-blue-600 bg-opacity-75 text-white text-xs text-center py-0.5 rounded-b-md">
-          视频
-        </div>
-      </div>
+      {/* 右侧：标签区域 */}
 
       {/* 视频标签（LiveSkin FSM）*/}
       {pair.videoUrl && taggingEnabled ? (
@@ -394,36 +429,6 @@ const MediaItem: React.FC<MediaItemProps> = ({
           )}
         </div>
       ) : null}
-
-      {/* 上下移动按钮 */}
-      <div className="flex justify-center gap-1 mt-1">
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={isFirst}
-          className={`w-8 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors ${
-            isFirst 
-              ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
-              : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
-          }`}
-          title="上移"
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={isLast}
-          className={`w-8 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors ${
-            isLast 
-              ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
-              : 'bg-gray-200 text-gray-700 hover:bg-indigo-500 hover:text-white'
-          }`}
-          title="下移"
-        >
-          ↓
-        </button>
-      </div>
     </div>
   );
 };
