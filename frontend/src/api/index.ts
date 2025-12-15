@@ -96,7 +96,15 @@ export interface PreviewVideosResponse {
 }
 
 export const getPreviewVideos = (agentId: string, params?: { maxScale?: number; tag?: string; limit?: number }) =>
-  http.get<PreviewVideosResponse>(`/preview/videos/${agentId}`, { params });
+  http.get<PreviewVideosResponse>(`/preview/videos/${agentId}`, { 
+    params: {
+      ...params,
+      _t: Date.now(), // 添加时间戳避免缓存
+    },
+    headers: {
+      'Cache-Control': 'no-cache',
+    },
+  });
 
 export const migratePreviewVideos = (agentId: string) =>
   http.post<{ message?: string; migratedCount?: number; videos?: unknown }>(`/preview/videos/${agentId}/migrate`, {});
@@ -282,7 +290,14 @@ export const uploadIdleVideo = async (
 };
 
 export const getIdleVideoStatus = (agentId: string) =>
-  http.get<IdleVideoStatus>(`/idle-video/status/${agentId}`);
+  http.get<IdleVideoStatus>(`/idle-video/status/${agentId}`, {
+    params: {
+      _t: Date.now(), // 添加时间戳避免缓存
+    },
+    headers: {
+      'Cache-Control': 'no-cache',
+    },
+  });
 
 export const deleteIdleVideo = (agentId: string, videoId: string) =>
   http.delete<{ message: string; remainingIdleVideos: number }>(`/idle-video/${agentId}/${videoId}`);
@@ -305,7 +320,14 @@ export interface User {
 }
 
 export const getAgents = (params?: { status?: string; style?: string }) => http.get<Agent[]>('/agents', { params });
-export const getAgent = (id: string) => http.get<Agent>(`/agents/${id}`);
+export const getAgent = (id: string) => http.get<Agent>(`/agents/${id}`, {
+  params: {
+    _t: Date.now(), // 添加时间戳避免缓存
+  },
+  headers: {
+    'Cache-Control': 'no-cache',
+  },
+});
 export const createAgent = (data: Agent & { updateGlobalCore?: boolean }) => http.post<Agent>('/agents', data);
 export const updateAgent = (id: string, data: Agent & { updateGlobalCore?: boolean }) => http.put<Agent>(`/agents/${id}`, data);
 export const deleteAgent = (id: string) => http.delete(`/agents/${id}`);

@@ -174,6 +174,13 @@ router.get('/status/:agentId', requireAuth, async (req, res) => {
     const idleVideos = agent.previewVideos.filter(v => v.assetType === 'idle');
     const loopSafeIdle = idleVideos.find(v => v.loopSafe);
     
+    // 设置响应头，防止缓存
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    
     sendSuccess(res, HTTP_STATUS.OK, {
       agentId,
       liveSkinStatus: agent.liveSkinStatus || 'pending',

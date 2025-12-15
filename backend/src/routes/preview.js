@@ -113,6 +113,13 @@ router.get('/videos/:agentId', async (req, res) => {
       videos = videos.slice(0, parseInt(limit));
     }
     
+    // 设置响应头，防止缓存
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    
     sendSuccess(res, HTTP_STATUS.OK, {
       agentId,
       agentName: agent.name,

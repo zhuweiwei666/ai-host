@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Agent,
@@ -242,6 +242,37 @@ const EditAgent: React.FC = () => {
       // 刷新状态
       await loadIdleVideoStatus();
       await loadPreviewVideos();
+      
+      // 重新加载Agent数据以更新formData（包括coverVideoUrls等）
+      if (id) {
+        try {
+          const res = await getAgent(id);
+          const responseData = res.data as any;
+          const agentData = responseData?.data || responseData;
+          
+          // 更新formData中的视频相关字段
+          // 注意：IDLE视频保存在previewVideos中，但"已上传视频"显示的是coverVideoUrls
+          // 所以我们需要从previewVideos中提取idle视频的URL，更新到coverVideoUrls
+          const idleVideos = (agentData.previewVideos || [])
+            .filter((v: any) => v.assetType === 'idle')
+            .map((v: any) => v.url || v.loopSafeUrl)
+            .filter(Boolean);
+          
+          setFormData(prev => ({
+            ...prev,
+            // 合并原有的coverVideoUrls和新的idle视频
+            coverVideoUrls: [
+              ...idleVideos,
+              ...(agentData.coverVideoUrls?.length > 0 
+                ? agentData.coverVideoUrls 
+                : (agentData.coverVideoUrl ? [agentData.coverVideoUrl] : [])),
+            ].filter((url, index, self) => self.indexOf(url) === index), // 去重
+            previewVideos: agentData.previewVideos || [],
+          }));
+        } catch (err) {
+          console.warn('[EditAgent] Failed to reload agent data after upload:', err);
+        }
+      }
     } catch (err: unknown) {
       console.error('[EditAgent] IDLE video upload failed:', err);
       const errorMessage = err instanceof Error ? err.message : '上传失败';
@@ -260,7 +291,7 @@ const EditAgent: React.FC = () => {
     if (isEdit && id) {
       loadIdleVideoStatus();
     }
-  }, [isEdit, id]);
+  }, [isEdit, id, dataLoaded]); // 添加 dataLoaded 依赖，确保数据加载后也刷新
 
   // 20个情绪/动作标签 - 分类组织
   const tagQuickOptions = useMemo(
@@ -390,9 +421,16 @@ const EditAgent: React.FC = () => {
 
   // Track if we have loaded the agent data to prevent re-fetching on re-renders
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [lastLoadedId, setLastLoadedId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (isEdit && id && !dataLoaded) {
+    // 如果id变化，重置dataLoaded状态，强制重新加载
+    if (id !== lastLoadedId) {
+      setDataLoaded(false);
+      setLastLoadedId(id);
+    }
+    
+    if (isEdit && id && (!dataLoaded || id !== lastLoadedId)) {
       getAgent(id).then(res => {
         // API 返回格式: { success: true, data: {...} }
         // axios 响应结构: response.data = { success: true, data: {...} }
@@ -423,7 +461,7 @@ const EditAgent: React.FC = () => {
         setDataLoaded(true);
       }).catch(console.error);
     }
-  }, [isEdit, id, dataLoaded]);
+  }, [isEdit, id, dataLoaded, lastLoadedId]);
 
   // Load preview videos for LiveSkin tagging
   useEffect(() => {

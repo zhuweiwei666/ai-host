@@ -291,6 +291,13 @@ router.get('/:id', optionalAuth, async (req, res) => {
       coverVideoUrlsLength: agent.coverVideoUrls?.length,
     });
     
+    // 设置响应头，防止缓存
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    
     sendSuccess(res, HTTP_STATUS.OK, agent);
   } catch (err) {
     console.error('[GET /agents/:id] Error:', err);
