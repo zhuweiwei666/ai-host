@@ -25,6 +25,8 @@ const Layout: React.FC = () => {
   const isSettingsActive = location.pathname === '/settings';
   const isOperationsActive = location.pathname === '/operations';
   const isAvatarLabActive = location.pathname === '/avatar-lab';
+  const isMyAgentsActive = location.pathname.startsWith('/my-agents');
+  const isReviewAgentsActive = location.pathname === '/review-agents';
 
   // 登出处理
   const handleLogout = () => {
@@ -234,6 +236,36 @@ const Layout: React.FC = () => {
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4a4 4 0 100 8 4 4 0 000-8zM6 20a6 6 0 0112 0v0H6v0z" />
              </svg>
              Spatial Avatar Lab
+           </button>
+
+           {/* My Agents Menu (用户创建角色) */}
+           <button
+             onClick={() => navigate('/my-agents')}
+             className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                isMyAgentsActive
+                  ? 'text-primary-700 bg-primary-50'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+             </svg>
+             我的角色
+           </button>
+
+           {/* Review Agents Menu (管理员审核) */}
+           <button
+             onClick={() => navigate('/review-agents')}
+             className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                isReviewAgentsActive
+                  ? 'text-primary-700 bg-primary-50'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+             </svg>
+             角色审核
            </button>
 
            {/* Settings Menu */}

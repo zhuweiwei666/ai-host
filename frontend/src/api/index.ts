@@ -720,3 +720,142 @@ export const getAvailableTasks = () =>
 
 export const runTask = (taskName: string) =>
   http.post<{ task: string; result: unknown }>('/analytics/tasks/run', { taskName });
+
+// ==================== 用户创建角色 API ====================
+
+export interface UserAgent {
+  _id: string;
+  name: string;
+  gender: 'male' | 'female' | 'other';
+  style?: 'realistic' | 'anime';
+  description?: string;
+  avatarUrls?: string[];
+  systemPrompt?: string;
+  voiceId?: string;
+  defaultGreeting?: string;
+  visibility: 'private' | 'pending' | 'public' | 'rejected';
+  creatorType: 'official' | 'user';
+  creatorId?: string;
+  status?: 'online' | 'offline';
+  stats?: {
+    totalChats: number;
+    uniqueUsers: number;
+    avgRating: number;
+    totalRatings: number;
+  };
+  reviewStatus?: {
+    submittedAt?: string;
+    reviewedAt?: string;
+    reviewerId?: string;
+    rejectReason?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserAgentData {
+  name: string;
+  gender?: 'male' | 'female' | 'other';
+  style?: 'realistic' | 'anime';
+  description?: string;
+  avatarUrls?: string[];
+  systemPrompt?: string;
+  voiceId?: string;
+  defaultGreeting?: string;
+}
+
+// 创建我的角色
+export const createUserAgent = (data: CreateUserAgentData) =>
+  http.post<UserAgent>('/user-agents/create', data);
+
+// 获取我的角色列表
+export const getMyAgents = () =>
+  http.get<UserAgent[]>('/user-agents/my-agents');
+
+// 获取我的角色详情
+export const getUserAgent = (id: string) =>
+  http.get<UserAgent>(`/user-agents/${id}`);
+
+// 编辑我的角色
+export const updateUserAgent = (id: string, data: Partial<CreateUserAgentData>) =>
+  http.put<UserAgent>(`/user-agents/${id}`, data);
+
+// 删除我的角色
+export const deleteUserAgent = (id: string) =>
+  http.delete(`/user-agents/${id}`);
+
+// 提交审核
+export const submitAgentForReview = (id: string) =>
+  http.post<UserAgent>(`/user-agents/${id}/submit-review`);
+
+// 撤回审核
+export const withdrawAgentReview = (id: string) =>
+  http.post<UserAgent>(`/user-agents/${id}/withdraw-review`);
+
+// ==================== 管理员审核 API ====================
+
+export interface ReviewAgent extends UserAgent {
+  creatorId?: {
+    _id: string;
+    username: string;
+    email?: string;
+    avatar?: string;
+  };
+}
+
+export interface PendingReviewResponse {
+  agents: ReviewAgent[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export interface AllReviewAgentsResponse {
+  agents: ReviewAgent[];
+  stats: {
+    private: number;
+    pending: number;
+    public: number;
+    rejected: number;
+  };
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+// 获取待审核列表
+export const getPendingReviewAgents = (params?: { page?: number; limit?: number }) =>
+  http.get<PendingReviewResponse>('/admin/review/pending', { params });
+
+// 获取所有用户创建的角色
+export const getAllUserAgents = (params?: { 
+  page?: number; 
+  limit?: number; 
+  visibility?: string;
+  creatorId?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}) =>
+  http.get<AllReviewAgentsResponse>('/admin/review/all', { params });
+
+// 获取审核详情
+export const getReviewAgentDetail = (id: string) =>
+  http.get<ReviewAgent>(`/admin/review/${id}`);
+
+// 审核通过
+export const approveAgent = (id: string) =>
+  http.post<ReviewAgent>(`/admin/review/${id}/approve`);
+
+// 审核拒绝
+export const rejectAgent = (id: string, reason: string) =>
+  http.post<ReviewAgent>(`/admin/review/${id}/reject`, { reason });
+
+// 设置可见性（管理员强制操作）
+export const setAgentVisibility = (id: string, visibility: 'private' | 'public' | 'rejected', reason?: string) =>
+  http.post<ReviewAgent>(`/admin/review/${id}/set-visibility`, { visibility, reason });

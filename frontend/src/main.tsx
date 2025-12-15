@@ -14,6 +14,9 @@ import AdminLogin from './pages/AdminLogin';
 import Settings from './pages/Settings';
 import OperationsDashboard from './pages/OperationsDashboard';
 import SpatialAvatarLab from './pages/SpatialAvatarLab';
+import MyAgents from './pages/MyAgents';
+import CreateUserAgent from './pages/CreateUserAgent';
+import ReviewAgents from './pages/ReviewAgents';
 import './index.css';
 
 // Suppress browser extension errors in console
@@ -63,6 +66,12 @@ const App = (
           <Route path="/settings" element={<Settings />} />
           <Route path="/operations" element={<OperationsDashboard />} />
           <Route path="/avatar-lab" element={<SpatialAvatarLab />} />
+          {/* 用户创建角色 */}
+          <Route path="/my-agents" element={<MyAgents />} />
+          <Route path="/my-agents/create" element={<CreateUserAgent />} />
+          <Route path="/my-agents/edit/:id" element={<CreateUserAgent />} />
+          {/* 管理员审核 */}
+          <Route path="/review-agents" element={<ReviewAgents />} />
         </Route>
         
         {/* 其他受保护页面 */}
