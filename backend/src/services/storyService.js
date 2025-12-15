@@ -133,50 +133,45 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') 
 }
 
 /**
- * 提取状态更新（使用 AI）
+ * 提取状态更新（规则提取，无需 AI）
+ * 
+ * 性能优化：去掉第二次 AI 调用，改用简单规则
  */
-async function extractStateUpdate(content) {
-  try {
-    const model = 'grok-3-fast';
-    const provider = ProviderFactory.getProvider(model);
-    
-    const messages = [
-      {
-        role: 'system',
-        content: '你是一个JSON提取器。根据给定的故事段落，提取状态变化。只输出JSON，不要其他内容。'
-      },
-      {
-        role: 'user',
-        content: `根据以下段落，提取状态变化，只输出 JSON：
-
-段落内容：
-${content}
-
-输出格式（只输出变化的字段，没有变化的设为null）：
-{
-  "scene": "新场景或null",
-  "mood": "新氛围或null", 
-  "clothes": "新穿着描述或null",
-  "newEvent": "新发生的关键事件或null",
-  "lastAction": "本段最后一句话（必填）"
-}`
-      }
-    ];
-    
-    const result = await provider.chat(model, messages, 0.1, { maxTokens: 200 });
-    
-    const text = result.content;
-    // 尝试解析 JSON
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+function extractStateUpdate(content) {
+  // 提取最后一句话作为 lastAction
+  const sentences = content.split(/[。！？…]+/).filter(s => s.trim());
+  const lastAction = sentences.length > 0 ? sentences[sentences.length - 1].trim().slice(0, 100) : content.slice(-50);
+  
+  // 简单规则提取场景变化
+  let scene = null;
+  const scenePatterns = [
+    /来到了?(.{2,10})/,
+    /走进了?(.{2,10})/,
+    /进入了?(.{2,10})/,
+    /在(.{2,8})(里|中|上)/,
+  ];
+  for (const pattern of scenePatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      scene = match[1];
+      break;
     }
-    return { lastAction: content.slice(-50) };
-  } catch (error) {
-    console.error('[StoryService] State extraction failed:', error.message);
-    // 降级：只提取最后一句话
-    return { lastAction: content.slice(-50) };
   }
+  
+  // 简单规则提取氛围
+  let mood = null;
+  if (content.includes('暧昧') || content.includes('心跳')) mood = '暧昧';
+  else if (content.includes('紧张') || content.includes('害怕')) mood = '紧张';
+  else if (content.includes('激动') || content.includes('兴奋')) mood = '激动';
+  else if (content.includes('温馨') || content.includes('温暖')) mood = '温馨';
+  
+  return {
+    scene,
+    mood,
+    clothes: null,
+    newEvent: null,
+    lastAction,
+  };
 }
 
 /**
@@ -268,10 +263,10 @@ async function continueStory(sessionId) {
   const userPrompt = buildContinuePrompt(session);
   
   // 调用 AI
-  const content = await generateContent(systemPrompt, userPrompt, agent.modelName);
-  
-  // 提取状态更新
-  const stateUpdate = await extractStateUpdate(content);
+  const content = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
+
+  // 提取状态更新（同步规则提取，无需 AI）
+  const stateUpdate = extractStateUpdate(content);
   
   // 更新 Session
   session.addParagraph(content, 'ai');
@@ -316,10 +311,10 @@ async function inputStory(sessionId, userInput) {
   const userPrompt = buildUserInputPrompt(session, userInput);
   
   // 调用 AI
-  const content = await generateContent(systemPrompt, userPrompt, agent.modelName);
-  
-  // 提取状态更新
-  const stateUpdate = await extractStateUpdate(content);
+  const content = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
+
+  // 提取状态更新（同步规则提取，无需 AI）
+  const stateUpdate = extractStateUpdate(content);
   
   // 更新 Session
   session.addParagraph(content, 'user_input', userInput);
