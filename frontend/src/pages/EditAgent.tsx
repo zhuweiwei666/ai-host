@@ -142,20 +142,36 @@ const EditAgent: React.FC = () => {
   const [previewVideosLoading, setPreviewVideosLoading] = useState(false);
   const [previewVideosMigrating, setPreviewVideosMigrating] = useState(false);
 
+  // 20个情绪/动作标签 - 分类组织
   const tagQuickOptions = useMemo(
     () => [
-      'idle',
-      'loopable',
-      'talk',
-      'react_happy',
-      'react_shy',
-      'react_flirty',
-      'react_sad',
-      'react_angry',
-      'react_surprised',
-      'closeup',
-      'halfbody',
-      'fullbody',
+      // === 基础状态 (4) ===
+      'idle',           // 待机/静态
+      'loopable',       // 可循环
+      'talk',           // 说话中
+      'listen',         // 倾听中
+      
+      // === 正向情绪 (6) ===
+      'happy',          // 开心
+      'excited',        // 兴奋
+      'flirty',         // 撩人/调情
+      'shy',            // 害羞
+      'love',           // 爱意/心动
+      'proud',          // 骄傲/得意
+      
+      // === 负向/中性情绪 (6) ===
+      'sad',            // 难过
+      'angry',          // 生气
+      'surprised',      // 惊讶
+      'scared',         // 害怕
+      'confused',       // 困惑
+      'bored',          // 无聊
+      
+      // === 镜头/构图 (4) ===
+      'closeup',        // 特写
+      'halfbody',       // 半身
+      'fullbody',       // 全身
+      'source',         // 原始素材
     ],
     []
   );

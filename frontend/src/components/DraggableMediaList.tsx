@@ -8,6 +8,42 @@ interface MediaPair {
 
 type VideoMeta = { id?: string; tags?: string[] } | null | undefined;
 
+// 20个情绪标签 - 中文映射
+const TAG_LABELS: Record<string, string> = {
+  // 基础状态 (4)
+  idle: '待机',
+  loopable: '循环',
+  talk: '说话',
+  listen: '倾听',
+  // 正向情绪 (6)
+  happy: '开心',
+  excited: '兴奋',
+  flirty: '撩人',
+  shy: '害羞',
+  love: '心动',
+  proud: '得意',
+  // 负向/中性情绪 (6)
+  sad: '难过',
+  angry: '生气',
+  surprised: '惊讶',
+  scared: '害怕',
+  confused: '困惑',
+  bored: '无聊',
+  // 镜头/构图 (4)
+  closeup: '特写',
+  halfbody: '半身',
+  fullbody: '全身',
+  source: '原始',
+};
+
+// 标签分类
+const TAG_CATEGORIES: { name: string; color: string; tags: string[] }[] = [
+  { name: '状态', color: 'blue', tags: ['idle', 'loopable', 'talk', 'listen'] },
+  { name: '正向', color: 'green', tags: ['happy', 'excited', 'flirty', 'shy', 'love', 'proud'] },
+  { name: '其他', color: 'orange', tags: ['sad', 'angry', 'surprised', 'scared', 'confused', 'bored'] },
+  { name: '镜头', color: 'purple', tags: ['closeup', 'halfbody', 'fullbody', 'source'] },
+];
+
 interface MediaItemProps {
   pair: MediaPair;
   index: number;
@@ -31,7 +67,6 @@ const MediaItem: React.FC<MediaItemProps> = ({
   onPreview,
   getVideoMeta,
   onSetVideoTags,
-  tagQuickOptions = [],
 }) => {
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -87,6 +122,29 @@ const MediaItem: React.FC<MediaItemProps> = ({
     }
   };
 
+  // 获取标签按钮样式
+  const getTagStyle = (t: string, isSelected: boolean, catColor: string) => {
+    const colorMap: Record<string, { selected: string; normal: string }> = {
+      blue: {
+        selected: 'bg-blue-500 text-white border-blue-500',
+        normal: 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400 hover:bg-blue-100',
+      },
+      green: {
+        selected: 'bg-green-500 text-white border-green-500',
+        normal: 'bg-green-50 text-green-700 border-green-200 hover:border-green-400 hover:bg-green-100',
+      },
+      orange: {
+        selected: 'bg-orange-500 text-white border-orange-500',
+        normal: 'bg-orange-50 text-orange-700 border-orange-200 hover:border-orange-400 hover:bg-orange-100',
+      },
+      purple: {
+        selected: 'bg-purple-500 text-white border-purple-500',
+        normal: 'bg-purple-50 text-purple-700 border-purple-200 hover:border-purple-400 hover:bg-purple-100',
+      },
+    };
+    return colorMap[catColor]?.[isSelected ? 'selected' : 'normal'] || '';
+  };
+
   return (
     <div className="relative flex flex-col gap-2 p-2 rounded-lg border-2 border-gray-200 bg-white">
       {/* 序号标签 */}
@@ -137,43 +195,60 @@ const MediaItem: React.FC<MediaItemProps> = ({
         </div>
       </div>
 
-      {/* 视频标签（LiveSkin） */}
+      {/* 视频标签（LiveSkin）- 20个情绪标签 */}
       {pair.videoUrl && taggingEnabled ? (
-        <div className="w-20">
+        <div className="w-52 min-w-[13rem]">
           {videoId ? (
-            <div className="space-y-1">
-              <div className="flex flex-wrap gap-1">
-                {tagQuickOptions.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => toggleTag(t)}
-                    className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
-                      tags.includes(t)
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-400'
-                    }`}
-                    title="点击切换标签"
-                  >
-                    {t.replace('react_', 'r_')}
-                  </button>
-                ))}
-              </div>
-
+            <div className="space-y-2">
+              {/* 已选标签展示 */}
               {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {tags.map((t) => (
-                    <span key={t} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-700">
-                      {t}
-                      <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => toggleTag(t)} title="移除">
-                        ×
-                      </button>
-                    </span>
-                  ))}
+                <div className="pb-1.5 border-b border-gray-200">
+                  <div className="text-[10px] text-gray-500 mb-1">已选 ({tags.length}):</div>
+                  <div className="flex flex-wrap gap-1">
+                    {tags.map((t) => (
+                      <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-100 text-[10px] text-indigo-700 font-medium">
+                        {TAG_LABELS[t] || t}
+                        <button 
+                          type="button" 
+                          className="text-indigo-400 hover:text-red-600 ml-0.5" 
+                          onClick={() => toggleTag(t)} 
+                          title="移除"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <div className="flex items-center gap-1">
+              {/* 分类标签选择 - 20个情绪标签 */}
+              <div className="space-y-1.5">
+                {TAG_CATEGORIES.map((cat) => (
+                  <div key={cat.name}>
+                    <div className="text-[9px] text-gray-500 mb-0.5 font-medium">{cat.name}:</div>
+                    <div className="flex flex-wrap gap-0.5">
+                      {cat.tags.map((t) => {
+                        const isSelected = tags.includes(t);
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => toggleTag(t)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] border transition-all ${getTagStyle(t, isSelected, cat.color)}`}
+                            title={`${TAG_LABELS[t]} (${t})`}
+                          >
+                            {TAG_LABELS[t]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 自定义标签输入 */}
+              <div className="flex items-center gap-1 pt-1.5 border-t border-gray-200">
                 <input
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
@@ -183,24 +258,24 @@ const MediaItem: React.FC<MediaItemProps> = ({
                       addTag();
                     }
                   }}
-                  placeholder="tag"
-                  className="w-12 px-1 py-0.5 text-[10px] border border-gray-300 rounded"
+                  placeholder="自定义标签..."
+                  className="flex-1 px-1.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-indigo-400 focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={addTag}
-                  className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 hover:bg-gray-300"
+                  className="px-2 py-0.5 text-[10px] rounded bg-gray-200 hover:bg-indigo-500 hover:text-white transition-colors"
                   disabled={saving}
-                  title="添加"
+                  title="添加自定义标签"
                 >
                   +
                 </button>
-                {saving ? <span className="text-[10px] text-gray-400">…</span> : null}
+                {saving && <span className="text-[10px] text-indigo-500">保存中…</span>}
               </div>
             </div>
           ) : (
-            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
-              未入库/无 videoId：请先点击 Save 保存，然后点“刷新”（或先迁移到 previewVideos）
+            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1.5">
+              ⚠️ 未入库：请先 Save 保存后点"刷新"
             </div>
           )}
         </div>
@@ -323,7 +398,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
       </div>
 
       <p className="text-xs text-gray-500">
-        💡 提示：点击 ↑ 上移，点击 ↓ 下移，图片和视频会一起移动
+        💡 提示：点击 ↑ 上移，点击 ↓ 下移，图片和视频会一起移动 | 标签支持多选，点击即保存
       </p>
     </div>
   );
