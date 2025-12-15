@@ -57,7 +57,7 @@ export default function StoryPage() {
   
   // 正在加载图片的段落索引集合
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
-  const pollingRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  const pollingRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
   
   // 轮询图片状态
   const pollImage = useCallback(async (sid: string, index: number) => {
