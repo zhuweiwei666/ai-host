@@ -12,7 +12,6 @@ import {
   VideoAsset,
   QueuedEvent,
   EmotionId,
-  DEFAULT_FSM_CONFIG,
   getReactionAssets,
   pickRandomAsset,
 } from '../../types/liveskin';
