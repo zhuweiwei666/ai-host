@@ -211,7 +211,10 @@ const EditAgent: React.FC = () => {
       const { uploadIdleVideo } = await import('../api');
       const result = await uploadIdleVideo(id, file);
       
-      alert(`IDLE 视频上传成功！\n\n${result.data.tips.join('\n')}`);
+      // 安全处理 tips（可能不存在）
+      const tips = result.data?.tips || [];
+      const tipsText = tips.length > 0 ? `\n\n${tips.join('\n')}` : '';
+      alert(`IDLE 视频上传成功！${tipsText}`);
 
       // 刷新状态
       await loadIdleVideoStatus();

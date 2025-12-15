@@ -319,6 +319,11 @@ router.post('/register/:agentId', requireAuth, requireAdmin, async (req, res) =>
       message: 'IDLE video registered successfully',
       videoId: savedVideo?._id,
       url: url,
+      tips: [
+        '✅ 视频已上传，客户端将循环播放',
+        '💡 建议：确保视频首尾帧一致，以实现无缝循环',
+        '📐 推荐规格：1080x1920 / 3-5秒 / H.264',
+      ],
     });
   } catch (error) {
     console.error('[IdleVideo] Register error:', error);

@@ -130,7 +130,7 @@ router.get('/manifest/:agentId', async (req, res) => {
     sendSuccess(res, HTTP_STATUS.OK, manifest);
   } catch (error) {
     console.error('[LiveSkin] Error getting manifest:', error);
-    errors.serverError(res, 'Failed to get LiveSkin manifest');
+    errors.internalError(res, 'Failed to get LiveSkin manifest');
   }
 });
 
@@ -192,7 +192,7 @@ router.put('/video/:agentId/:videoId', requireAuth, requireAdmin, async (req, re
     });
   } catch (error) {
     console.error('[LiveSkin] Error updating video:', error);
-    errors.serverError(res, 'Failed to update video');
+    errors.internalError(res, 'Failed to update video');
   }
 });
 
@@ -332,7 +332,7 @@ router.get('/stats/:agentId', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('[LiveSkin] Error getting stats:', error);
-    errors.serverError(res, 'Failed to get stats');
+    errors.internalError(res, 'Failed to get stats');
   }
 });
 
@@ -417,7 +417,7 @@ router.post('/batch-update/:agentId', requireAuth, requireAdmin, async (req, res
     });
   } catch (error) {
     console.error('[LiveSkin] Error batch updating:', error);
-    errors.serverError(res, 'Failed to batch update');
+    errors.internalError(res, 'Failed to batch update');
   }
 });
 
