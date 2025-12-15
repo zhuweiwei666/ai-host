@@ -23,7 +23,7 @@ export default function StoryPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [paragraphs, setParagraphs] = useState<StoryParagraph[]>([]);
   const [progress, setProgress] = useState(0);
-  const [storyState, setStoryState] = useState<StoryState | null>(null);
+  const [, setStoryState] = useState<StoryState | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   
   // UI 状态
