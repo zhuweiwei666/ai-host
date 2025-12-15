@@ -147,6 +147,22 @@ const EditAgent: React.FC = () => {
   const [previewVideosError, setPreviewVideosError] = useState<string>('');
   const [previewVideosLoading, setPreviewVideosLoading] = useState(false);
   const [previewVideosMigrating, setPreviewVideosMigrating] = useState(false);
+  
+  // 新视频的临时标签（创建模式下使用，保存时一起提交）
+  const [pendingVideoMeta, setPendingVideoMeta] = useState<Map<string, { 
+    tags?: string[]; 
+    assetType?: string; 
+    emotionId?: string 
+  }>>(new Map());
+  
+  // 处理新视频的临时标签设置
+  const handleSetLocalMeta = (videoUrl: string, meta: { tags?: string[]; assetType?: string; emotionId?: string }) => {
+    setPendingVideoMeta(prev => {
+      const next = new Map(prev);
+      next.set(canonicalizeUrlKey(videoUrl), meta);
+      return next;
+    });
+  };
 
   // 20个情绪/动作标签 - 分类组织
   const tagQuickOptions = useMemo(
@@ -590,22 +606,61 @@ const EditAgent: React.FC = () => {
     try {
       // Prepare payload with potential global update flag
       // 确保数组字段存在，即使为空也要是数组
+      // 将临时标签信息添加到 payload 中
+      const videoMetaArray: Array<{ url: string; tags?: string[]; assetType?: string; emotionId?: string }> = [];
+      pendingVideoMeta.forEach((meta, url) => {
+        videoMetaArray.push({ url, ...meta });
+      });
+      
       const payload = {
         ...formData,
         updateGlobalCore,
         avatarUrls: formData.avatarUrls || [],
         coverVideoUrls: formData.coverVideoUrls || [],
         privatePhotoUrls: formData.privatePhotoUrls || [],
+        // 新视频的预设标签（后端会在迁移时应用）
+        pendingVideoMeta: videoMetaArray.length > 0 ? videoMetaArray : undefined,
       };
       
-      console.log('[EditAgent] Submitting form:', { isEdit, id, payloadKeys: Object.keys(payload) });
+      console.log('[EditAgent] Submitting form:', { isEdit, id, payloadKeys: Object.keys(payload), pendingMeta: videoMetaArray.length });
       
       if (isEdit && id) {
         console.log('[EditAgent] Updating agent with ID:', id);
         await updateAgent(id, payload);
       } else {
         console.log('[EditAgent] Creating new agent');
-        await createAgent(payload);
+        const response = await createAgent(payload);
+        // 创建成功后，如果有临时标签，尝试迁移并应用标签
+        if (videoMetaArray.length > 0 && response.data?._id) {
+          console.log('[EditAgent] Created agent, applying pending video meta...');
+          try {
+            // 先迁移视频到 previewVideos
+            await migratePreviewVideos(response.data._id);
+            // 获取迁移后的视频列表
+            const videosRes = await getPreviewVideos(response.data._id);
+            const videos = videosRes.data?.videos || [];
+            // 对每个有临时标签的视频，应用标签
+            for (const meta of videoMetaArray) {
+              const normalizedUrl = canonicalizeUrlKey(meta.url);
+              const matchedVideo = videos.find((v: { url: string }) => canonicalizeUrlKey(v.url) === normalizedUrl);
+              if (matchedVideo?.id) {
+                const { updateVideoAssetType, updatePreviewVideo } = await import('../api');
+                // 更新 assetType 和 emotionId
+                if (meta.assetType) {
+                  await updateVideoAssetType(response.data._id, matchedVideo.id, meta.assetType, meta.emotionId);
+                }
+                // 更新 tags
+                if (meta.tags && meta.tags.length > 0) {
+                  await updatePreviewVideo(response.data._id, matchedVideo.id, { tags: meta.tags });
+                }
+              }
+            }
+            console.log('[EditAgent] Applied pending video meta successfully');
+          } catch (metaErr) {
+            console.warn('[EditAgent] Failed to apply pending video meta:', metaErr);
+            // 不阻止导航，只是标签没应用成功
+          }
+        }
       }
       navigate('/');
     } catch (err: any) {
@@ -1019,7 +1074,7 @@ const EditAgent: React.FC = () => {
                       }));
                     }}
                     onPreview={setPreviewImage}
-                    // Only enable LiveSkin tagging after the agent is created (has id).
+                    // LiveSkin tagging: 编辑模式用服务器保存，创建模式用临时本地状态
                     {...(isEdit && id
                       ? {
                           getVideoMeta,
@@ -1027,7 +1082,15 @@ const EditAgent: React.FC = () => {
                           onSetAssetType: handleSetAssetType,
                           tagQuickOptions,
                         }
-                      : {})}
+                      : {
+                          // 创建模式：使用临时本地标签
+                          onSetLocalMeta: handleSetLocalMeta,
+                          getVideoMeta: (videoUrl: string) => {
+                            const key = canonicalizeUrlKey(videoUrl);
+                            const meta = pendingVideoMeta.get(key);
+                            return meta ? { id: '', ...meta } : null;
+                          },
+                        })}
                   />
 
                   {/* 私有图片单独显示 */}

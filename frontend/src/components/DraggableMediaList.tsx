@@ -71,6 +71,8 @@ interface MediaItemProps {
   getVideoMeta?: (videoUrl: string) => VideoMeta;
   onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
   onSetAssetType?: (videoId: string, assetType: string, emotionId?: string) => Promise<void> | void;
+  // 用于新视频（还没有 ID）的临时标签设置
+  onSetLocalMeta?: (videoUrl: string, meta: { tags?: string[]; assetType?: string; emotionId?: string }) => void;
   tagQuickOptions?: string[];
 }
 
@@ -85,12 +87,15 @@ const MediaItem: React.FC<MediaItemProps> = ({
   getVideoMeta,
   onSetVideoTags,
   onSetAssetType,
+  onSetLocalMeta,
 }) => {
   const isFirst = index === 0;
   const isLast = index === total - 1;
-  const taggingEnabled = !!(getVideoMeta && onSetVideoTags);
+  // 允许标签编辑：已入库的视频或者支持本地临时标签
+  const taggingEnabled = !!(getVideoMeta || onSetLocalMeta);
   const meta = pair.videoUrl && getVideoMeta ? getVideoMeta(pair.videoUrl) : null;
   const videoId = meta?.id;
+  const isNewVideo = !videoId && !!pair.videoUrl; // 新视频（未入库）
   const [tagDraft, setTagDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [tags, setTags] = React.useState<string[]>(Array.isArray(meta?.tags) ? meta!.tags! : []);
@@ -105,14 +110,23 @@ const MediaItem: React.FC<MediaItemProps> = ({
 
   // 更新资产类型
   const handleAssetTypeChange = async (newType: string) => {
-    if (!videoId || !onSetAssetType) return;
     const prevType = assetType;
     const prevEmotion = emotionId;
     setAssetType(newType);
     // 如果切换到非 reaction 类型，清空 emotionId
+    const newEmotion = newType !== 'reaction' ? '' : emotionId;
     if (newType !== 'reaction') {
       setEmotionId('');
     }
+    
+    // 新视频：保存到本地临时状态
+    if (isNewVideo && onSetLocalMeta) {
+      onSetLocalMeta(pair.videoUrl, { assetType: newType, emotionId: newEmotion, tags });
+      return;
+    }
+    
+    // 已入库视频：保存到服务器
+    if (!videoId || !onSetAssetType) return;
     try {
       setSaving(true);
       await onSetAssetType(videoId, newType, newType === 'reaction' ? emotionId : undefined);
@@ -127,9 +141,18 @@ const MediaItem: React.FC<MediaItemProps> = ({
 
   // 更新情绪 ID
   const handleEmotionChange = async (newEmotion: string) => {
-    if (!videoId || !onSetAssetType || assetType !== 'reaction') return;
+    if (assetType !== 'reaction') return;
     const prevEmotion = emotionId;
     setEmotionId(newEmotion);
+    
+    // 新视频：保存到本地临时状态
+    if (isNewVideo && onSetLocalMeta) {
+      onSetLocalMeta(pair.videoUrl, { assetType, emotionId: newEmotion, tags });
+      return;
+    }
+    
+    // 已入库视频：保存到服务器
+    if (!videoId || !onSetAssetType) return;
     try {
       setSaving(true);
       await onSetAssetType(videoId, assetType, newEmotion);
@@ -142,10 +165,18 @@ const MediaItem: React.FC<MediaItemProps> = ({
   };
 
   const toggleTag = async (t: string) => {
-    if (!videoId || !onSetVideoTags) return;
     const prev = tags;
     const next = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t];
     setTags(next);
+    
+    // 新视频：保存到本地临时状态
+    if (isNewVideo && onSetLocalMeta) {
+      onSetLocalMeta(pair.videoUrl, { assetType, emotionId, tags: next });
+      return;
+    }
+    
+    // 已入库视频：保存到服务器
+    if (!videoId || !onSetVideoTags) return;
     try {
       setSaving(true);
       await onSetVideoTags(videoId, next);
@@ -296,11 +327,17 @@ const MediaItem: React.FC<MediaItemProps> = ({
 
       {/* 视频标签（LiveSkin FSM）*/}
       {pair.videoUrl && taggingEnabled ? (
-        <div className="w-52 min-w-[13rem]">
-          {videoId ? (
+        <div className="flex-1 min-w-[200px]">
+          {/* 新视频提示 */}
+          {isNewVideo && (
+            <div className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 mb-2">
+              💡 新视频：标签将在保存后生效
+            </div>
+          )}
+          {(videoId || isNewVideo) ? (
             <div className="space-y-2">
               {/* FSM 资产类型选择器 */}
-              {onSetAssetType && (
+              {(onSetAssetType || isNewVideo) && (
                 <div className="pb-1.5 border-b border-gray-200">
                   <div className="text-[10px] text-gray-500 mb-1 font-medium">FSM 类型:</div>
                   <div className="flex flex-wrap gap-1">
@@ -442,6 +479,8 @@ interface DraggableMediaListProps {
   getVideoMeta?: (videoUrl: string) => VideoMeta;
   onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
   onSetAssetType?: (videoId: string, assetType: string, emotionId?: string) => Promise<void> | void;
+  // 用于新视频（还没有 ID）的临时标签设置
+  onSetLocalMeta?: (videoUrl: string, meta: { tags?: string[]; assetType?: string; emotionId?: string }) => void;
   tagQuickOptions?: string[];
 }
 
@@ -454,6 +493,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   getVideoMeta,
   onSetVideoTags,
   onSetAssetType,
+  onSetLocalMeta,
   tagQuickOptions,
 }) => {
   // 创建配对数据（图片和视频一一对应）
@@ -514,6 +554,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
             getVideoMeta={getVideoMeta}
             onSetVideoTags={onSetVideoTags}
             onSetAssetType={onSetAssetType}
+            onSetLocalMeta={onSetLocalMeta}
             tagQuickOptions={tagQuickOptions}
           />
         ))}
