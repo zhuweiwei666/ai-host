@@ -1088,7 +1088,13 @@ const EditAgent: React.FC = () => {
                           getVideoMeta: (videoUrl: string) => {
                             const key = canonicalizeUrlKey(videoUrl);
                             const meta = pendingVideoMeta.get(key);
-                            return meta ? { id: '', ...meta } : null;
+                            if (!meta) return null;
+                            return { 
+                              id: '', 
+                              tags: meta.tags,
+                              assetType: meta.assetType as 'idle' | 'reaction' | 'transition' | 'speak' | undefined,
+                              emotionId: meta.emotionId,
+                            };
                           },
                         })}
                   />
