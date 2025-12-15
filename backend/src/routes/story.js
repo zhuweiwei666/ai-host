@@ -172,6 +172,32 @@ router.post('/restart', requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/story/:sessionId/image/:index
+ * 获取段落图片状态（用于轮询）
+ */
+router.get('/:sessionId/image/:index', requireAuth, async (req, res) => {
+  try {
+    const { sessionId, index } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return errors.badRequest(res, '无效的故事 ID');
+    }
+    
+    const paragraphIndex = parseInt(index, 10);
+    if (isNaN(paragraphIndex) || paragraphIndex < 0) {
+      return errors.badRequest(res, '无效的段落索引');
+    }
+    
+    const result = await storyService.getParagraphImage(sessionId, paragraphIndex);
+    
+    sendSuccess(res, HTTP_STATUS.OK, result);
+  } catch (err) {
+    console.error('[Story API] Get image error:', err);
+    errors.badRequest(res, err.message || '获取图片失败');
+  }
+});
+
+/**
  * GET /api/story/user/sessions
  * 获取用户所有活跃的故事
  */

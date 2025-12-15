@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, KeyboardEvent, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   StoryParagraph,
@@ -8,6 +8,7 @@ import {
   inputStory,
   restartStory,
   getAgent,
+  getParagraphImage,
   Agent,
 } from '../api';
 
@@ -15,30 +16,114 @@ import {
  * 论坛帖子式故事页面
  * 
  * 每层楼 = 一段内容 + 配图
- * 类似 91 论坛 / Twitter / 微博的体验
+ * 文字先出，图片异步加载
  */
+
+// 图片加载状态组件
+function ImageLoadingPlaceholder() {
+  return (
+    <div className="w-full max-w-sm aspect-[3/4] rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 flex flex-col items-center justify-center gap-3 animate-pulse">
+      <div className="relative">
+        <div className="w-12 h-12 rounded-full border-2 border-pink-500/30 border-t-pink-500 animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <svg className="w-5 h-5 text-pink-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+      </div>
+      <span className="text-xs text-gray-500">图片生成中...</span>
+    </div>
+  );
+}
+
 export default function StoryPage() {
   const { id: agentId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const contentRef = useRef<HTMLDivElement>(null);
   
-  // Agent 信息
   const [agent, setAgent] = useState<Agent | null>(null);
-  
-  // 故事状态
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [paragraphs, setParagraphs] = useState<StoryParagraph[]>([]);
   const [progress, setProgress] = useState(0);
   const [, setStoryState] = useState<StoryState | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   
-  // UI 状态
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [userInput, setUserInput] = useState('');
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  
+  // 正在加载图片的段落索引集合
+  const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
+  const pollingRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  
+  // 轮询图片状态
+  const pollImage = useCallback(async (sid: string, index: number) => {
+    try {
+      const res = await getParagraphImage(sid, index);
+      if (res.data.imageReady && res.data.imageUrl) {
+        // 图片已就绪，更新段落
+        setParagraphs(prev => {
+          const updated = [...prev];
+          if (updated[index]) {
+            updated[index] = { ...updated[index], imageUrl: res.data.imageUrl! };
+          }
+          return updated;
+        });
+        
+        // 停止轮询
+        setLoadingImages(prev => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+        
+        const timer = pollingRef.current.get(index);
+        if (timer) {
+          clearInterval(timer);
+          pollingRef.current.delete(index);
+        }
+      }
+    } catch (err) {
+      console.error('Poll image error:', err);
+    }
+  }, []);
+  
+  // 开始轮询
+  const startPolling = useCallback((sid: string, index: number) => {
+    setLoadingImages(prev => new Set(prev).add(index));
+    
+    // 每 2 秒轮询一次
+    const timer = setInterval(() => pollImage(sid, index), 2000);
+    pollingRef.current.set(index, timer);
+    
+    // 立即轮询一次
+    pollImage(sid, index);
+    
+    // 30 秒后停止轮询
+    setTimeout(() => {
+      const t = pollingRef.current.get(index);
+      if (t) {
+        clearInterval(t);
+        pollingRef.current.delete(index);
+        setLoadingImages(prev => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+      }
+    }, 30000);
+  }, [pollImage]);
+  
+  // 清理轮询
+  useEffect(() => {
+    return () => {
+      pollingRef.current.forEach(timer => clearInterval(timer));
+      pollingRef.current.clear();
+    };
+  }, []);
   
   // 加载角色和故事
   useEffect(() => {
@@ -58,6 +143,13 @@ export default function StoryPage() {
         setProgress(storyRes.data.progress);
         setStoryState(storyRes.data.state);
         
+        // 检查是否有图片需要轮询
+        storyRes.data.paragraphs.forEach((p, idx) => {
+          if (!p.imageUrl && p.imagePrompt) {
+            startPolling(storyRes.data.sessionId, idx);
+          }
+        });
+        
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : '加载失败';
         setError(errorMessage);
@@ -67,7 +159,7 @@ export default function StoryPage() {
     };
     
     init();
-  }, [agentId]);
+  }, [agentId, startPolling]);
   
   // 自动滚动到底部
   useEffect(() => {
@@ -76,7 +168,7 @@ export default function StoryPage() {
     }
   }, [paragraphs]);
   
-  // 继续剧情（AI 推进）
+  // 继续剧情
   const handleContinue = async () => {
     if (!sessionId || generating || isEnding) return;
     
@@ -86,18 +178,25 @@ export default function StoryPage() {
       
       const res = await continueStory(sessionId);
       
-      setParagraphs(prev => [...prev, {
+      const newParagraph: StoryParagraph = {
         content: res.data.content,
-        imageUrl: res.data.imageUrl,
+        imageUrl: res.data.imageUrl || undefined,
         imagePrompt: res.data.imagePrompt,
         source: 'ai',
         createdAt: new Date().toISOString(),
-      }]);
+      };
+      
+      setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       setIsEnding(res.data.isEnding);
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
+      }
+      
+      // 如果图片正在生成，开始轮询
+      if (res.data.imageGenerating && res.data.paragraphIndex !== undefined) {
+        startPolling(sessionId, res.data.paragraphIndex);
       }
       
     } catch (err: unknown) {
@@ -108,7 +207,7 @@ export default function StoryPage() {
     }
   };
   
-  // 用户输入推进
+  // 用户输入
   const handleInput = async () => {
     if (!sessionId || generating || isEnding || !userInput.trim()) return;
     
@@ -121,19 +220,25 @@ export default function StoryPage() {
       
       const res = await inputStory(sessionId, input);
       
-      setParagraphs(prev => [...prev, {
+      const newParagraph: StoryParagraph = {
         content: res.data.content,
-        imageUrl: res.data.imageUrl,
+        imageUrl: res.data.imageUrl || undefined,
         imagePrompt: res.data.imagePrompt,
         source: 'user_input',
         userInput: input,
         createdAt: new Date().toISOString(),
-      }]);
+      };
+      
+      setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       setIsEnding(res.data.isEnding);
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
+      }
+      
+      if (res.data.imageGenerating && res.data.paragraphIndex !== undefined) {
+        startPolling(sessionId, res.data.paragraphIndex);
       }
       
     } catch (err: unknown) {
@@ -144,7 +249,6 @@ export default function StoryPage() {
     }
   };
   
-  // 键盘事件
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -152,11 +256,14 @@ export default function StoryPage() {
     }
   };
   
-  // 重新开始
   const handleRestart = async () => {
     if (!agentId) return;
-    
     if (!confirm('确定要重新开始吗？当前进度将丢失。')) return;
+    
+    // 清理轮询
+    pollingRef.current.forEach(timer => clearInterval(timer));
+    pollingRef.current.clear();
+    setLoadingImages(new Set());
     
     try {
       setLoading(true);
@@ -166,6 +273,12 @@ export default function StoryPage() {
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       setIsEnding(false);
+      
+      res.data.paragraphs.forEach((p, idx) => {
+        if (!p.imageUrl && p.imagePrompt) {
+          startPolling(res.data.sessionId, idx);
+        }
+      });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '重新开始失败';
       setError(errorMessage);
@@ -174,7 +287,6 @@ export default function StoryPage() {
     }
   };
 
-  // 格式化时间
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -198,7 +310,7 @@ export default function StoryPage() {
   
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header - 帖子标题栏 */}
+      {/* Header */}
       <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
         <div className="flex items-center justify-between px-4 py-3">
           <button
@@ -223,7 +335,6 @@ export default function StoryPage() {
           </div>
         </div>
         
-        {/* Progress Bar */}
         <div className="h-0.5 bg-gray-800">
           <div 
             className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-500"
@@ -232,7 +343,6 @@ export default function StoryPage() {
         </div>
       </div>
       
-      {/* Error Alert */}
       {error && (
         <div className="mx-4 mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex justify-between items-center">
           <span className="text-sm text-red-400">{error}</span>
@@ -245,19 +355,11 @@ export default function StoryPage() {
       )}
       
       {/* 论坛帖子流 */}
-      <div 
-        ref={contentRef}
-        className="flex-1 overflow-y-auto pb-40"
-      >
+      <div ref={contentRef} className="flex-1 overflow-y-auto pb-40">
         {paragraphs.map((p, idx) => (
-          <div 
-            key={idx} 
-            className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
-          >
+          <div key={idx} className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors">
             <div className="p-4">
-              {/* 楼层头部：头像 + 名字 + 楼层号 + 时间 */}
               <div className="flex items-start gap-3">
-                {/* 头像 */}
                 <div className="flex-shrink-0">
                   {avatarUrl ? (
                     <img 
@@ -272,9 +374,7 @@ export default function StoryPage() {
                   )}
                 </div>
                 
-                {/* 内容区 */}
                 <div className="flex-1 min-w-0">
-                  {/* 名字 + 楼层 + 时间 */}
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-white">{agent?.name}</span>
                     <span className="text-xs text-gray-500">#{idx + 1}楼</span>
@@ -282,31 +382,30 @@ export default function StoryPage() {
                     <span className="text-xs text-gray-500">{formatTime(p.createdAt)}</span>
                   </div>
                   
-                  {/* 如果是用户输入触发，显示引用 */}
                   {p.source === 'user_input' && p.userInput && (
                     <div className="mb-2 pl-3 border-l-2 border-pink-500/50 text-sm text-gray-400">
                       回复：{p.userInput}
                     </div>
                   )}
                   
-                  {/* 配图 */}
-                  {p.imageUrl && (
-                    <div className="mb-2 -mx-1">
+                  {/* 图片区域 */}
+                  <div className="mb-2 -mx-1">
+                    {p.imageUrl ? (
                       <img 
                         src={p.imageUrl} 
                         alt="配图" 
                         className="w-full max-w-sm rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => setExpandedImage(p.imageUrl || null)}
                       />
-                    </div>
-                  )}
+                    ) : loadingImages.has(idx) || (!p.imageUrl && p.imagePrompt) ? (
+                      <ImageLoadingPlaceholder />
+                    ) : null}
+                  </div>
                   
-                  {/* 文字内容 */}
                   <p className="text-gray-100 leading-relaxed text-[15px]">
                     {p.content}
                   </p>
                   
-                  {/* 互动按钮 */}
                   <div className="flex items-center gap-6 mt-3 text-gray-500">
                     <button className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -327,21 +426,18 @@ export default function StoryPage() {
           </div>
         ))}
         
-        {/* 生成中的占位 */}
         {generating && (
           <div className="p-4 border-b border-gray-800/50">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-gray-800 animate-pulse" />
               <div className="flex-1 space-y-2">
                 <div className="h-4 bg-gray-800 rounded animate-pulse w-24" />
-                <div className="h-32 bg-gray-800 rounded-xl animate-pulse" />
                 <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
               </div>
             </div>
           </div>
         )}
         
-        {/* 故事完结 */}
         {isEnding && (
           <div className="p-8 text-center">
             <div className="text-4xl mb-3">🎉</div>
@@ -361,7 +457,6 @@ export default function StoryPage() {
       {!isEnding && (
         <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
           <div className="p-3">
-            {/* 输入框 */}
             <div className="flex items-center gap-2 mb-3">
               <input
                 type="text"
@@ -383,7 +478,6 @@ export default function StoryPage() {
               )}
             </div>
             
-            {/* 操作按钮 */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleContinue}
@@ -417,12 +511,10 @@ export default function StoryPage() {
             </div>
           </div>
           
-          {/* Safe Area for iOS */}
           <div className="h-safe-area-inset-bottom bg-gray-900" />
         </div>
       )}
       
-      {/* 图片放大查看 */}
       {expandedImage && (
         <div 
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"

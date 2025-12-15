@@ -2,27 +2,62 @@
  * Story Service
  * 
  * 论坛帖子式剧情模式的核心服务
- * - 短内容生成 (30-50字，像论坛回帖)
- * - 每层楼配图 (Grok API 优先，Fal.ai 降级)
- * - 状态管理
+ * - 文字先出，图片异步加载
+ * - 基于主播图片 img2img 保持人物一致性
+ * - 图片缓存复用，节约 API 成本
  */
 
 const StorySession = require('../models/StorySession');
+const StoryImageCache = require('../models/StoryImageCache');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
-const grokImageProvider = require('../providers/grokImageProvider');
 const imageGenerationService = require('./imageGenerationService');
+
+/**
+ * 从 prompt 提取关键词标签
+ */
+function extractTags(prompt) {
+  if (!prompt) return [];
+  
+  const moodTags = ['微笑', '害羞', '调皮', '暧昧', '激动', '温柔', '俏皮', '含羞', '娇羞'];
+  const actionTags = ['咬唇', '卷发', '侧脸', '正面', '回眸', '低头', '抬眼', '撩发', '靠近'];
+  const sceneTags = ['特写', '半身', '全身', '自拍', '镜子', '床上', '沙发', '窗边'];
+  
+  const allTags = [...moodTags, ...actionTags, ...sceneTags];
+  const found = [];
+  
+  for (const tag of allTags) {
+    if (prompt.includes(tag)) {
+      found.push(tag);
+    }
+  }
+  
+  return found;
+}
+
+/**
+ * 从 prompt 推断情绪
+ */
+function inferMood(prompt, progress) {
+  if (!prompt) return 'neutral';
+  
+  if (prompt.includes('激动') || prompt.includes('兴奋') || prompt.includes('热情')) return 'passionate';
+  if (prompt.includes('害羞') || prompt.includes('含羞') || prompt.includes('娇羞')) return 'shy';
+  if (prompt.includes('调皮') || prompt.includes('俏皮') || prompt.includes('暧昧')) return 'flirty';
+  if (prompt.includes('开心') || prompt.includes('微笑') || prompt.includes('笑')) return 'happy';
+  
+  // 根据进度推断
+  if (progress >= 60) return 'flirty';
+  if (progress >= 30) return 'shy';
+  return 'neutral';
+}
 
 /**
  * 获取当前应该使用的故事节拍
  */
 function getCurrentBeat(storyBeats, progress) {
   if (!storyBeats || storyBeats.length === 0) {
-    return {
-      goal: '自然发展剧情',
-      sceneHint: null,
-      moodHint: null
-    };
+    return { goal: '自然发展剧情', sceneHint: null, moodHint: null };
   }
   
   for (const beat of storyBeats) {
@@ -42,14 +77,13 @@ function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const currentBeat = getCurrentBeat(config.storyBeats, session.progress);
   
-  // 尺度描述
   const ratingGuide = {
     mild: '暧昧暗示',
     moderate: '情色挑逗',
     explicit: '露骨描写'
   };
   
-  const prompt = `你正在以论坛帖子的方式讲述一个故事。每次只发一层楼的内容。
+  return `你正在以论坛帖子的方式讲述一个故事。每次只发一层楼的内容。
 
 ## 你是谁
 名字：${agent.name}
@@ -70,11 +104,11 @@ ${currentBeat.goal || '自然发展'}
 每次回复必须包含两部分，用换行分隔：
 
 1. 文字内容：30-50字，第一人称"我"视角，像论坛回帖一样简短有趣
-2. 图片标签：[IMG: 画面描述]，描述当前这层楼应该配什么图
+2. 图片标签：[IMG: 画面描述]，描述当前配图，必须包含人物动作、表情、视角
 
 ## 示例输出
 我轻轻咬着嘴唇，手指不自觉地卷起发梢，偷偷看了他一眼。
-[IMG: 少女咬唇，手指卷发，眼神含羞，侧脸特写]
+[IMG: 咬唇，手指卷发，眼神含羞，侧脸特写，微微低头]
 
 ## 尺度控制
 - 0-30%：暧昧期（眼神、试探、初次接触）
@@ -86,28 +120,17 @@ ${currentBeat.goal || '自然发展'}
 - 禁止超过50字
 - 禁止总结或旁白
 - 禁止使用"你"作为主语`;
-
-  return prompt;
 }
 
-/**
- * 构建继续剧情的 User Prompt
- */
 function buildContinuePrompt(session) {
   return `继续。进度 ${session.progress}%。直接输出内容+图片标签，不要解释。`;
 }
 
-/**
- * 构建响应用户输入的 User Prompt
- */
 function buildUserInputPrompt(session, userInput) {
   return `用户说/做了："${userInput}"
 回应他。进度 ${session.progress}%。直接输出内容+图片标签。`;
 }
 
-/**
- * 调用 AI 生成内容
- */
 async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') {
   try {
     const provider = ProviderFactory.getProvider(model);
@@ -117,7 +140,6 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') 
     ];
     
     const result = await provider.chat(model, messages, 0.9, { maxTokens: 200 });
-    
     return result.content;
   } catch (error) {
     console.error('[StoryService] AI generation failed:', error.message);
@@ -125,11 +147,7 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') 
   }
 }
 
-/**
- * 解析 AI 回复，提取文字内容和图片描述
- */
 function parseAIResponse(response) {
-  // 匹配 [IMG: xxx] 标签
   const imgMatch = response.match(/\[IMG:\s*([^\]]+)\]/i);
   
   let content = response;
@@ -140,10 +158,8 @@ function parseAIResponse(response) {
     content = response.replace(imgMatch[0], '').trim();
   }
   
-  // 清理内容，移除多余空白
   content = content.replace(/\s+/g, ' ').trim();
   
-  // 如果内容太长，截断到 60 字
   if (content.length > 60) {
     content = content.slice(0, 57) + '...';
   }
@@ -152,72 +168,111 @@ function parseAIResponse(response) {
 }
 
 /**
- * 生成图片 (Grok 优先，Fal.ai 降级)
+ * 生成图片 - 使用 img2img 保持人物一致性
+ * 优先复用缓存，其次生成新图
  */
-async function generateImage(imagePrompt, agent, isNsfw = false) {
+async function generateImageWithConsistency(imagePrompt, agent, progress) {
   if (!imagePrompt) {
     console.log('[StoryService] 无图片描述，跳过图片生成');
     return null;
   }
 
-  // 构建完整的图片 prompt
+  const isNsfw = progress >= 60;
+  const rating = isNsfw ? 'nsfw' : (progress >= 30 ? 'suggestive' : 'sfw');
+  const mood = inferMood(imagePrompt, progress);
+  const tags = extractTags(imagePrompt);
+
+  // 1. 尝试复用缓存的图片 (30% 概率复用)
+  if (Math.random() < 0.3) {
+    try {
+      const cached = await StoryImageCache.findReusable(agent._id, tags, mood, rating);
+      if (cached) {
+        console.log(`[StoryService] 复用缓存图片: ${cached.imageUrl.substring(0, 50)}...`);
+        return cached.imageUrl;
+      }
+    } catch (cacheErr) {
+      console.warn('[StoryService] 缓存查询失败:', cacheErr.message);
+    }
+  }
+
+  // 2. 获取参考图（主播头像）用于 img2img
+  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+  
+  if (!referenceImage) {
+    console.warn('[StoryService] 无参考图，无法生成图片');
+    return null;
+  }
+
+  // 3. 构建高质量 prompt
   const config = agent.storyConfig || {};
   const appearance = config.appearance || agent.description || '';
-  const style = agent.style === 'anime' ? 'anime style, illustration, ' : 'photorealistic, 8k, ';
+  const style = agent.style === 'anime' 
+    ? 'anime style, illustration, masterpiece, best quality, ' 
+    : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, ';
   
   let fullPrompt = `${style}${appearance}, ${imagePrompt}`;
   
-  // 如果是 NSFW 阶段，添加相关关键词
   if (isNsfw) {
-    fullPrompt = `nsfw, ${fullPrompt}`;
+    fullPrompt = `nsfw, sensual, ${fullPrompt}`;
   }
 
-  console.log(`[StoryService] 生成图片: ${fullPrompt.substring(0, 50)}...`);
+  console.log(`[StoryService] 生成图片 (img2img): ${fullPrompt.substring(0, 60)}...`);
 
-  // 尝试 Grok 图片 API
+  // 4. 使用 Fal.ai img2img（保持人物一致性）
   try {
-    const results = await grokImageProvider.generate(fullPrompt, { n: 1 });
-    if (results && results.length > 0 && results[0].url) {
-      console.log('[StoryService] Grok 图片生成成功');
-      return results[0].url;
-    }
-  } catch (grokError) {
-    console.warn('[StoryService] Grok 图片生成失败，降级到 Fal.ai:', grokError.message);
-  }
-
-  // 降级到 Fal.ai
-  try {
-    // 获取参考图
-    const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
-    
-    if (!referenceImage) {
-      console.warn('[StoryService] 无参考图，无法使用 Fal.ai img2img');
-      return null;
-    }
-
     const results = await imageGenerationService.generate(fullPrompt, {
       referenceImage,
       count: 1,
       width: 768,
       height: 1024,
-      strength: 0.6,
+      strength: 0.55, // 保留更多原图特征
       style: agent.style || 'realistic'
     });
 
     if (results && results.length > 0 && results[0].url) {
-      console.log('[StoryService] Fal.ai 图片生成成功');
-      return results[0].url;
+      const imageUrl = results[0].url;
+      console.log('[StoryService] 图片生成成功');
+      
+      // 保存到缓存
+      try {
+        await StoryImageCache.saveToCache(agent._id, imageUrl, fullPrompt, tags, mood, rating);
+      } catch (saveErr) {
+        console.warn('[StoryService] 缓存保存失败:', saveErr.message);
+      }
+      
+      return imageUrl;
     }
-  } catch (falError) {
-    console.error('[StoryService] Fal.ai 图片生成也失败:', falError.message);
+  } catch (genError) {
+    console.error('[StoryService] 图片生成失败:', genError.message);
   }
 
   return null;
 }
 
 /**
- * 提取状态更新（规则提取）
+ * 异步生成图片并更新段落
  */
+async function generateImageAsync(sessionId, paragraphIndex, imagePrompt, agentId) {
+  try {
+    const agent = await Agent.findById(agentId);
+    if (!agent) return;
+
+    const session = await StorySession.findById(sessionId);
+    if (!session) return;
+
+    const progress = session.progress;
+    const imageUrl = await generateImageWithConsistency(imagePrompt, agent, progress);
+    
+    if (imageUrl && session.paragraphs[paragraphIndex]) {
+      session.paragraphs[paragraphIndex].imageUrl = imageUrl;
+      await session.save();
+      console.log(`[StoryService] 异步图片已更新: sessionId=${sessionId}, index=${paragraphIndex}`);
+    }
+  } catch (err) {
+    console.error('[StoryService] 异步图片生成失败:', err.message);
+  }
+}
+
 function extractStateUpdate(content) {
   const lastAction = content.slice(-50);
   
@@ -242,13 +297,7 @@ function extractStateUpdate(content) {
   else if (content.includes('激动') || content.includes('兴奋')) mood = '激动';
   else if (content.includes('温馨') || content.includes('温暖')) mood = '温馨';
   
-  return {
-    scene,
-    mood,
-    clothes: null,
-    newEvent: null,
-    lastAction,
-  };
+  return { scene, mood, clothes: null, newEvent: null, lastAction };
 }
 
 /**
@@ -260,11 +309,7 @@ async function startStory(userId, agentId) {
     throw new Error('角色不存在');
   }
   
-  let session = await StorySession.findOne({
-    userId,
-    agentId,
-    status: 'active'
-  });
+  let session = await StorySession.findOne({ userId, agentId, status: 'active' });
   
   if (session) {
     return {
@@ -277,18 +322,8 @@ async function startStory(userId, agentId) {
     };
   }
   
-  // 创建新故事，生成开场白
   const openingText = agent.storyConfig?.opening || agent.defaultGreeting || `嗨，我是${agent.name}，我们的故事开始了...`;
-  
-  // 为开场生成配图
-  const openingImagePrompt = `${agent.name}，微笑，打招呼，正面特写`;
-  let openingImageUrl = null;
-  
-  try {
-    openingImageUrl = await generateImage(openingImagePrompt, agent, false);
-  } catch (imgErr) {
-    console.error('[StoryService] 开场图片生成失败:', imgErr.message);
-  }
+  const openingImagePrompt = `微笑，打招呼，正面特写，友好表情`;
   
   session = new StorySession({
     userId,
@@ -304,7 +339,7 @@ async function startStory(userId, agentId) {
     events: [],
     paragraphs: [{
       content: openingText,
-      imageUrl: openingImageUrl,
+      imageUrl: null, // 图片异步生成
       imagePrompt: openingImagePrompt,
       source: 'ai',
       createdAt: new Date(),
@@ -314,75 +349,68 @@ async function startStory(userId, agentId) {
   
   await session.save();
   
-  console.log(`[StoryService] New story started: userId=${userId}, agentId=${agentId}, sessionId=${session._id}`);
+  // 异步生成开场图片
+  generateImageAsync(session._id, 0, openingImagePrompt, agentId);
+  
+  console.log(`[StoryService] New story started: sessionId=${session._id}`);
   
   return {
     sessionId: session._id,
     opening: openingText,
-    openingImageUrl,
+    openingImageUrl: null, // 前端显示 loading
     progress: 0,
     state: session.state,
     paragraphs: session.paragraphs,
     isExisting: false,
+    imageGenerating: true, // 告诉前端图片正在生成
   };
 }
 
 /**
- * 继续故事（AI 自动推进）
+ * 继续故事 - 文字先返回，图片异步生成
  */
 async function continueStory(sessionId) {
   const session = await StorySession.findById(sessionId);
-  if (!session) {
-    throw new Error('故事不存在');
-  }
-  
-  if (session.status !== 'active') {
-    throw new Error('故事已结束');
-  }
+  if (!session) throw new Error('故事不存在');
+  if (session.status !== 'active') throw new Error('故事已结束');
   
   const agent = await Agent.findById(session.agentId);
-  if (!agent) {
-    throw new Error('角色不存在');
-  }
+  if (!agent) throw new Error('角色不存在');
   
-  // 构建 Prompt
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildContinuePrompt(session);
   
-  // 调用 AI 生成文字+图片描述
+  // 生成文字
   const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  
-  // 解析响应
   const { content, imagePrompt } = parseAIResponse(rawResponse);
   
-  // 判断是否是 NSFW 阶段
-  const isNsfw = session.progress >= 60;
-  
-  // 生成图片
-  const imageUrl = await generateImage(imagePrompt, agent, isNsfw);
-  
-  // 提取状态更新
   const stateUpdate = extractStateUpdate(content);
   
-  // 更新 Session
-  session.addParagraph(content, 'ai', null, imageUrl, imagePrompt);
+  // 先保存文字，imageUrl 为 null
+  const paragraphIndex = session.paragraphs.length;
+  session.addParagraph(content, 'ai', null, null, imagePrompt);
   session.updateState(stateUpdate);
-  if (stateUpdate.newEvent) {
-    session.addEvent(stateUpdate.newEvent);
-  }
+  if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
   
   await session.save();
   
-  console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%, hasImage=${!!imageUrl}`);
+  // 异步生成图片（不阻塞返回）
+  if (imagePrompt) {
+    generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
+  }
+  
+  console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%`);
   
   return {
     content,
-    imageUrl,
+    imageUrl: null, // 前端显示 loading
     imagePrompt,
+    paragraphIndex, // 用于轮询
     progress: session.progress,
     state: session.state,
     isEnding: session.status === 'completed',
+    imageGenerating: !!imagePrompt, // 告诉前端是否有图片在生成
   };
 }
 
@@ -391,70 +419,68 @@ async function continueStory(sessionId) {
  */
 async function inputStory(sessionId, userInput) {
   const session = await StorySession.findById(sessionId);
-  if (!session) {
-    throw new Error('故事不存在');
-  }
-  
-  if (session.status !== 'active') {
-    throw new Error('故事已结束');
-  }
+  if (!session) throw new Error('故事不存在');
+  if (session.status !== 'active') throw new Error('故事已结束');
   
   const agent = await Agent.findById(session.agentId);
-  if (!agent) {
-    throw new Error('角色不存在');
-  }
+  if (!agent) throw new Error('角色不存在');
   
-  // 构建 Prompt
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
   
-  // 调用 AI 生成文字+图片描述
   const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  
-  // 解析响应
   const { content, imagePrompt } = parseAIResponse(rawResponse);
   
-  // 判断是否是 NSFW 阶段
-  const isNsfw = session.progress >= 60;
-  
-  // 生成图片
-  const imageUrl = await generateImage(imagePrompt, agent, isNsfw);
-  
-  // 提取状态更新
   const stateUpdate = extractStateUpdate(content);
   
-  // 更新 Session
-  session.addParagraph(content, 'user_input', userInput, imageUrl, imagePrompt);
+  const paragraphIndex = session.paragraphs.length;
+  session.addParagraph(content, 'user_input', userInput, null, imagePrompt);
   session.updateState(stateUpdate);
-  if (stateUpdate.newEvent) {
-    session.addEvent(stateUpdate.newEvent);
-  }
+  if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
   
   await session.save();
   
-  console.log(`[StoryService] Story input: sessionId=${sessionId}, userInput="${userInput.slice(0, 20)}...", progress=${session.progress}%, hasImage=${!!imageUrl}`);
+  // 异步生成图片
+  if (imagePrompt) {
+    generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
+  }
+  
+  console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%`);
   
   return {
     content,
-    imageUrl,
+    imageUrl: null,
     imagePrompt,
+    paragraphIndex,
     progress: session.progress,
     state: session.state,
     isEnding: session.status === 'completed',
+    imageGenerating: !!imagePrompt,
   };
 }
 
 /**
- * 获取故事状态
+ * 获取段落图片状态（用于前端轮询）
  */
+async function getParagraphImage(sessionId, paragraphIndex) {
+  const session = await StorySession.findById(sessionId).lean();
+  if (!session) throw new Error('故事不存在');
+  
+  const paragraph = session.paragraphs[paragraphIndex];
+  if (!paragraph) throw new Error('段落不存在');
+  
+  return {
+    imageUrl: paragraph.imageUrl,
+    imageReady: !!paragraph.imageUrl,
+  };
+}
+
 async function getStoryState(sessionId) {
   const session = await StorySession.findById(sessionId)
     .populate('agentId', 'name avatarUrls storyConfig');
     
-  if (!session) {
-    throw new Error('故事不存在');
-  }
+  if (!session) throw new Error('故事不存在');
   
   return {
     sessionId: session._id,
@@ -469,9 +495,6 @@ async function getStoryState(sessionId) {
   };
 }
 
-/**
- * 重新开始故事
- */
 async function restartStory(userId, agentId) {
   await StorySession.updateMany(
     { userId, agentId, status: 'active' },
@@ -487,4 +510,5 @@ module.exports = {
   inputStory,
   getStoryState,
   restartStory,
+  getParagraphImage,
 };

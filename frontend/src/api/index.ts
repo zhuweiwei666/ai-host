@@ -895,22 +895,30 @@ export interface StorySession {
 export interface StoryStartResponse {
   sessionId: string;
   opening: string;
-  openingImageUrl?: string;  // 开场配图
+  openingImageUrl?: string | null;  // 开场配图
   progress: number;
   state: StoryState;
   paragraphs: StoryParagraph[];
   isExisting: boolean;
+  imageGenerating?: boolean; // 是否有图片正在生成
 }
 
 export interface StoryContinueResponse {
   content: string;
-  imageUrl?: string;      // 每层楼的配图
-  imagePrompt?: string;   // 图片生成使用的 prompt
+  imageUrl?: string | null;  // 图片 URL（异步生成时为 null）
+  imagePrompt?: string;      // 图片生成使用的 prompt
+  paragraphIndex?: number;   // 段落索引（用于轮询图片）
   progress: number;
   state: StoryState;
   isEnding: boolean;
   balance?: number;
   cost?: number;
+  imageGenerating?: boolean; // 是否有图片正在生成
+}
+
+export interface ParagraphImageResponse {
+  imageUrl: string | null;
+  imageReady: boolean;
 }
 
 // 开始新故事
@@ -936,3 +944,7 @@ export const restartStory = (agentId: string) =>
 // 获取用户所有活跃故事
 export const getUserStorySessions = () =>
   http.get<{ agentId: { _id: string; name: string; avatarUrls: string[] }; progress: number; updatedAt: string }[]>('/story/user/sessions');
+
+// 获取段落图片状态（用于轮询）
+export const getParagraphImage = (sessionId: string, paragraphIndex: number) =>
+  http.get<ParagraphImageResponse>(`/story/${sessionId}/image/${paragraphIndex}`);
