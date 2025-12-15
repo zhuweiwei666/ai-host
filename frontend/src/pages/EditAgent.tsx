@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Agent,
@@ -286,6 +286,10 @@ const EditAgent: React.FC = () => {
     }
   };
 
+  // Track if we have loaded the agent data to prevent re-fetching on re-renders
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [lastLoadedId, setLastLoadedId] = useState<string | undefined>(undefined);
+
   // 编辑模式时加载 IDLE 视频状态
   useEffect(() => {
     if (isEdit && id) {
@@ -418,10 +422,6 @@ const EditAgent: React.FC = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<'fal' | 'volcengine'>('fal');
   const [activePromptTab, setActivePromptTab] = useState<'base' | 'stage1' | 'stage2' | 'stage3'>('base');
-
-  // Track if we have loaded the agent data to prevent re-fetching on re-renders
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [lastLoadedId, setLastLoadedId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     // 如果id变化，重置dataLoaded状态，强制重新加载
