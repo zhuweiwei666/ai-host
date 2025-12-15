@@ -7,12 +7,13 @@ const CACHE_NAME = 'idle-videos-v1';
 const CACHE_MAX_SIZE = 500 * 1024 * 1024; // 500MB 最大缓存
 const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7天过期
 
-interface CachedVideo {
-  url: string;
-  blob: Blob;
-  cachedAt: number;
-  size: number;
-}
+// CachedVideo interface (for future use if needed)
+// interface CachedVideo {
+//   url: string;
+//   blob: Blob;
+//   cachedAt: number;
+//   size: number;
+// }
 
 /**
  * 初始化缓存
