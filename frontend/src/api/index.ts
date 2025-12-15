@@ -130,7 +130,17 @@ export interface LiveSkinManifest {
 }
 
 export const getLiveSkinManifest = (agentId: string) =>
-  http.get<LiveSkinManifest>(`/liveskin/manifest/${agentId}`);
+  http.get<LiveSkinManifest>(`/liveskin/manifest/${agentId}`, {
+    // 禁用缓存，确保获取最新的manifest
+    headers: {
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    },
+    // 添加时间戳参数避免浏览器缓存
+    params: {
+      _t: Date.now(),
+    },
+  });
 
 export const updateVideoAssetType = (
   agentId: string,

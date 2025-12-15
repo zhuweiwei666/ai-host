@@ -40,46 +40,51 @@ if (typeof window !== 'undefined') {
   };
 }
 
+// 在开发环境禁用 StrictMode 以避免双重渲染导致的性能问题
+// 生产环境保留 StrictMode 以帮助发现潜在问题
+const isDevelopment = import.meta.env.DEV;
+const App = (
+  <BrowserRouter>
+    <Routes>
+      {/* 登录页面 - 无需认证 */}
+      <Route path="/login" element={<AdminLogin />} />
+      
+      {/* 受保护的路由 - 需要管理员登录 */}
+      <Route element={
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      }>
+        <Route path="/" element={<Agents />} />
+        <Route path="/stats" element={<AgentStats />} />
+        <Route path="/users" element={<UserList />} />
+        <Route path="/voice-models" element={<VoiceModelsPage />} />
+        <Route path="/api-docs" element={<ApiDocs />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/operations" element={<OperationsDashboard />} />
+        <Route path="/avatar-lab" element={<SpatialAvatarLab />} />
+      </Route>
+      
+      {/* 其他受保护页面 */}
+      <Route path="/create" element={
+        <ProtectedRoute>
+          <EditAgent />
+        </ProtectedRoute>
+      } />
+      <Route path="/edit/:id" element={
+        <ProtectedRoute>
+          <EditAgent />
+        </ProtectedRoute>
+      } />
+      <Route path="/chat/:id" element={
+        <ProtectedRoute>
+          <ChatPage />
+        </ProtectedRoute>
+      } />
+    </Routes>
+  </BrowserRouter>
+);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
-        {/* 登录页面 - 无需认证 */}
-        <Route path="/login" element={<AdminLogin />} />
-        
-        {/* 受保护的路由 - 需要管理员登录 */}
-        <Route element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }>
-          <Route path="/" element={<Agents />} />
-          <Route path="/stats" element={<AgentStats />} />
-          <Route path="/users" element={<UserList />} />
-          <Route path="/voice-models" element={<VoiceModelsPage />} />
-          <Route path="/api-docs" element={<ApiDocs />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/operations" element={<OperationsDashboard />} />
-          <Route path="/avatar-lab" element={<SpatialAvatarLab />} />
-        </Route>
-        
-        {/* 其他受保护页面 */}
-        <Route path="/create" element={
-          <ProtectedRoute>
-            <EditAgent />
-          </ProtectedRoute>
-        } />
-        <Route path="/edit/:id" element={
-          <ProtectedRoute>
-            <EditAgent />
-          </ProtectedRoute>
-        } />
-        <Route path="/chat/:id" element={
-          <ProtectedRoute>
-            <ChatPage />
-          </ProtectedRoute>
-        } />
-      </Routes>
-    </BrowserRouter>
-  </React.StrictMode>,
+  isDevelopment ? App : <React.StrictMode>{App}</React.StrictMode>
 );

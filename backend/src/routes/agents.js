@@ -462,23 +462,58 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
 
     const agentId = req.params.id;
     const agent = await Agent.findById(agentId).select(
-      'name avatarUrls previewVideos coverVideoUrls defaultPreviewIndex'
+      'name avatarUrls previewVideos coverVideoUrls defaultPreviewIndex updatedAt'
     );
     if (!agent) return errors.notFound(res, 'Agent not found');
 
-    const normalizeVideo = (v, index) => ({
-      id: v?._id?.toString?.() || `legacy_${index}`,
-      url: v?.url || v,
-      thumbnailUrl: v?.thumbnailUrl || agent.avatarUrls?.[index] || agent.avatarUrls?.[0] || '',
-      duration: v?.duration || 0,
-      width: v?.width || 0,
-      height: v?.height || 0,
-      isVertical: typeof v?.isVertical === 'boolean' ? v.isVertical : true,
-      sortOrder: typeof v?.sortOrder === 'number' ? v.sortOrder : index,
-      tags: Array.isArray(v?.tags) ? v.tags : [],
-      scaleLevel: typeof v?.scaleLevel === 'number' ? v.scaleLevel : 1,
-      index,
-    });
+    // 计算版本号：基于Agent更新时间 + 所有视频URL的hash
+    // 如果updatedAt不存在或太旧，使用当前时间确保版本号变化
+    const crypto = require('crypto');
+    const allVideoUrls = (agent.previewVideos || [])
+      .map(v => {
+        const url = (v.url || v.loopSafeUrl || '').split('?')[0]; // 移除已有查询参数
+        return url;
+      })
+      .concat((agent.coverVideoUrls || []).map(url => typeof url === 'string' ? url.split('?')[0] : ''))
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    const urlHash = crypto.createHash('md5').update(allVideoUrls).digest('hex').substring(0, 8);
+    
+    // 使用Agent更新时间，如果不存在或超过1小时未更新，使用当前时间
+    const now = Date.now();
+    const agentUpdatedTime = agent.updatedAt ? agent.updatedAt.getTime() : now;
+    const oneHourAgo = now - 3600000; // 1小时前
+    
+    // 如果Agent超过1小时未更新，使用当前时间（强制刷新）
+    const timestamp = agentUpdatedTime < oneHourAgo ? now : agentUpdatedTime;
+    
+    // 版本号 = 时间戳后10位 + URL hash前6位
+    const version = parseInt(`${timestamp.toString().slice(-10)}${urlHash.substring(0, 6)}`, 16) % 1000000000;
+    
+    console.log(`[LiveSkin Manifest iOS] Agent: ${agent.name}, Version: ${version}, UpdatedAt: ${agent.updatedAt}, Videos: ${allVideoUrls.split('|').length}`);
+
+    const normalizeVideo = (v, index) => {
+      // 在视频URL上添加版本参数，避免浏览器/客户端缓存旧视频
+      // 先移除URL中可能已有的版本参数，再添加新的
+      const baseUrl = v?.url || v || '';
+      const cleanUrl = baseUrl ? baseUrl.split('?')[0].split('&')[0] : '';
+      const urlWithVersion = cleanUrl ? `${cleanUrl}?v=${version}` : '';
+      
+      return {
+        id: v?._id?.toString?.() || `legacy_${index}`,
+        url: urlWithVersion,
+        thumbnailUrl: v?.thumbnailUrl || agent.avatarUrls?.[index] || agent.avatarUrls?.[0] || '',
+        duration: v?.duration || 0,
+        width: v?.width || 0,
+        height: v?.height || 0,
+        isVertical: typeof v?.isVertical === 'boolean' ? v.isVertical : true,
+        sortOrder: typeof v?.sortOrder === 'number' ? v.sortOrder : index,
+        tags: Array.isArray(v?.tags) ? v.tags : [],
+        scaleLevel: typeof v?.scaleLevel === 'number' ? v.scaleLevel : 1,
+        index,
+      };
+    };
 
     let videos = [];
     if (Array.isArray(agent.previewVideos) && agent.previewVideos.length > 0) {
@@ -534,7 +569,7 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
 
     // Recommended playback + UI defaults (iOS can override)
     const manifest = {
-      version: 2,
+      version: version, // 动态版本号，视频更新时自动变化
       agentId,
       agentName: agent.name,
       defaultIndex,
@@ -620,6 +655,14 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
         ],
       },
     };
+
+    // 设置响应头，防止manifest被缓存
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': `"${version}"`, // 使用版本号作为ETag
+    });
 
     return sendSuccess(res, HTTP_STATUS.OK, manifest);
   } catch (err) {

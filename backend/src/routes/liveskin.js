@@ -46,7 +46,7 @@ router.get('/manifest/:agentId', async (req, res) => {
   const { agentId } = req.params;
   
   try {
-    const agent = await Agent.findById(agentId).select('name previewVideos defaultPreviewIndex liveSkinStatus');
+    const agent = await Agent.findById(agentId).select('name previewVideos defaultPreviewIndex liveSkinStatus updatedAt');
     
     if (!agent) {
       return errors.notFound(res, 'Agent not found');
@@ -60,11 +60,42 @@ router.get('/manifest/:agentId', async (req, res) => {
     const transitions = [];
     const speak = [];
     
+    // 计算版本号：基于Agent更新时间 + 所有idle视频URL的hash
+    // 如果updatedAt不存在或太旧，使用当前时间确保版本号变化
+    const crypto = require('crypto');
+    const idleVideoUrls = videos
+      .filter(v => v.assetType === 'idle' || !v.assetType)
+      .map(v => (v.url || v.loopSafeUrl || '').split('?')[0]) // 移除已有查询参数，只取基础URL
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    const urlHash = crypto.createHash('md5').update(idleVideoUrls).digest('hex').substring(0, 8);
+    
+    // 使用Agent更新时间，如果不存在或超过1小时未更新，使用当前时间
+    const now = Date.now();
+    const agentUpdatedTime = agent.updatedAt ? agent.updatedAt.getTime() : now;
+    const oneHourAgo = now - 3600000; // 1小时前
+    
+    // 如果Agent超过1小时未更新，使用当前时间（强制刷新）
+    const timestamp = agentUpdatedTime < oneHourAgo ? now : agentUpdatedTime;
+    
+    // 版本号 = 时间戳后10位 + URL hash前6位
+    const version = parseInt(`${timestamp.toString().slice(-10)}${urlHash.substring(0, 6)}`, 16) % 1000000000;
+    
+    console.log(`[LiveSkin Manifest] Agent: ${agent.name}, Version: ${version}, UpdatedAt: ${agent.updatedAt}, IdleVideos: ${idleVideoUrls.split('|').length}`);
+    
     videos.forEach((v, index) => {
+      // 在视频URL上添加版本参数，避免浏览器缓存旧视频
+      // 先移除URL中可能已有的版本参数，再添加新的
+      const cleanUrl = v.url ? v.url.split('?')[0].split('&')[0] : '';
+      const cleanLoopSafeUrl = v.loopSafeUrl ? v.loopSafeUrl.split('?')[0].split('&')[0] : '';
+      const urlWithVersion = cleanUrl ? `${cleanUrl}?v=${version}` : '';
+      const loopSafeUrlWithVersion = cleanLoopSafeUrl ? `${cleanLoopSafeUrl}?v=${version}` : '';
+      
       const asset = {
         id: v._id.toString(),
-        url: v.url,
-        loopSafeUrl: v.loopSafeUrl || '',
+        url: urlWithVersion,
+        loopSafeUrl: loopSafeUrlWithVersion || '',
         thumbnailUrl: v.thumbnailUrl || '',
         duration: v.duration || 0,
         width: v.width || 0,
@@ -114,7 +145,7 @@ router.get('/manifest/:agentId', async (req, res) => {
     const manifest = {
       agentId: agent._id.toString(),
       agentName: agent.name,
-      version: 1, // 可以后续改为从 agent 读取
+      version: version, // 动态版本号，视频更新时自动变化
       status: agent.liveSkinStatus || 'pending',
       assets: {
         idle,
@@ -126,6 +157,14 @@ router.get('/manifest/:agentId', async (req, res) => {
       totalAssets: videos.length,
       generatedAt: new Date().toISOString(),
     };
+    
+    // 设置响应头，防止manifest被缓存
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': `"${version}"`, // 使用版本号作为ETag
+    });
     
     sendSuccess(res, HTTP_STATUS.OK, manifest);
   } catch (error) {

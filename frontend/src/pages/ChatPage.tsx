@@ -211,35 +211,6 @@ const ChatPage: React.FC = () => {
     { label: "Dancing", value: "character dancing rhythmically, full body shot" }
   ];
 
-  useEffect(() => {
-    if (id) {
-      getAgent(id)
-        .then(res => setAgent(res.data))
-        .catch(err => {
-          console.error(err);
-          alert('Failed to load agent');
-          navigate('/');
-        });
-      
-      getChatHistory(id)
-        .then(res => {
-            setMessages((res.data.history || []) as any);
-            if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
-            // 处理 AI 开场消息
-            if (res.data.greeting && (!res.data.history || res.data.history.length === 0)) {
-              setGreeting(res.data.greeting);
-            }
-        })
-        .catch(console.error);
-      
-      // 获取侦测状态
-      fetchDetectionStatus(id);
-    }
-    
-    // Fetch initial balance
-    fetchBalance();
-  }, [id, navigate]);
-  
   // 获取用户类型侦测状态
   const fetchDetectionStatus = async (agentId: string) => {
     try {
@@ -253,6 +224,49 @@ const ChatPage: React.FC = () => {
       console.error('Failed to fetch detection status', err);
     }
   };
+
+  useEffect(() => {
+    if (!id) return;
+
+    // 并行执行所有初始化请求，避免串行阻塞
+    // 这样可以显著减少启动时间，因为所有请求可以同时进行
+    Promise.all([
+      // 1. 获取 Agent 信息（关键路径，优先显示）
+      getAgent(id)
+        .then(res => {
+          setAgent(res.data);
+          return res.data;
+        })
+        .catch(err => {
+          console.error(err);
+          alert('Failed to load agent');
+          navigate('/');
+          throw err;
+        }),
+      
+      // 2. 获取聊天历史（可以稍后加载）
+      getChatHistory(id)
+        .then(res => {
+          setMessages((res.data.history || []) as any);
+          if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
+          // 处理 AI 开场消息
+          if (res.data.greeting && (!res.data.history || res.data.history.length === 0)) {
+            setGreeting(res.data.greeting);
+          }
+        })
+        .catch(console.error),
+      
+      // 3. 获取余额（非关键，可以延迟）
+      fetchBalance().catch(console.error),
+      
+      // 4. 获取侦测状态（非关键，可以延迟）
+      fetchDetectionStatus(id).catch(console.error),
+    ]).catch(err => {
+      // 如果关键请求失败，错误已在各自的 catch 中处理
+      console.error('Initialization error:', err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, navigate]);
   
   // 处理选择三选一回复（侦测期）
   const handleReplyOptionSelect = async (option: ReplyOption, index: number) => {
