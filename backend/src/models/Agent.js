@@ -120,6 +120,50 @@ const AgentSchema = new mongoose.Schema({
   // ========== 默认开场（如果没有配置 greetingMessages）==========
   defaultGreeting: { type: String, default: '' },
   
+  // ========== 创建者与可见性（用户创建角色功能）==========
+  creatorId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User',
+    default: null,  // null 表示官方创建
+    index: true
+  },
+  creatorType: { 
+    type: String, 
+    enum: ['official', 'user'], 
+    default: 'official',
+    index: true
+  },
+  visibility: { 
+    type: String, 
+    enum: ['private', 'pending', 'public', 'rejected'], 
+    default: 'public',  // 官方创建默认 public，用户创建时会设为 private
+    index: true
+  },
+  reviewStatus: {
+    submittedAt: { type: Date },
+    reviewedAt: { type: Date },
+    reviewerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejectReason: { type: String, default: '' },
+    reviewHistory: [{
+      action: { type: String, enum: ['submit', 'approve', 'reject', 'withdraw', 'set_private', 'set_public', 'set_rejected'] },
+      at: { type: Date, default: Date.now },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      reason: { type: String, default: '' }
+    }]
+  },
+  
+  // ========== 用户创建统计（用于推荐排序）==========
+  stats: {
+    totalChats: { type: Number, default: 0 },
+    uniqueUsers: { type: Number, default: 0 },
+    avgRating: { type: Number, default: 0 },
+    totalRatings: { type: Number, default: 0 }
+  },
+  
 }, { timestamps: true });
+
+// 复合索引，用于快速查询公开角色
+AgentSchema.index({ visibility: 1, status: 1, creatorType: 1 });
+AgentSchema.index({ creatorId: 1, visibility: 1 });
 
 module.exports = mongoose.model('Agent', AgentSchema);

@@ -247,12 +247,12 @@ const ChatPage: React.FC = () => {
       // 2. 获取聊天历史（可以稍后加载）
       getChatHistory(id)
         .then(res => {
-          setMessages((res.data.history || []) as any);
-          if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
-          // 处理 AI 开场消息
-          if (res.data.greeting && (!res.data.history || res.data.history.length === 0)) {
-            setGreeting(res.data.greeting);
-          }
+            setMessages((res.data.history || []) as any);
+            if (res.data.intimacy !== undefined) setIntimacy(res.data.intimacy);
+            // 处理 AI 开场消息
+            if (res.data.greeting && (!res.data.history || res.data.history.length === 0)) {
+              setGreeting(res.data.greeting);
+            }
         })
         .catch(console.error),
       

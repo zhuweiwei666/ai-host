@@ -1163,10 +1163,10 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       // 异步生成TTS，不阻塞响应
       (async () => {
         try {
-          const ttsText = cleanTextForTTS(reply);
-          if (ttsText) {
-            // Check balance for Voice (Cost: 5)
-            await walletService.consume(userId, 5, 'ai_voice', agentId);
+      const ttsText = cleanTextForTTS(reply);
+      if (ttsText) {
+        // Check balance for Voice (Cost: 5)
+        await walletService.consume(userId, 5, 'ai_voice', agentId);
             const generatedAudioUrl = await fishAudioService.generateAudio(ttsText, agent.voiceId);
             
             if (generatedAudioUrl) {
@@ -1175,25 +1175,25 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
               audioUrl = generatedAudioUrl; // 用于返回（如果客户端还在等待）
             }
             
-            // LOG TTS COST
-            try {
-              const charCount = ttsText.length;
-              const ttsModel = 'fish-audio';
-              const ttsCost = costCalculator.calculateTTS(ttsModel, charCount);
-              await UsageLog.create({
-                agentId,
-                userId,
-                type: 'tts',
-                provider: 'fish-audio',
-                model: ttsModel,
-                inputUnits: charCount,
-                outputUnits: 1,
-                cost: ttsCost,
-              });
-            } catch (logErr) {
-              console.error('TTS Log Error', logErr);
-            }
-          }
+        // LOG TTS COST
+        try {
+          const charCount = ttsText.length;
+          const ttsModel = 'fish-audio';
+          const ttsCost = costCalculator.calculateTTS(ttsModel, charCount);
+          await UsageLog.create({
+            agentId,
+            userId,
+            type: 'tts',
+            provider: 'fish-audio',
+            model: ttsModel,
+            inputUnits: charCount,
+            outputUnits: 1,
+            cost: ttsCost,
+          });
+        } catch (logErr) {
+          console.error('TTS Log Error', logErr);
+        }
+      }
         } catch (ttsErr) {
           console.error('[Chat] Async TTS generation failed:', ttsErr);
           // TTS失败不影响主流程，只记录错误

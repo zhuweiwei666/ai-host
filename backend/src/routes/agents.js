@@ -27,13 +27,36 @@ const checkDBConnection = () => {
 };
 
 // GET /api/agents - Public access (no auth required)
+// 普通用户/未登录：只返回 public 角色
+// 管理员：可通过参数查看所有角色
 router.get('/', optionalAuth, async (req, res) => {
   try {
     // Check MongoDB connection before query
     checkDBConnection();
     
-    const { status, style } = req.query;
+    const { status, style, visibility, creatorType, includeAll } = req.query;
+    const isAdmin = req.user && req.user.role === 'admin';
+    
     const query = {};
+    
+    // 可见性过滤
+    // 管理员可以通过 includeAll=true 查看所有角色
+    // 普通用户/未登录只能看到 public 角色
+    if (isAdmin && includeAll === 'true') {
+      // 管理员查看所有角色，可以按 visibility 筛选
+      if (visibility) {
+        query.visibility = visibility;
+      }
+    } else {
+      // 非管理员或管理员普通浏览：只显示 public 角色
+      query.visibility = 'public';
+    }
+    
+    // 创建者类型筛选（管理员可用）
+    if (isAdmin && creatorType) {
+      query.creatorType = creatorType;
+    }
+    
     if (status) {
       query.status = status;
     }
@@ -41,15 +64,20 @@ router.get('/', optionalAuth, async (req, res) => {
       // Handle default value: if style is 'realistic', also include records with undefined/null style
       // (since Mongoose default is 'realistic' but doesn't apply to existing documents)
       if (style === 'realistic') {
-        query.$or = [
-          { style: 'realistic' },
-          { style: { $exists: false } },
-          { style: null }
-        ];
+        // 需要与现有 query 合并
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { style: 'realistic' },
+            { style: { $exists: false } },
+            { style: null }
+          ]
+        });
       } else {
-      query.style = style;
+        query.style = style;
       }
     }
+    
     const agents = await Agent.find(query).sort({ createdAt: -1 });
     const { sendSuccess } = require('../utils/errorHandler');
     sendSuccess(res, 200, agents);
@@ -508,17 +536,17 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
       const urlWithVersion = cleanUrl ? `${cleanUrl}?v=${version}` : '';
       
       return {
-        id: v?._id?.toString?.() || `legacy_${index}`,
+      id: v?._id?.toString?.() || `legacy_${index}`,
         url: urlWithVersion,
-        thumbnailUrl: v?.thumbnailUrl || agent.avatarUrls?.[index] || agent.avatarUrls?.[0] || '',
-        duration: v?.duration || 0,
-        width: v?.width || 0,
-        height: v?.height || 0,
-        isVertical: typeof v?.isVertical === 'boolean' ? v.isVertical : true,
-        sortOrder: typeof v?.sortOrder === 'number' ? v.sortOrder : index,
-        tags: Array.isArray(v?.tags) ? v.tags : [],
-        scaleLevel: typeof v?.scaleLevel === 'number' ? v.scaleLevel : 1,
-        index,
+      thumbnailUrl: v?.thumbnailUrl || agent.avatarUrls?.[index] || agent.avatarUrls?.[0] || '',
+      duration: v?.duration || 0,
+      width: v?.width || 0,
+      height: v?.height || 0,
+      isVertical: typeof v?.isVertical === 'boolean' ? v.isVertical : true,
+      sortOrder: typeof v?.sortOrder === 'number' ? v.sortOrder : index,
+      tags: Array.isArray(v?.tags) ? v.tags : [],
+      scaleLevel: typeof v?.scaleLevel === 'number' ? v.scaleLevel : 1,
+      index,
       };
     };
 

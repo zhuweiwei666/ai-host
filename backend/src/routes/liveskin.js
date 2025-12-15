@@ -108,7 +108,7 @@ router.get('/manifest/:agentId', async (req, res) => {
         sortOrder: v.sortOrder || index,
       };
       
-      idle.push(asset);
+          idle.push(asset);
     });
     
     // 按 sortOrder 排序
