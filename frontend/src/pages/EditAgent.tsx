@@ -183,7 +183,7 @@ const EditAgent: React.FC = () => {
   );
 
   const previewMetaByUrl = useMemo(() => {
-    const m = new Map<string, { id: string; tags?: string[]; assetType?: string; emotionId?: string }>();
+    const m = new Map<string, { id: string; tags?: string[]; assetType?: 'idle' | 'reaction' | 'transition' | 'speak'; emotionId?: string }>();
     previewVideos.forEach((v) => {
       if (!v.url) return;
       const meta = { id: v.id, tags: v.tags, assetType: v.assetType, emotionId: v.emotionId };

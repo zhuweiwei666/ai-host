@@ -117,7 +117,7 @@ export interface LiveSkinManifest {
   agentId: string;
   agentName: string;
   version: number;
-  status: string;
+  status: 'pending' | 'generating' | 'ready' | 'failed';
   assets: {
     idle: PreviewVideoItem[];
     reactions: Record<string, PreviewVideoItem[]>;

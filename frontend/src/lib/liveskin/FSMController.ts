@@ -6,7 +6,6 @@
 
 import {
   FSMState,
-  FSMEvent,
   FSMConfig,
   FSMSnapshot,
   LiveSkinManifest,
@@ -33,10 +32,10 @@ export class FSMController {
   private manifest: LiveSkinManifest | null = null;
   private queue: EventQueue;
   private player: VideoPlayer;
-  private config: FSMConfig;
+  private _config: FSMConfig;
   private callbacks: FSMCallbacks = {};
   
-  private currentReaction: QueuedEvent | null = null;
+  private _currentReaction: QueuedEvent | null = null;
   private isSpeaking = false;
   private lastTransitionAt = 0;
 
@@ -44,7 +43,7 @@ export class FSMController {
     videoElement?: HTMLVideoElement,
     config: Partial<FSMConfig> = {}
   ) {
-    this.config = { ...DEFAULT_FSM_CONFIG, ...config };
+    this._config = { ...DEFAULT_FSM_CONFIG, ...config };
     this.queue = new EventQueue(config);
     this.player = new VideoPlayer(videoElement);
     
@@ -311,7 +310,7 @@ export class FSMController {
       return;
     }
 
-    this.currentReaction = event;
+    this._currentReaction = event;
     const latencyMs = Date.now() - event.queuedAt;
 
     // 获取对应情绪的反应视频
