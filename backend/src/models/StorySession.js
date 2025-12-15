@@ -48,6 +48,8 @@ const StorySessionSchema = new mongoose.Schema({
   // 历史段落（存储最近 N 段用于上下文）
   paragraphs: [{
     content: { type: String, required: true },
+    imageUrl: { type: String },   // 每层楼的配图 URL
+    imagePrompt: { type: String }, // 图片生成使用的 prompt
     source: { type: String, enum: ['ai', 'user_input'], default: 'ai' }, // 段落来源
     userInput: { type: String },  // 如果是响应用户输入，记录用户说的话
     createdAt: { type: Date, default: Date.now },
@@ -77,9 +79,11 @@ const StorySessionSchema = new mongoose.Schema({
 StorySessionSchema.index({ userId: 1, agentId: 1, status: 1 });
 
 // 添加段落的方法
-StorySessionSchema.methods.addParagraph = function(content, source = 'ai', userInput = null) {
+StorySessionSchema.methods.addParagraph = function(content, source = 'ai', userInput = null, imageUrl = null, imagePrompt = null) {
   this.paragraphs.push({
     content,
+    imageUrl,
+    imagePrompt,
     source,
     userInput,
     createdAt: new Date(),

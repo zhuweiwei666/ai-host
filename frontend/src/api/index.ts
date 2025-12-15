@@ -872,6 +872,8 @@ export interface StoryState {
 
 export interface StoryParagraph {
   content: string;
+  imageUrl?: string;      // 每层楼的配图
+  imagePrompt?: string;   // 图片生成使用的 prompt
   source: 'ai' | 'user_input';
   userInput?: string;
   createdAt: string;
@@ -893,6 +895,7 @@ export interface StorySession {
 export interface StoryStartResponse {
   sessionId: string;
   opening: string;
+  openingImageUrl?: string;  // 开场配图
   progress: number;
   state: StoryState;
   paragraphs: StoryParagraph[];
@@ -901,11 +904,13 @@ export interface StoryStartResponse {
 
 export interface StoryContinueResponse {
   content: string;
+  imageUrl?: string;      // 每层楼的配图
+  imagePrompt?: string;   // 图片生成使用的 prompt
   progress: number;
   state: StoryState;
   isEnding: boolean;
-  balance: number;
-  cost: number;
+  balance?: number;
+  cost?: number;
 }
 
 // 开始新故事

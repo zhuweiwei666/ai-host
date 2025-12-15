@@ -11,6 +11,12 @@ import {
   Agent,
 } from '../api';
 
+/**
+ * 论坛帖子式故事页面
+ * 
+ * 每层楼 = 一段内容 + 配图
+ * 类似 91 论坛 / Twitter / 微博的体验
+ */
 export default function StoryPage() {
   const { id: agentId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -32,7 +38,7 @@ export default function StoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [userInput, setUserInput] = useState('');
-  const [showHistory, setShowHistory] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
   
   // 加载角色和故事
   useEffect(() => {
@@ -43,11 +49,9 @@ export default function StoryPage() {
         setLoading(true);
         setError(null);
         
-        // 获取角色信息
         const agentRes = await getAgent(agentId);
         setAgent(agentRes.data);
         
-        // 开始/继续故事
         const storyRes = await startStory(agentId);
         setSessionId(storyRes.data.sessionId);
         setParagraphs(storyRes.data.paragraphs);
@@ -82,16 +86,19 @@ export default function StoryPage() {
       
       const res = await continueStory(sessionId);
       
-      // 添加新段落
       setParagraphs(prev => [...prev, {
         content: res.data.content,
+        imageUrl: res.data.imageUrl,
+        imagePrompt: res.data.imagePrompt,
         source: 'ai',
         createdAt: new Date().toISOString(),
       }]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       setIsEnding(res.data.isEnding);
-      setBalance(res.data.balance);
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+      }
       
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '推进失败';
@@ -114,9 +121,10 @@ export default function StoryPage() {
       
       const res = await inputStory(sessionId, input);
       
-      // 添加新段落
       setParagraphs(prev => [...prev, {
         content: res.data.content,
+        imageUrl: res.data.imageUrl,
+        imagePrompt: res.data.imagePrompt,
         source: 'user_input',
         userInput: input,
         createdAt: new Date().toISOString(),
@@ -124,7 +132,9 @@ export default function StoryPage() {
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       setIsEnding(res.data.isEnding);
-      setBalance(res.data.balance);
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+      }
       
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '处理失败';
@@ -135,7 +145,7 @@ export default function StoryPage() {
   };
   
   // 键盘事件
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleInput();
@@ -163,208 +173,276 @@ export default function StoryPage() {
       setLoading(false);
     }
   };
+
+  // 格式化时间
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  };
   
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-gradient-to-b from-gray-900 to-gray-800">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+      <div className="flex justify-center items-center min-h-screen bg-gray-950">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-pink-500 border-t-transparent"></div>
       </div>
     );
   }
   
-  // 获取最后一段内容
-  const lastParagraph = paragraphs[paragraphs.length - 1];
+  const avatarUrl = agent?.avatarUrls?.[0] || agent?.avatarUrl;
   
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/30 backdrop-blur-sm">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </button>
-        
-        <div className="flex items-center gap-2">
-          {agent?.avatarUrls?.[0] && (
-            <img src={agent.avatarUrls[0]} alt={agent.name} className="w-8 h-8 rounded-full object-cover" />
-          )}
-          <span className="font-medium">{agent?.name}</span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {balance !== null && (
-            <span className="text-sm text-pink-400">💎 {balance}</span>
-          )}
-        </div>
-      </div>
-      
-      {/* Progress Bar */}
-      <div className="px-4 py-2 bg-black/20">
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">第 {paragraphs.length} 段</span>
-          <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+      {/* Header - 帖子标题栏 */}
+      <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          <div className="flex-1 text-center">
+            <h1 className="font-semibold text-base">{agent?.name}的故事</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {paragraphs.length} 楼 · {Math.round(progress)}%
+            </p>
           </div>
-          <span className="text-xs text-gray-400">{Math.round(progress)}%</span>
+          
+          <div className="flex items-center gap-1 text-pink-400 text-sm">
+            <span>💎</span>
+            <span>{balance ?? '--'}</span>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="h-0.5 bg-gray-800">
+          <div 
+            className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
       
       {/* Error Alert */}
       {error && (
-        <div className="mx-4 mt-2 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex justify-between items-center">
-          <span className="text-sm text-red-300">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-300 hover:text-white">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <div className="mx-4 mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex justify-between items-center">
+          <span className="text-sm text-red-400">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-white p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </button>
         </div>
       )}
       
-      {/* Content Area */}
+      {/* 论坛帖子流 */}
       <div 
         ref={contentRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ maxHeight: 'calc(100vh - 280px)' }}
+        className="flex-1 overflow-y-auto pb-40"
       >
-        {showHistory ? (
-          // 历史段落列表
-          <div className="space-y-4">
-            {paragraphs.map((p, idx) => (
-              <div key={idx} className="bg-white/5 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2 text-xs text-gray-400">
-                  <span>第 {idx + 1} 段</span>
-                  {p.source === 'user_input' && p.userInput && (
-                    <span className="text-pink-400">回复: "{p.userInput.slice(0, 20)}..."</span>
+        {paragraphs.map((p, idx) => (
+          <div 
+            key={idx} 
+            className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
+          >
+            <div className="p-4">
+              {/* 楼层头部：头像 + 名字 + 楼层号 + 时间 */}
+              <div className="flex items-start gap-3">
+                {/* 头像 */}
+                <div className="flex-shrink-0">
+                  {avatarUrl ? (
+                    <img 
+                      src={avatarUrl} 
+                      alt={agent?.name} 
+                      className="w-10 h-10 rounded-full object-cover ring-2 ring-pink-500/30"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+                      {agent?.name?.[0] || '?'}
+                    </div>
                   )}
                 </div>
-                <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">{p.content}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          // 当前段落
-          <div className="min-h-full flex flex-col justify-center">
-            {lastParagraph?.source === 'user_input' && lastParagraph.userInput && (
-              <div className="mb-4 p-3 bg-pink-500/10 border border-pink-500/30 rounded-lg">
-                <span className="text-xs text-pink-400 block mb-1">你说/做了:</span>
-                <p className="text-pink-200">{lastParagraph.userInput}</p>
-              </div>
-            )}
-            
-            <div className="text-lg text-gray-100 leading-relaxed whitespace-pre-wrap">
-              {generating ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-pulse">正在生成...</div>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-pink-500 border-t-transparent"></div>
+                
+                {/* 内容区 */}
+                <div className="flex-1 min-w-0">
+                  {/* 名字 + 楼层 + 时间 */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-white">{agent?.name}</span>
+                    <span className="text-xs text-gray-500">#{idx + 1}楼</span>
+                    <span className="text-xs text-gray-500">·</span>
+                    <span className="text-xs text-gray-500">{formatTime(p.createdAt)}</span>
+                  </div>
+                  
+                  {/* 如果是用户输入触发，显示引用 */}
+                  {p.source === 'user_input' && p.userInput && (
+                    <div className="mb-2 pl-3 border-l-2 border-pink-500/50 text-sm text-gray-400">
+                      回复：{p.userInput}
+                    </div>
+                  )}
+                  
+                  {/* 配图 */}
+                  {p.imageUrl && (
+                    <div className="mb-2 -mx-1">
+                      <img 
+                        src={p.imageUrl} 
+                        alt="配图" 
+                        className="w-full max-w-sm rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => setExpandedImage(p.imageUrl || null)}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* 文字内容 */}
+                  <p className="text-gray-100 leading-relaxed text-[15px]">
+                    {p.content}
+                  </p>
+                  
+                  {/* 互动按钮 */}
+                  <div className="flex items-center gap-6 mt-3 text-gray-500">
+                    <button className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                      <span>喜欢</span>
+                    </button>
+                    <button className="flex items-center gap-1.5 text-xs hover:text-blue-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                      <span>分享</span>
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                lastParagraph?.content
-              )}
-            </div>
-            
-            {isEnding && (
-              <div className="mt-6 text-center">
-                <span className="text-2xl">🎉</span>
-                <p className="text-pink-400 mt-2">故事完结</p>
               </div>
-            )}
+            </div>
+          </div>
+        ))}
+        
+        {/* 生成中的占位 */}
+        {generating && (
+          <div className="p-4 border-b border-gray-800/50">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-gray-800 animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-gray-800 rounded animate-pulse w-24" />
+                <div className="h-32 bg-gray-800 rounded-xl animate-pulse" />
+                <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* 故事完结 */}
+        {isEnding && (
+          <div className="p-8 text-center">
+            <div className="text-4xl mb-3">🎉</div>
+            <h3 className="text-lg font-semibold text-pink-400 mb-2">故事完结</h3>
+            <p className="text-gray-400 text-sm mb-4">感谢你的陪伴</p>
+            <button 
+              onClick={handleRestart}
+              className="px-6 py-2 bg-pink-500 hover:bg-pink-600 rounded-full text-sm font-medium transition-colors"
+            >
+              再来一次
+            </button>
           </div>
         )}
       </div>
       
-      {/* Bottom Actions */}
-      <div className="px-4 pb-6 pt-2 bg-gradient-to-t from-gray-900 to-transparent">
-        {/* Toggle History */}
-        <div className="flex justify-center mb-3">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="text-xs text-gray-400 hover:text-white transition-colors"
-          >
-            {showHistory ? '查看当前' : `查看历史 (${paragraphs.length} 段)`}
-          </button>
-        </div>
-        
-        {!isEnding && (
-          <>
-            {/* User Input */}
-            <div className="mb-3">
-              <div className="relative">
-                <textarea
-                  value={userInput}
-                  onChange={e => setUserInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="我想说点什么..."
-                  rows={2}
+      {/* 底部操作栏 */}
+      {!isEnding && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
+          <div className="p-3">
+            {/* 输入框 */}
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="text"
+                value={userInput}
+                onChange={e => setUserInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="说点什么..."
+                disabled={generating}
+                className="flex-1 px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-full text-white placeholder-gray-500 focus:outline-none focus:border-pink-500 disabled:opacity-50 text-sm"
+              />
+              {userInput.trim() && (
+                <button
+                  onClick={handleInput}
                   disabled={generating}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 resize-none focus:outline-none focus:border-pink-500 transition-colors disabled:opacity-50"
-                />
-                {userInput.trim() && (
-                  <button
-                    onClick={handleInput}
-                    disabled={generating}
-                    className="absolute right-2 bottom-2 px-4 py-1.5 bg-pink-500 text-white text-sm rounded-lg hover:bg-pink-600 disabled:opacity-50 transition-colors"
-                  >
-                    发送
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            {/* Divider */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex-1 h-px bg-white/20"></div>
-              <span className="text-xs text-gray-400">或者</span>
-              <div className="flex-1 h-px bg-white/20"></div>
-            </div>
-            
-            {/* Continue Button */}
-            <button
-              onClick={handleContinue}
-              disabled={generating}
-              className="w-full py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-medium rounded-xl hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                  生成中...
-                </>
-              ) : (
-                <>
-                  让她继续
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                  <span className="text-sm opacity-80">(2💎)</span>
-                </>
+                  className="px-4 py-2.5 bg-pink-500 text-white text-sm font-medium rounded-full hover:bg-pink-600 disabled:opacity-50 transition-colors"
+                >
+                  发送
+                </button>
               )}
-            </button>
-          </>
-        )}
-        
-        {/* Footer Actions */}
-        <div className="flex justify-between mt-4">
-          <button
-            onClick={handleRestart}
-            className="text-sm text-gray-400 hover:text-white transition-colors"
+            </div>
+            
+            {/* 操作按钮 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleContinue}
+                disabled={generating}
+                className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-medium rounded-xl hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
+              >
+                {generating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    <span>生成中...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>下一楼</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleRestart}
+                className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors"
+                title="重新开始"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          {/* Safe Area for iOS */}
+          <div className="h-safe-area-inset-bottom bg-gray-900" />
+        </div>
+      )}
+      
+      {/* 图片放大查看 */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <img 
+            src={expandedImage} 
+            alt="放大查看" 
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+          <button 
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white"
+            onClick={() => setExpandedImage(null)}
           >
-            从头开始
-          </button>
-          <button
-            onClick={() => navigate('/')}
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            换个角色
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
