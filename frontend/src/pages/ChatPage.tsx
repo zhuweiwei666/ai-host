@@ -436,8 +436,8 @@ const ChatPage: React.FC = () => {
           // If mode is NOT text, we show a loading placeholder immediately
           isMediaLoading: activeMode !== 'text',
           imageUrl: activeMode !== 'text' ? 'loading_placeholder' : undefined,
-          // 如果TTS正在生成，标记为加载中
-          isLoadingAudio: textRes.data.ttsGenerating || false
+          // 如果没有audioUrl，标记为加载中（将自动生成TTS）
+          isLoadingAudio: !textRes.data.audioUrl
       };
 
       setMessages(prev => [...prev, assistantMessage]);
