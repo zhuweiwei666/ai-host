@@ -1,10 +1,9 @@
 /**
  * Grok Image Generation Provider
  * 
- * 使用 xAI 的图片生成 API (Aurora 模型)
+ * 使用 xAI 的图片生成 API
  * 端点: https://api.x.ai/v1/images/generations
- * 模型: grok-2-aurora (最新，2024年12月发布)
- * 价格: $0.07/张
+ * 模型: grok-2-image (xAI 官方图片生成模型)
  */
 
 const axios = require('axios');
@@ -15,7 +14,7 @@ class GrokImageProvider {
   constructor() {
     this.apiKey = process.env.GORK_API_KEY;
     this.apiUrl = 'https://api.x.ai/v1/images/generations';
-    this.model = 'grok-2-aurora'; // 最新的 Aurora 模型，质量更高
+    this.model = 'grok-2-image'; // xAI 官方图片生成模型
   }
 
   /**
