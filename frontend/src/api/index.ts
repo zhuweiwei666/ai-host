@@ -859,3 +859,75 @@ export const rejectAgent = (id: string, reason: string) =>
 // 设置可见性（管理员强制操作）
 export const setAgentVisibility = (id: string, visibility: 'private' | 'public' | 'rejected', reason?: string) =>
   http.post<ReviewAgent>(`/admin/review/${id}/set-visibility`, { visibility, reason });
+
+// ==================== 论坛式剧情模式 API ====================
+
+export interface StoryState {
+  scene: string;
+  time: string;
+  mood: string;
+  clothes: string;
+  lastAction: string;
+}
+
+export interface StoryParagraph {
+  content: string;
+  source: 'ai' | 'user_input';
+  userInput?: string;
+  createdAt: string;
+}
+
+export interface StorySession {
+  sessionId: string;
+  agentId: string;
+  agentName?: string;
+  agentAvatar?: string;
+  progress: number;
+  state: StoryState;
+  paragraphs: StoryParagraph[];
+  totalParagraphs: number;
+  status: 'active' | 'completed' | 'abandoned';
+  isExisting?: boolean;
+}
+
+export interface StoryStartResponse {
+  sessionId: string;
+  opening: string;
+  progress: number;
+  state: StoryState;
+  paragraphs: StoryParagraph[];
+  isExisting: boolean;
+}
+
+export interface StoryContinueResponse {
+  content: string;
+  progress: number;
+  state: StoryState;
+  isEnding: boolean;
+  balance: number;
+  cost: number;
+}
+
+// 开始新故事
+export const startStory = (agentId: string) =>
+  http.post<StoryStartResponse>('/story/start', { agentId });
+
+// AI 自动推进剧情
+export const continueStory = (sessionId: string) =>
+  http.post<StoryContinueResponse>('/story/continue', { sessionId });
+
+// 用户输入推进剧情
+export const inputStory = (sessionId: string, userInput: string) =>
+  http.post<StoryContinueResponse>('/story/input', { sessionId, userInput });
+
+// 获取故事状态
+export const getStoryState = (sessionId: string) =>
+  http.get<StorySession>(`/story/${sessionId}`);
+
+// 重新开始故事
+export const restartStory = (agentId: string) =>
+  http.post<StoryStartResponse>('/story/restart', { agentId });
+
+// 获取用户所有活跃故事
+export const getUserStorySessions = () =>
+  http.get<{ agentId: { _id: string; name: string; avatarUrls: string[] }; progress: number; updatedAt: string }[]>('/story/user/sessions');

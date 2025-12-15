@@ -204,6 +204,7 @@ loadRoute('/api/admin', './routes/adminWallet');
 loadRoute('/api/admin/live-skin', './routes/adminLiveSkin');
 loadRoute('/api/user-agents', './routes/userAgents');
 loadRoute('/api/admin/review', './routes/adminReview');
+loadRoute('/api/story', './routes/story');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint

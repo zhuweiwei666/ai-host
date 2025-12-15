@@ -17,6 +17,7 @@ import SpatialAvatarLab from './pages/SpatialAvatarLab';
 import MyAgents from './pages/MyAgents';
 import CreateUserAgent from './pages/CreateUserAgent';
 import ReviewAgents from './pages/ReviewAgents';
+import StoryPage from './pages/StoryPage';
 import './index.css';
 
 // Suppress browser extension errors in console
@@ -88,6 +89,11 @@ const App = (
         <Route path="/chat/:id" element={
           <ProtectedRoute>
             <ChatPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/story/:id" element={
+          <ProtectedRoute>
+            <StoryPage />
           </ProtectedRoute>
         } />
       </Routes>

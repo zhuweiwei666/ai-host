@@ -160,6 +160,48 @@ const AgentSchema = new mongoose.Schema({
     totalRatings: { type: Number, default: 0 }
   },
   
+  // ========== 论坛式剧情模式配置 ==========
+  storyConfig: {
+    // 是否启用剧情模式
+    enabled: { type: Boolean, default: true },
+    
+    // 开场白（故事第一段）
+    opening: { type: String, default: '' },
+    
+    // 故事大纲节拍（控制宏观走向）
+    storyBeats: [{
+      progressRange: [{ type: Number }, { type: Number }],  // [0, 10], [10, 30], ...
+      goal: { type: String },                                // "初次相遇，建立好感"
+      sceneHint: { type: String },                           // "客厅"
+      moodHint: { type: String },                            // "暧昧"
+    }],
+    
+    // 内容尺度等级
+    contentRating: {
+      type: String,
+      enum: ['mild', 'moderate', 'explicit'],
+      default: 'moderate'
+    },
+    
+    // 每段字数范围
+    paragraphLength: {
+      min: { type: Number, default: 200 },
+      max: { type: Number, default: 500 }
+    },
+    
+    // 预设结局数量
+    endingsCount: { type: Number, default: 1 },
+    
+    // 角色外貌描述（用于 prompt）
+    appearance: { type: String, default: '' },
+    
+    // 角色性格描述（用于 prompt）
+    personality: { type: String, default: '' },
+    
+    // 背景故事（用于 prompt）
+    backstory: { type: String, default: '' },
+  },
+  
 }, { timestamps: true });
 
 // 复合索引，用于快速查询公开角色
