@@ -5,6 +5,7 @@
  */
 
 import { VideoAsset, isAtSafeCut } from '../../types/liveskin';
+import { getVideoWithCache } from '../../utils/videoCache';
 
 export interface VideoPlayerCallbacks {
   onTimeUpdate?: (currentTime: number, duration: number) => void;
@@ -22,6 +23,7 @@ export class VideoPlayer {
   private isLooping = false;
   private lastSafeCutNotified = -1;
   private safeCutCheckInterval: number | null = null;
+  private currentBlobUrl: string | null = null; // 用于清理 blob URL
 
   constructor(videoElement?: HTMLVideoElement) {
     if (videoElement) {
@@ -50,6 +52,11 @@ export class VideoPlayer {
       window.clearInterval(this.safeCutCheckInterval);
       this.safeCutCheckInterval = null;
     }
+    // 清理 blob URL
+    if (this.currentBlobUrl) {
+      URL.revokeObjectURL(this.currentBlobUrl);
+      this.currentBlobUrl = null;
+    }
   }
 
   /**
@@ -72,12 +79,29 @@ export class VideoPlayer {
     this.lastSafeCutNotified = -1;
 
     // 优先使用 loopSafeUrl（如果存在且需要循环）
-    const url = loop && asset.loopSafeUrl ? asset.loopSafeUrl : asset.url;
-    
-    this.videoElement.src = url;
-    this.videoElement.loop = loop;
+    const originalUrl = loop && asset.loopSafeUrl ? asset.loopSafeUrl : asset.url;
     
     try {
+      // 清理之前的 blob URL
+      if (this.currentBlobUrl) {
+        URL.revokeObjectURL(this.currentBlobUrl);
+        this.currentBlobUrl = null;
+      }
+
+      // 使用缓存获取视频（如果是 IDLE 视频则缓存）
+      const isIdleVideo = asset.assetType === 'idle';
+      const videoUrl = isIdleVideo 
+        ? await getVideoWithCache(originalUrl)
+        : originalUrl;
+      
+      // 如果是 blob URL，保存以便后续清理
+      if (videoUrl.startsWith('blob:')) {
+        this.currentBlobUrl = videoUrl;
+      }
+      
+      this.videoElement.src = videoUrl;
+      this.videoElement.loop = loop;
+      
       await this.videoElement.play();
     } catch (err) {
       console.error('[VideoPlayer] Play failed:', err);

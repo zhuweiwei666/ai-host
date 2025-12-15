@@ -16,6 +16,7 @@ import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
 import DraggableMediaList from '../components/DraggableMediaList';
 import { normalizeImageUrl } from '../utils/imageUrl';
+import { useCachedVideo } from '../hooks/useCachedVideo';
 
 const canonicalizeUrlKey = (url: string) => {
   if (!url) return '';
@@ -109,6 +110,24 @@ const DEFAULT_STAGE_PROMPTS = {
 
 **视觉尺度：**
 - 无任何限制，可以描述任何画面和动作`,
+};
+
+// IDLE 视频预览组件（使用缓存）
+const IdleVideoPreview: React.FC<{ url: string }> = ({ url }) => {
+  const cachedUrl = useCachedVideo(url, true); // IDLE 视频使用缓存
+  
+  if (!cachedUrl) return null;
+  
+  return (
+    <video
+      src={cachedUrl}
+      className="w-12 h-12 rounded object-cover border border-green-300"
+      muted
+      loop
+      onMouseEnter={(e) => e.currentTarget.play()}
+      onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+    />
+  );
 };
 
 const EditAgent: React.FC = () => {
@@ -991,13 +1010,8 @@ const EditAgent: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           {idleVideoStatus?.idleVideo && (
-                            <video
-                              src={idleVideoStatus.idleVideo.loopSafeUrl || idleVideoStatus.idleVideo.url}
-                              className="w-12 h-12 rounded object-cover border border-green-300"
-                              muted
-                              loop
-                              onMouseEnter={(e) => e.currentTarget.play()}
-                              onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                            <IdleVideoPreview 
+                              url={idleVideoStatus.idleVideo.loopSafeUrl || idleVideoStatus.idleVideo.url}
                             />
                           )}
                           <label className={`relative cursor-pointer px-3 py-1.5 rounded text-xs font-medium transition-colors ${
