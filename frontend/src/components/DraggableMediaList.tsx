@@ -123,7 +123,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
   };
 
   // 获取标签按钮样式
-  const getTagStyle = (t: string, isSelected: boolean, catColor: string) => {
+  const getTagStyle = (_t: string, isSelected: boolean, catColor: string) => {
     const colorMap: Record<string, { selected: string; normal: string }> = {
       blue: {
         selected: 'bg-blue-500 text-white border-blue-500',
