@@ -92,7 +92,46 @@ export function useLiveSkin(
       try {
         // 加载 manifest
         const response = await getLiveSkinManifest(agentId);
-        const manifest = response.data;
+        // 从 API 响应转换为 FSM 所需的类型
+        const apiManifest = response.data;
+        const manifest: LiveSkinManifest = {
+          ...apiManifest,
+          assets: {
+            idle: (apiManifest.assets.idle || []).map(v => ({
+              ...v,
+              duration: v.duration || 0,
+              safeCutPoints: v.safeCutPoints || [],
+              poseId: v.poseId || 'neutral',
+              loopSafe: v.loopSafe || false,
+            })),
+            reactions: Object.fromEntries(
+              Object.entries(apiManifest.assets.reactions || {}).map(([k, arr]) => [
+                k,
+                (arr || []).map((v: any) => ({
+                  ...v,
+                  duration: v.duration || 0,
+                  safeCutPoints: v.safeCutPoints || [],
+                  poseId: v.poseId || 'neutral',
+                  loopSafe: v.loopSafe || false,
+                })),
+              ])
+            ),
+            transitions: (apiManifest.assets.transitions || []).map(v => ({
+              ...v,
+              duration: v.duration || 0,
+              safeCutPoints: v.safeCutPoints || [],
+              poseId: v.poseId || 'neutral',
+              loopSafe: v.loopSafe || false,
+            })),
+            speak: (apiManifest.assets.speak || []).map(v => ({
+              ...v,
+              duration: v.duration || 0,
+              safeCutPoints: v.safeCutPoints || [],
+              poseId: v.poseId || 'neutral',
+              loopSafe: v.loopSafe || false,
+            })),
+          },
+        };
 
         if (!mounted) return;
 
