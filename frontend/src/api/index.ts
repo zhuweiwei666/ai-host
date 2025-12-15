@@ -152,6 +152,65 @@ export const reportLiveSkinEvent = (data: {
   timestamp?: string;
 }) => http.post<{ recorded: boolean }>('/liveskin/event', data);
 
+// IDLE 视频处理 API
+export interface IdleVideoProcessResult {
+  message: string;
+  videoId: string;
+  urls: {
+    forward: string;
+    reverse: string;
+    loopSafe: string;
+  };
+  metadata: {
+    duration: number;
+    loopDuration: number;
+    width: number;
+    height: number;
+    fps: number;
+    safeCutPoints: number[];
+    processingTimeMs: number;
+  };
+  qc: {
+    passed: boolean;
+    issues: string[];
+    originalSpec: Record<string, unknown>;
+    processedSpec: Record<string, unknown>;
+  };
+}
+
+export interface IdleVideoStatus {
+  agentId: string;
+  liveSkinStatus: 'pending' | 'generating' | 'ready' | 'failed';
+  hasIdleVideo: boolean;
+  hasLoopSafe: boolean;
+  idleVideo: {
+    id: string;
+    url: string;
+    loopSafeUrl: string;
+    duration: number;
+    safeCutPoints: number[];
+  } | null;
+  totalIdleVideos: number;
+}
+
+export const checkIdleVideoDependencies = () =>
+  http.get<{ ready: boolean; dependencies: { ffmpeg: boolean; vidstab: boolean; version: string }; warnings: string[] }>('/idle-video/check');
+
+export const processIdleVideo = (agentId: string, videoFile: File) => {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  return http.post<IdleVideoProcessResult>(`/idle-video/process/${agentId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000, // 5分钟超时（视频处理耗时）
+  });
+};
+
+export const getIdleVideoStatus = (agentId: string) =>
+  http.get<IdleVideoStatus>(`/idle-video/status/${agentId}`);
+
+export const deleteIdleVideo = (agentId: string, videoId: string) =>
+  http.delete<{ message: string; remainingIdleVideos: number }>(`/idle-video/${agentId}/${videoId}`);
+
 // User Interface
 export interface User {
   _id: string; // 内部用户ID

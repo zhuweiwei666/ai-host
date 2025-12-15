@@ -164,6 +164,85 @@ const EditAgent: React.FC = () => {
     });
   };
 
+  // ==================== IDLE 视频处理 ====================
+  const [idleVideoUploading, setIdleVideoUploading] = useState(false);
+  const [idleVideoStatus, setIdleVideoStatus] = useState<{
+    hasIdleVideo: boolean;
+    hasLoopSafe: boolean;
+    idleVideo: { id: string; url: string; loopSafeUrl: string; duration: number; safeCutPoints: number[] } | null;
+  } | null>(null);
+  const [idleVideoError, setIdleVideoError] = useState<string>('');
+
+  // 加载 IDLE 视频状态
+  const loadIdleVideoStatus = async () => {
+    if (!id) return;
+    try {
+      const { getIdleVideoStatus } = await import('../api');
+      const res = await getIdleVideoStatus(id);
+      setIdleVideoStatus({
+        hasIdleVideo: res.data.hasIdleVideo,
+        hasLoopSafe: res.data.hasLoopSafe,
+        idleVideo: res.data.idleVideo,
+      });
+    } catch (err) {
+      console.warn('[EditAgent] Failed to load IDLE video status:', err);
+    }
+  };
+
+  // 处理 IDLE 视频上传
+  const handleIdleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+
+    if (!file.type.startsWith('video/')) {
+      alert('请选择视频文件');
+      return;
+    }
+
+    if (file.size > 500 * 1024 * 1024) {
+      alert('视频文件过大，请选择小于 500MB 的文件');
+      return;
+    }
+
+    setIdleVideoUploading(true);
+    setIdleVideoError('');
+
+    try {
+      const { processIdleVideo } = await import('../api');
+      const result = await processIdleVideo(id, file);
+      
+      if (result.data.qc && !result.data.qc.passed) {
+        setIdleVideoError(`QC 警告: ${result.data.qc.issues.join(', ')}`);
+      }
+
+      alert(`IDLE 视频处理完成！\n\n` +
+        `处理耗时: ${(result.data.metadata.processingTimeMs / 1000).toFixed(1)}s\n` +
+        `原片时长: ${result.data.metadata.duration.toFixed(2)}s\n` +
+        `循环时长: ${result.data.metadata.loopDuration.toFixed(2)}s\n` +
+        `安全切点: ${result.data.metadata.safeCutPoints.length} 个`);
+
+      // 刷新状态
+      await loadIdleVideoStatus();
+      await loadPreviewVideos();
+    } catch (err: unknown) {
+      console.error('[EditAgent] IDLE video processing failed:', err);
+      const errorMessage = err instanceof Error ? err.message : '处理失败';
+      setIdleVideoError(`处理失败: ${errorMessage}`);
+      alert(`IDLE 视频处理失败: ${errorMessage}`);
+    } finally {
+      setIdleVideoUploading(false);
+      // 清空 input 以允许重复选择同一文件
+      e.target.value = '';
+    }
+  };
+
+  // 编辑模式时加载 IDLE 视频状态
+  useEffect(() => {
+    if (isEdit && id) {
+      loadIdleVideoStatus();
+    }
+  }, [isEdit, id]);
+
   // 20个情绪/动作标签 - 分类组织
   const tagQuickOptions = useMemo(
     () => [
@@ -891,6 +970,60 @@ const EditAgent: React.FC = () => {
               <div className="flex flex-col gap-4">
                   <h3 className="text-sm font-bold text-gray-900">主播相册</h3>
                   <p className="text-xs text-gray-500">图片和视频需分别上传，拖动可调整顺序</p>
+
+                  {/* IDLE 视频上传（LiveSkin 核心） */}
+                  {isEdit && id && (
+                    <div className="rounded-lg border-2 border-green-300 bg-green-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-green-900 flex items-center gap-2">
+                            🎬 IDLE 待机视频
+                            {idleVideoStatus?.hasLoopSafe && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500 text-white">已就绪</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-green-800 mt-1">
+                            上传 3-5s 的待机视频，系统自动处理：规范化 → 稳定化 → 生成循环 → 检测切点
+                          </div>
+                          {idleVideoStatus?.idleVideo && (
+                            <div className="text-xs text-green-700 mt-1">
+                              当前: {idleVideoStatus.idleVideo.duration.toFixed(1)}s | 
+                              切点: {idleVideoStatus.idleVideo.safeCutPoints.length} 个
+                            </div>
+                          )}
+                          {idleVideoError && (
+                            <div className="text-xs text-red-600 mt-1">{idleVideoError}</div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {idleVideoStatus?.idleVideo && (
+                            <video
+                              src={idleVideoStatus.idleVideo.loopSafeUrl || idleVideoStatus.idleVideo.url}
+                              className="w-12 h-12 rounded object-cover border border-green-300"
+                              muted
+                              loop
+                              onMouseEnter={(e) => e.currentTarget.play()}
+                              onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                            />
+                          )}
+                          <label className={`relative cursor-pointer px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                            idleVideoUploading
+                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              onChange={handleIdleVideoUpload}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              disabled={idleVideoUploading}
+                            />
+                            {idleVideoUploading ? '处理中...' : (idleVideoStatus?.hasLoopSafe ? '重新上传' : '上传 IDLE 视频')}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* LiveSkin 标签（视频动作库） */}
                   {isEdit && (
