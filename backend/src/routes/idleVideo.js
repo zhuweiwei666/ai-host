@@ -85,7 +85,9 @@ router.post('/upload/:agentId', requireAuth, requireAdmin, upload.single('video'
     
     // 上传视频
     console.log(`[IdleVideo] Uploading to storage: ${filename}`);
-    const videoUrl = await uploadFn(file.buffer, filename, file.mimetype);
+    const uploadResult = await uploadFn(file.buffer, filename, file.mimetype);
+    // uploadFn 可能返回字符串 URL 或对象 { url, key, name }
+    const videoUrl = typeof uploadResult === 'string' ? uploadResult : uploadResult.url;
     console.log(`[IdleVideo] Upload complete: ${videoUrl}`);
     
     // 创建 previewVideo 条目
