@@ -1142,42 +1142,13 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 
     if (!reply) reply = "...";
 
-    // Optionally generate TTS here (reduces round-trip for immersive clients)
-    let audioUrl = null;
-    if (requestTTS) {
-      const ttsText = cleanTextForTTS(reply);
-      if (ttsText) {
-        // Check balance for Voice (Cost: 5)
-        await walletService.consume(userId, 5, 'ai_voice', agentId);
-        audioUrl = await fishAudioService.generateAudio(ttsText, agent.voiceId);
-        // LOG TTS COST
-        try {
-          const charCount = ttsText.length;
-          const ttsModel = 'fish-audio';
-          const ttsCost = costCalculator.calculateTTS(ttsModel, charCount);
-          await UsageLog.create({
-            agentId,
-            userId,
-            type: 'tts',
-            provider: 'fish-audio',
-            model: ttsModel,
-            inputUnits: charCount,
-            outputUnits: 1,
-            cost: ttsCost,
-          });
-        } catch (logErr) {
-          console.error('TTS Log Error', logErr);
-        }
-      }
-    }
-
-    // 保存 AI 回复 - 关键：必须包含 userId 实现数据隔离
+    // 先保存 AI 回复（不等待TTS），立即返回给用户
     const aiMessage = await Message.create({
       agentId,
       userId,
       role: 'assistant',
       content: reply,
-      audioUrl: audioUrl,
+      audioUrl: null, // TTS将在后台异步生成
       imageUrl: imageUrl,
       inputTokens: usage.prompt_tokens,
       outputTokens: usage.completion_tokens,
@@ -1185,6 +1156,50 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       experimentId: experimentInfo?.experimentId,
       variantId: experimentInfo?.variantId,
     });
+
+    // TTS异步生成（不阻塞响应）
+    let audioUrl = null;
+    if (requestTTS) {
+      // 异步生成TTS，不阻塞响应
+      (async () => {
+        try {
+          const ttsText = cleanTextForTTS(reply);
+          if (ttsText) {
+            // Check balance for Voice (Cost: 5)
+            await walletService.consume(userId, 5, 'ai_voice', agentId);
+            const generatedAudioUrl = await fishAudioService.generateAudio(ttsText, agent.voiceId);
+            
+            if (generatedAudioUrl) {
+              // 更新消息的audioUrl
+              await Message.findByIdAndUpdate(aiMessage._id, { audioUrl: generatedAudioUrl });
+              audioUrl = generatedAudioUrl; // 用于返回（如果客户端还在等待）
+            }
+            
+            // LOG TTS COST
+            try {
+              const charCount = ttsText.length;
+              const ttsModel = 'fish-audio';
+              const ttsCost = costCalculator.calculateTTS(ttsModel, charCount);
+              await UsageLog.create({
+                agentId,
+                userId,
+                type: 'tts',
+                provider: 'fish-audio',
+                model: ttsModel,
+                inputUnits: charCount,
+                outputUnits: 1,
+                cost: ttsCost,
+              });
+            } catch (logErr) {
+              console.error('TTS Log Error', logErr);
+            }
+          }
+        } catch (ttsErr) {
+          console.error('[Chat] Async TTS generation failed:', ttsErr);
+          // TTS失败不影响主流程，只记录错误
+        }
+      })();
+    }
     
     // 记录 A/B 测试指标
     if (experimentInfo) {
@@ -1228,7 +1243,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
     
     sendSuccess(res, HTTP_STATUS.OK, { 
       reply, 
-      audioUrl: audioUrl, 
+      audioUrl: audioUrl, // 如果requestTTS=true，这里可能是null（异步生成中）
       // Placeholder for clients that model audioDuration (client can measure via AVAudioPlayer)
       audioDuration: null,
       imageUrl, 
@@ -1241,7 +1256,9 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
         userType: finalDetectionStatus.userType,
         isComplete: finalDetectionStatus.isComplete,
         replyOptions: replyOptions
-      }
+      },
+      // 如果TTS正在异步生成，告诉前端可以轮询或等待
+      ttsGenerating: requestTTS && !audioUrl
     });
 
   } catch (err) {

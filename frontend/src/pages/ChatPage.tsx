@@ -435,10 +435,65 @@ const ChatPage: React.FC = () => {
           audioUrl: textRes.data.audioUrl,
           // If mode is NOT text, we show a loading placeholder immediately
           isMediaLoading: activeMode !== 'text',
-          imageUrl: activeMode !== 'text' ? 'loading_placeholder' : undefined
+          imageUrl: activeMode !== 'text' ? 'loading_placeholder' : undefined,
+          // 如果TTS正在生成，标记为加载中
+          isLoadingAudio: textRes.data.ttsGenerating || false
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // 自动生成TTS（如果后端没有返回audioUrl）
+      // 这样用户可以立即看到文本，TTS在后台生成，提升体验
+      if (!textRes.data.audioUrl && agent?._id && textRes.data.reply) {
+        // 标记为加载中
+        setMessages(prev => prev.map((msg, idx) => {
+          if (idx === prev.length - 1 && msg.role === 'assistant' && msg.content === textRes.data.reply) {
+            return { ...msg, isLoadingAudio: true };
+          }
+          return msg;
+        }));
+        
+        // 异步生成TTS，不阻塞用户界面
+        generateTTS(agent._id, textRes.data.reply)
+          .then(res => {
+            if (res.data.audioUrl) {
+              setMessages(prev => prev.map((msg, idx) => {
+                // 更新最后一条assistant消息的audioUrl
+                if (idx === prev.length - 1 && msg.role === 'assistant' && msg.content === textRes.data.reply) {
+                  return { 
+                    ...msg, 
+                    audioUrl: res.data.audioUrl, 
+                    isLoadingAudio: false,
+                    shouldAutoPlay: true // 自动播放
+                  };
+                }
+                return msg;
+              }));
+              if (res.data.balance !== undefined) {
+                setBalance(res.data.balance);
+              }
+            } else {
+              // 没有生成成功，移除加载状态
+              setMessages(prev => prev.map((msg, idx) => {
+                if (idx === prev.length - 1 && msg.role === 'assistant' && msg.content === textRes.data.reply) {
+                  return { ...msg, isLoadingAudio: false };
+                }
+                return msg;
+              }));
+            }
+          })
+          .catch(err => {
+            console.error('[ChatPage] Auto TTS generation failed:', err);
+            // 失败时移除加载状态（可能是余额不足等，不影响主流程）
+            setMessages(prev => prev.map((msg, idx) => {
+              if (idx === prev.length - 1 && msg.role === 'assistant' && msg.content === textRes.data.reply) {
+                return { ...msg, isLoadingAudio: false };
+              }
+              return msg;
+            }));
+            // 不显示错误提示，用户可以手动点击生成
+          });
+      }
       
       // 如果开启了建议模式且侦测已完成，获取建议回复
       const detectionComplete = textRes.data.detection?.isComplete || isDetectionComplete;

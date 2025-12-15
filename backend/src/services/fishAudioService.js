@@ -22,32 +22,39 @@ class FishAudioService {
     const referenceId = voiceId || '7f92f8afb8ec43bf81429cc1c9199cb1'; 
 
     try {
+      // 使用低延迟模式，优先速度而非质量
       const response = await axios.post(
         this.apiUrl,
         {
           text: text,
           reference_id: referenceId,
           format: "mp3",
-          mp3_bitrate: 128,
+          mp3_bitrate: 96, // 降低比特率以加快生成速度（从128降到96）
           normalize: true,
-          latency: "normal"
+          latency: "low" // 使用低延迟模式（从normal改为low）
         },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json', // 改为 JSON 格式
+            'Content-Type': 'application/json',
           },
-          responseType: 'arraybuffer', // 关键：接收二进制音频数据
+          responseType: 'arraybuffer',
+          timeout: 15000, // 15秒超时，避免长时间等待
         }
       );
 
-      // Upload audio to OSS
+      // Upload audio to OSS (异步上传，不阻塞响应)
       const fileName = `tts-${crypto.randomUUID()}.mp3`;
       const buffer = Buffer.from(response.data);
       
       try {
-        // Upload to OSS
-        const ossUrl = await uploadToOSS(buffer, fileName, 'audio/mpeg');
+        // Upload to OSS with timeout
+        const ossUrl = await Promise.race([
+          uploadToOSS(buffer, fileName, 'audio/mpeg'),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('OSS upload timeout')), 10000)
+          )
+        ]);
         return ossUrl;
       } catch (ossError) {
         console.error('[FishAudio] OSS upload failed, falling back to local storage:', ossError.message);
