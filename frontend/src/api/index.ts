@@ -178,14 +178,39 @@ export interface IdleVideoStatus {
 export const checkIdleVideoDependencies = () =>
   http.get<{ ready: boolean; mode: string; message: string; requirements: string[] }>('/idle-video/check');
 
-// 上传 IDLE 视频（运营人员手动剪辑好的可循环视频）
-export const uploadIdleVideo = (agentId: string, videoFile: File) => {
-  const formData = new FormData();
-  formData.append('video', videoFile);
-  return http.post<IdleVideoUploadResult>(`/idle-video/upload/${agentId}`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 180000, // 3分钟超时（大文件上传需要更长时间）
+// 获取预签名上传 URL
+export const getIdleVideoPresignUrl = (agentId: string, filename: string, contentType: string) =>
+  http.post<{ uploadUrl: string; publicUrl: string; key: string; expiresIn: number }>(
+    `/idle-video/presign/${agentId}`,
+    { filename, contentType }
+  );
+
+// 注册已上传的 IDLE 视频
+export const registerIdleVideo = (agentId: string, url: string, key: string) =>
+  http.post<IdleVideoUploadResult>(`/idle-video/register/${agentId}`, { url, key });
+
+// 直传 IDLE 视频到 R2（绕过 Cloudflare 超时限制）
+export const uploadIdleVideo = async (agentId: string, videoFile: File): Promise<{ data: IdleVideoUploadResult }> => {
+  // Step 1: 获取预签名 URL
+  const presignRes = await getIdleVideoPresignUrl(agentId, videoFile.name, videoFile.type || 'video/mp4');
+  const { uploadUrl, publicUrl, key } = presignRes.data;
+
+  // Step 2: 直接上传到 R2（使用 fetch，不走 axios 避免超时问题）
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    body: videoFile,
+    headers: {
+      'Content-Type': videoFile.type || 'video/mp4',
+    },
   });
+
+  if (!uploadRes.ok) {
+    throw new Error(`Upload to R2 failed: ${uploadRes.status} ${uploadRes.statusText}`);
+  }
+
+  // Step 3: 注册视频到数据库
+  const registerRes = await registerIdleVideo(agentId, publicUrl, key);
+  return registerRes;
 };
 
 export const getIdleVideoStatus = (agentId: string) =>

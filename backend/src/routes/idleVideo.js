@@ -201,14 +201,129 @@ router.get('/status/:agentId', requireAuth, async (req, res) => {
 router.get('/check', requireAuth, requireAdmin, async (req, res) => {
   sendSuccess(res, HTTP_STATUS.OK, {
     ready: true,
-    mode: 'simple-upload',
-    message: '简化模式：直接上传手动剪辑好的可循环视频',
+    mode: 'direct-upload',
+    message: '直传模式：前端直接上传到 R2，绕过 Cloudflare 超时限制',
     requirements: [
       '视频首尾帧一致（无缝循环）',
       '推荐规格：1080x1920 / 3-5秒',
       '格式：MP4 / H.264',
     ],
   });
+});
+
+/**
+ * POST /api/idle-video/presign/:agentId
+ * 获取预签名上传 URL（前端直传 R2）
+ * 
+ * Body: { filename: string, contentType: string }
+ * Returns: { uploadUrl, publicUrl, key }
+ */
+router.post('/presign/:agentId', requireAuth, requireAdmin, async (req, res) => {
+  const { agentId } = req.params;
+  const { filename, contentType } = req.body;
+
+  if (!filename) {
+    return errors.badRequest(res, 'filename is required');
+  }
+
+  try {
+    // 验证 Agent 存在
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return errors.notFound(res, 'Agent not found');
+    }
+
+    // 生成唯一的对象键
+    const timestamp = Date.now();
+    const ext = filename.split('.').pop() || 'mp4';
+    const objectKey = `idle/${agentId}/idle_${timestamp}.${ext}`;
+
+    // 获取预签名 URL
+    const { getPresignedUploadUrl } = require('../services/r2Client');
+    const result = await getPresignedUploadUrl(objectKey, contentType || 'video/mp4', 600);
+
+    console.log(`[IdleVideo] Generated presigned URL for agent ${agentId}: ${objectKey}`);
+
+    sendSuccess(res, HTTP_STATUS.OK, {
+      uploadUrl: result.uploadUrl,
+      publicUrl: result.publicUrl,
+      key: result.key,
+      expiresIn: 600,
+    });
+  } catch (error) {
+    console.error('[IdleVideo] Presign error:', error);
+    errors.internalError(res, `Failed to generate upload URL: ${error.message}`);
+  }
+});
+
+/**
+ * POST /api/idle-video/register/:agentId
+ * 注册已上传的 IDLE 视频（前端直传完成后调用）
+ * 
+ * Body: { url: string, key: string }
+ */
+router.post('/register/:agentId', requireAuth, requireAdmin, async (req, res) => {
+  const { agentId } = req.params;
+  const { url, key } = req.body;
+
+  if (!url) {
+    return errors.badRequest(res, 'url is required');
+  }
+
+  console.log(`[IdleVideo] Registering IDLE video for agent ${agentId}: ${url}`);
+
+  try {
+    const agent = await Agent.findById(agentId);
+    if (!agent) {
+      return errors.notFound(res, 'Agent not found');
+    }
+
+    // 创建 previewVideo 条目
+    const idleVideoEntry = {
+      url: url,
+      loopSafeUrl: url,
+      thumbnailUrl: '',
+      duration: 0,
+      width: 1080,
+      height: 1920,
+      format: 'mp4',
+      isVertical: true,
+      sortOrder: 0,
+      tags: ['idle', 'loopable'],
+      assetType: 'idle',
+      loopSafe: true,
+      safeCutPoints: [0],
+      poseId: 'neutral',
+    };
+
+    // 检查是否已有 IDLE 视频，替换或添加
+    const existingIdleIndex = agent.previewVideos.findIndex(v => v.assetType === 'idle' && v.loopSafe);
+
+    if (existingIdleIndex >= 0) {
+      agent.previewVideos[existingIdleIndex] = {
+        ...agent.previewVideos[existingIdleIndex].toObject(),
+        ...idleVideoEntry,
+      };
+      console.log(`[IdleVideo] Replaced existing IDLE video at index ${existingIdleIndex}`);
+    } else {
+      agent.previewVideos.unshift(idleVideoEntry);
+      console.log(`[IdleVideo] Added new IDLE video`);
+    }
+
+    agent.liveSkinStatus = 'ready';
+    await agent.save();
+
+    const savedVideo = agent.previewVideos.find(v => v.url === url);
+
+    sendSuccess(res, HTTP_STATUS.OK, {
+      message: 'IDLE video registered successfully',
+      videoId: savedVideo?._id,
+      url: url,
+    });
+  } catch (error) {
+    console.error('[IdleVideo] Register error:', error);
+    errors.internalError(res, `Failed to register video: ${error.message}`);
+  }
 });
 
 /**

@@ -1,4 +1,5 @@
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 /**
  * Cloudflare R2 存储客户端
@@ -126,9 +127,44 @@ async function uploadBufferToR2(buffer, objectKey, contentType) {
   }
 }
 
+/**
+ * 获取预签名上传 URL（用于前端直传）
+ * @param {string} objectKey - R2 对象键
+ * @param {string} contentType - MIME 类型
+ * @param {number} expiresIn - 过期时间（秒），默认 600 秒（10分钟）
+ * @returns {Promise<{uploadUrl: string, publicUrl: string, key: string}>}
+ */
+async function getPresignedUploadUrl(objectKey, contentType, expiresIn = 600) {
+  const client = getR2Client();
+  const bucket = process.env.R2_BUCKET;
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: objectKey,
+    ContentType: contentType || 'application/octet-stream',
+  });
+
+  try {
+    const uploadUrl = await getSignedUrl(client, command, { expiresIn });
+    const publicUrl = getR2PublicUrl(objectKey);
+
+    console.log(`[R2 Client] Generated presigned URL for: ${objectKey}, expires in ${expiresIn}s`);
+
+    return {
+      uploadUrl,
+      publicUrl,
+      key: objectKey,
+    };
+  } catch (error) {
+    console.error('[R2 Client] Failed to generate presigned URL:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   getR2Client,
   resetR2Client,
   uploadBufferToR2,
   getR2PublicUrl,
+  getPresignedUploadUrl,
 };
