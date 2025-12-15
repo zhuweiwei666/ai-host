@@ -165,6 +165,17 @@ router.put('/video/:agentId/:videoId', requireAuth, requireAdmin, async (req, re
       }
     });
     
+    // 如果设置为 idle 类型，自动标记为可循环并设置 loopSafeUrl
+    if (updates.assetType === 'idle') {
+      video.loopSafe = true;
+      video.loopSafeUrl = video.loopSafeUrl || video.url; // 使用原 URL 作为循环 URL
+      video.safeCutPoints = video.safeCutPoints?.length ? video.safeCutPoints : [0];
+      video.poseId = video.poseId || 'neutral';
+      
+      // 更新 Agent 的 liveSkinStatus
+      agent.liveSkinStatus = 'ready';
+    }
+    
     await agent.save();
     
     sendSuccess(res, HTTP_STATUS.OK, {
@@ -363,6 +374,8 @@ router.post('/batch-update/:agentId', requireAuth, requireAdmin, async (req, res
     
     let updated = 0;
     
+    let hasIdleVideo = false;
+    
     agent.previewVideos.forEach(video => {
       const tags = video.tags || [];
       
@@ -370,6 +383,15 @@ router.post('/batch-update/:agentId', requireAuth, requireAdmin, async (req, res
       for (const tag of tags) {
         if (tagToAssetType[tag]) {
           video.assetType = tagToAssetType[tag];
+          
+          // 如果是 idle 类型，自动设置循环相关字段
+          if (tagToAssetType[tag] === 'idle') {
+            video.loopSafe = true;
+            video.loopSafeUrl = video.loopSafeUrl || video.url;
+            video.safeCutPoints = video.safeCutPoints?.length ? video.safeCutPoints : [0];
+            video.poseId = video.poseId || 'neutral';
+            hasIdleVideo = true;
+          }
           
           // 如果是 reaction 类型，设置 emotionId
           if (tagToAssetType[tag] === 'reaction' && emotionTags.includes(tag)) {
@@ -381,6 +403,11 @@ router.post('/batch-update/:agentId', requireAuth, requireAdmin, async (req, res
         }
       }
     });
+    
+    // 如果有 idle 视频，更新 liveSkinStatus
+    if (hasIdleVideo) {
+      agent.liveSkinStatus = 'ready';
+    }
     
     await agent.save();
     
