@@ -468,14 +468,14 @@ const EditAgent: React.FC = () => {
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                try {
+        try {
                     // Upload Video File to Server
                     console.log(`[Video Upload ${i + 1}/${files.length}] Uploading video file...`, file.name);
-                    const videoRes = await uploadFile(file);
-                    const videoUrl = videoRes.url;
+            const videoRes = await uploadFile(file);
+            const videoUrl = videoRes.url;
                     videoUrls.push(videoUrl);
                     console.log(`[Video Upload ${i + 1}/${files.length}] Video uploaded, URL:`, videoUrl);
-                    successCount.videos++;
+                        successCount.videos++;
                 } catch (uploadErr: any) {
                     console.error(`[Video Upload ${i + 1}/${files.length}] Upload failed:`, uploadErr);
                     errors.push(`${file.name}: ${uploadErr.message || '上传失败'}`);
@@ -485,11 +485,11 @@ const EditAgent: React.FC = () => {
             
             // Update form data (only if we have successful uploads)
             if (videoUrls.length > 0) {
-                setFormData(prev => ({ 
-                    ...prev, 
+            setFormData(prev => ({ 
+                ...prev, 
                     coverVideoUrl: videoUrls[0] || prev.coverVideoUrl,
                     coverVideoUrls: [...(prev.coverVideoUrls || []), ...videoUrls],
-                }));
+            }));
                 setGeneratedCandidates([]);
             }
             
@@ -504,9 +504,9 @@ const EditAgent: React.FC = () => {
         } catch (err: any) {
             console.error('Video upload failed:', err);
             alert(`视频上传失败: ${err.message || '未知错误'}`);
-        } finally {
-            setUploading(false);
-        }
+      } finally {
+        setUploading(false);
+      }
     }
   };
 

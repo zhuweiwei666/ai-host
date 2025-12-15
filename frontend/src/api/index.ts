@@ -184,7 +184,7 @@ export const uploadIdleVideo = (agentId: string, videoFile: File) => {
   formData.append('video', videoFile);
   return http.post<IdleVideoUploadResult>(`/idle-video/upload/${agentId}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000, // 1分钟超时（只是上传，无需处理）
+    timeout: 180000, // 3分钟超时（大文件上传需要更长时间）
   });
 };
 
