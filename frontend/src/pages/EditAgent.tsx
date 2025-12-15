@@ -185,6 +185,7 @@ const EditAgent: React.FC = () => {
 
   // ==================== IDLE 视频处理 ====================
   const [idleVideoUploading, setIdleVideoUploading] = useState(false);
+  const [idleVideoUploadProgress, setIdleVideoUploadProgress] = useState(0);
   const [idleVideoStatus, setIdleVideoStatus] = useState<{
     hasIdleVideo: boolean;
     hasLoopSafe: boolean;
@@ -224,11 +225,14 @@ const EditAgent: React.FC = () => {
     }
 
     setIdleVideoUploading(true);
+    setIdleVideoUploadProgress(0);
     setIdleVideoError('');
 
     try {
       const { uploadIdleVideo } = await import('../api');
-      const result = await uploadIdleVideo(id, file);
+      const result = await uploadIdleVideo(id, file, (progress) => {
+        setIdleVideoUploadProgress(progress);
+      });
       
       // 安全处理 tips（可能不存在）
       const tips = result.data?.tips || [];
@@ -245,6 +249,7 @@ const EditAgent: React.FC = () => {
       alert(`IDLE 视频上传失败: ${errorMessage}`);
     } finally {
       setIdleVideoUploading(false);
+      setIdleVideoUploadProgress(0);
       // 清空 input 以允许重复选择同一文件
       e.target.value = '';
     }
@@ -1007,6 +1012,20 @@ const EditAgent: React.FC = () => {
                           {idleVideoError && (
                             <div className="text-xs text-red-600 mt-1">{idleVideoError}</div>
                           )}
+                          {idleVideoUploading && (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between text-xs text-green-700 mb-1">
+                                <span>上传进度</span>
+                                <span>{idleVideoUploadProgress}%</span>
+                              </div>
+                              <div className="w-full bg-green-200 rounded-full h-1.5">
+                                <div 
+                                  className="bg-green-600 h-1.5 rounded-full transition-all duration-300"
+                                  style={{ width: `${idleVideoUploadProgress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {idleVideoStatus?.idleVideo && (
@@ -1026,7 +1045,7 @@ const EditAgent: React.FC = () => {
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               disabled={idleVideoUploading}
                             />
-                            {idleVideoUploading ? '上传中...' : (idleVideoStatus?.hasLoopSafe ? '重新上传' : '上传 IDLE 视频')}
+                            {idleVideoUploading ? `上传中 ${idleVideoUploadProgress}%` : (idleVideoStatus?.hasLoopSafe ? '重新上传' : '上传 IDLE 视频')}
                           </label>
                         </div>
                       </div>

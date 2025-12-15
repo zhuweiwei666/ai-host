@@ -190,27 +190,85 @@ export const registerIdleVideo = (agentId: string, url: string, key: string) =>
   http.post<IdleVideoUploadResult>(`/idle-video/register/${agentId}`, { url, key });
 
 // 直传 IDLE 视频到 R2（绕过 Cloudflare 超时限制）
-export const uploadIdleVideo = async (agentId: string, videoFile: File): Promise<{ data: IdleVideoUploadResult }> => {
+export const uploadIdleVideo = async (
+  agentId: string, 
+  videoFile: File,
+  onProgress?: (progress: number) => void
+): Promise<{ data: IdleVideoUploadResult }> => {
+  const fileSize = videoFile.size;
+  const startTime = Date.now();
+  
+  console.log(`[IdleVideo] Starting upload: ${videoFile.name} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+  
   // Step 1: 获取预签名 URL
+  const presignStart = Date.now();
+  onProgress?.(5); // 5% - 获取预签名 URL
   const presignRes = await getIdleVideoPresignUrl(agentId, videoFile.name, videoFile.type || 'video/mp4');
   const { uploadUrl, publicUrl, key } = presignRes.data;
+  console.log(`[IdleVideo] Presign URL obtained in ${Date.now() - presignStart}ms`);
 
-  // Step 2: 直接上传到 R2（使用 fetch，不走 axios 避免超时问题）
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    body: videoFile,
-    headers: {
-      'Content-Type': videoFile.type || 'video/mp4',
-    },
+  // Step 2: 直接上传到 R2（使用 XMLHttpRequest 以支持进度）
+  onProgress?.(10); // 10% - 开始上传
+  const uploadStart = Date.now();
+  
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    // 上传进度
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = 10 + Math.floor((e.loaded / e.total) * 80); // 10% - 90%
+        onProgress?.(percent);
+        console.log(`[IdleVideo] Upload progress: ${percent}% (${(e.loaded / 1024 / 1024).toFixed(2)}MB / ${(e.total / 1024 / 1024).toFixed(2)}MB)`);
+      }
+    });
+    
+    // 上传完成
+    xhr.addEventListener('load', async () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const uploadTime = Date.now() - uploadStart;
+        const uploadSpeed = (fileSize / 1024 / 1024) / (uploadTime / 1000);
+        console.log(`[IdleVideo] Upload completed in ${uploadTime}ms (${uploadSpeed.toFixed(2)}MB/s)`);
+        
+        onProgress?.(90); // 90% - 上传完成，注册中
+        
+        try {
+          // Step 3: 注册视频到数据库
+          const registerRes = await registerIdleVideo(agentId, publicUrl, key);
+          onProgress?.(100); // 100% - 完成
+          
+          const totalTime = Date.now() - startTime;
+          console.log(`[IdleVideo] Total time: ${totalTime}ms`);
+          
+          resolve(registerRes);
+        } catch (err) {
+          console.error('[IdleVideo] Registration failed:', err);
+          reject(err);
+        }
+      } else {
+        console.error(`[IdleVideo] Upload failed: ${xhr.status} ${xhr.statusText}`);
+        reject(new Error(`Upload to R2 failed: ${xhr.status} ${xhr.statusText}`));
+      }
+    });
+    
+    // 错误处理
+    xhr.addEventListener('error', () => {
+      console.error('[IdleVideo] Upload error');
+      reject(new Error('Network error during upload'));
+    });
+    
+    // 超时处理（5分钟）
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.addEventListener('timeout', () => {
+      console.error('[IdleVideo] Upload timeout');
+      reject(new Error('Upload timeout (5 minutes)'));
+    });
+    
+    // 开始上传
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
+    xhr.send(videoFile);
   });
-
-  if (!uploadRes.ok) {
-    throw new Error(`Upload to R2 failed: ${uploadRes.status} ${uploadRes.statusText}`);
-  }
-
-  // Step 3: 注册视频到数据库
-  const registerRes = await registerIdleVideo(agentId, publicUrl, key);
-  return registerRes;
 };
 
 export const getIdleVideoStatus = (agentId: string) =>
