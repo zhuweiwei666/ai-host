@@ -794,13 +794,13 @@ export const withdrawAgentReview = (id: string) =>
 
 // ==================== 管理员审核 API ====================
 
-export interface ReviewAgent extends UserAgent {
+export interface ReviewAgent extends Omit<UserAgent, 'creatorId'> {
   creatorId?: {
     _id: string;
     username: string;
     email?: string;
     avatar?: string;
-  };
+  } | string;
 }
 
 export interface PendingReviewResponse {
