@@ -537,7 +537,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm text-gray-600">
-        <span>点击 ↑↓ 按钮调整顺序（视频和首帧图自动同步）</span>
+        <span>点击 ↑↓ 按钮调整顺序（图片和视频会一起移动）</span>
       </div>
 
       <div className="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[150px]">

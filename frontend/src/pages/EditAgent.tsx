@@ -371,95 +371,6 @@ const EditAgent: React.FC = () => {
     }
   };
 
-  // Video Extraction Logic
-  const extractFrameFromVideo = (videoFile: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.muted = true;
-      video.playsInline = true;
-      const objectUrl = URL.createObjectURL(videoFile);
-      video.src = objectUrl;
-
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      const cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        URL.revokeObjectURL(objectUrl);
-      };
-
-      // 设置超时（30秒）
-      timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error('视频处理超时，请检查视频文件是否损坏'));
-      }, 30000);
-
-      video.onloadeddata = () => {
-        try {
-          // 检查视频尺寸
-          if (video.videoWidth === 0 || video.videoHeight === 0) {
-            cleanup();
-            reject(new Error('无法读取视频尺寸，文件可能已损坏'));
-            return;
-          }
-          // Seek to 0.5s to likely capture content rather than a black starting frame
-          video.currentTime = 0.5;
-        } catch (err: any) {
-          cleanup();
-          reject(new Error(`视频加载错误: ${err.message || '未知错误'}`));
-        }
-      };
-
-      video.onseeked = () => {
-        try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob((blob) => {
-              cleanup();
-              if (blob) {
-                resolve(blob);
-              } else {
-                reject(new Error('无法生成图片，请尝试其他视频文件'));
-              }
-          }, 'image/jpeg', 0.95);
-        } else {
-            cleanup();
-            reject(new Error('无法创建画布上下文'));
-          }
-        } catch (err: any) {
-          cleanup();
-          reject(new Error(`帧提取错误: ${err.message || '未知错误'}`));
-        }
-      };
-      
-      video.onerror = () => {
-        cleanup();
-        const error = video.error;
-        let errorMsg = '视频加载失败';
-        if (error) {
-          switch (error.code) {
-            case error.MEDIA_ERR_ABORTED:
-              errorMsg = '视频加载被中止';
-              break;
-            case error.MEDIA_ERR_NETWORK:
-              errorMsg = '网络错误，无法加载视频';
-              break;
-            case error.MEDIA_ERR_DECODE:
-              errorMsg = '视频解码失败，文件可能已损坏';
-              break;
-            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-              errorMsg = '不支持的视频格式';
-              break;
-          }
-        }
-        reject(new Error(errorMsg));
-      };
-    });
-  };
-
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
         const files = Array.from(e.target.files);
@@ -483,39 +394,17 @@ const EditAgent: React.FC = () => {
         
         try {
             const videoUrls: string[] = [];
-            const imageUrls: string[] = [];
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-        try {
-            // 1. Upload Video File to Server
-                    console.log(`[Video Upload ${i + 1}/${files.length}] Step 1: Uploading video file...`, file.name);
-            const videoRes = await uploadFile(file);
-            const videoUrl = videoRes.url;
+                try {
+                    // Upload Video File to Server
+                    console.log(`[Video Upload ${i + 1}/${files.length}] Uploading video file...`, file.name);
+                    const videoRes = await uploadFile(file);
+                    const videoUrl = videoRes.url;
                     videoUrls.push(videoUrl);
                     console.log(`[Video Upload ${i + 1}/${files.length}] Video uploaded, URL:`, videoUrl);
-
-            // 2. Extract Frame
-                    console.log(`[Video Upload ${i + 1}/${files.length}] Step 2: Extracting frame from video...`);
-                    try {
-            const imageBlob = await extractFrameFromVideo(file);
-                        console.log(`[Video Upload ${i + 1}/${files.length}] Frame extracted, blob size:`, imageBlob.size);
-            
-            // Convert Blob to File for uploadImage API
-                        const imageFile = new File([imageBlob], `video-frame-${Date.now()}-${i}.jpg`, { type: "image/jpeg" });
-            
-            // 3. Upload Frame
-                        console.log(`[Video Upload ${i + 1}/${files.length}] Step 3: Uploading extracted frame...`);
-            const res = await uploadImage(imageFile);
-                        imageUrls.push(res.url);
-                        console.log(`[Video Upload ${i + 1}/${files.length}] Frame uploaded, URL:`, res.url);
-                        successCount.videos++;
-                    } catch (frameErr: any) {
-                        console.error(`[Video Upload ${i + 1}/${files.length}] Frame extraction failed:`, frameErr);
-                        // 即使帧提取失败，也保留视频URL
-                        errors.push(`${file.name}: ${frameErr.message || '帧提取失败'}`);
-                        successCount.failed++;
-                    }
+                    successCount.videos++;
                 } catch (uploadErr: any) {
                     console.error(`[Video Upload ${i + 1}/${files.length}] Upload failed:`, uploadErr);
                     errors.push(`${file.name}: ${uploadErr.message || '上传失败'}`);
@@ -523,32 +412,30 @@ const EditAgent: React.FC = () => {
                 }
             }
             
-            // 4. Update form data with both URLs (only if we have successful uploads)
-            if (videoUrls.length > 0 || imageUrls.length > 0) {
-            setFormData(prev => ({ 
-                ...prev, 
-                    avatarUrl: imageUrls[0] || prev.avatarUrl, // 保持兼容性
-                    coverVideoUrl: videoUrls[0] || prev.coverVideoUrl, // 保持兼容性
-                    avatarUrls: [...(prev.avatarUrls || []), ...imageUrls],
+            // Update form data (only if we have successful uploads)
+            if (videoUrls.length > 0) {
+                setFormData(prev => ({ 
+                    ...prev, 
+                    coverVideoUrl: videoUrls[0] || prev.coverVideoUrl,
                     coverVideoUrls: [...(prev.coverVideoUrls || []), ...videoUrls],
-            }));
-            setGeneratedCandidates([]); // Clear candidates
+                }));
+                setGeneratedCandidates([]);
             }
             
             // 显示结果
             if (successCount.videos > 0 && successCount.failed === 0) {
-                alert(`成功上传 ${successCount.videos} 个视频并提取首帧！`);
+                alert(`成功上传 ${successCount.videos} 个视频！\n\n💡 提示：请单独上传对应的封面图片`);
             } else if (successCount.videos > 0 && successCount.failed > 0) {
                 alert(`部分成功：${successCount.videos} 个成功，${successCount.failed} 个失败\n\n失败详情：\n${errors.join('\n')}`);
             } else {
                 alert(`上传失败\n\n错误详情：\n${errors.join('\n')}`);
             }
         } catch (err: any) {
-            console.error('Video upload/extraction failed:', err);
-            alert(`视频处理失败: ${err.message || '未知错误'}`);
-      } finally {
-        setUploading(false);
-      }
+            console.error('Video upload failed:', err);
+            alert(`视频上传失败: ${err.message || '未知错误'}`);
+        } finally {
+            setUploading(false);
+        }
     }
   };
 
@@ -933,7 +820,7 @@ const EditAgent: React.FC = () => {
                                 disabled={uploading}
                             />
                             <button type="button" className="text-sm text-blue-600 hover:text-blue-900 underline">
-                                {uploading ? '处理中...' : '上传视频并提取首帧（可多选）'}
+                                {uploading ? '上传中...' : '上传视频（可多选）'}
                   </button>
                 </div>
                 {/* 显示所有视频 */}
@@ -1003,7 +890,7 @@ const EditAgent: React.FC = () => {
               {/* Right Column: 主播相册 (可拖动排序) */}
               <div className="flex flex-col gap-4">
                   <h3 className="text-sm font-bold text-gray-900">主播相册</h3>
-                  <p className="text-xs text-gray-500">视频和首帧图已绑定，拖动可调整顺序</p>
+                  <p className="text-xs text-gray-500">图片和视频需分别上传，拖动可调整顺序</p>
 
                   {/* LiveSkin 标签（视频动作库） */}
                   {isEdit && (
