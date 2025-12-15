@@ -89,7 +89,8 @@ export class VideoPlayer {
       }
 
       // 使用缓存获取视频（如果是 IDLE 视频则缓存）
-      const isIdleVideo = asset.assetType === 'idle';
+      // 判断是否为 IDLE：有 loopSafeUrl 且 loopSafe 为 true，通常是 IDLE 视频
+      const isIdleVideo = loop && asset.loopSafe && !!asset.loopSafeUrl;
       const videoUrl = isIdleVideo 
         ? await getVideoWithCache(originalUrl)
         : originalUrl;
