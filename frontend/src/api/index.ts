@@ -152,30 +152,12 @@ export const reportLiveSkinEvent = (data: {
   timestamp?: string;
 }) => http.post<{ recorded: boolean }>('/liveskin/event', data);
 
-// IDLE 视频处理 API
-export interface IdleVideoProcessResult {
+// IDLE 视频上传 API（简化版，无需服务端处理）
+export interface IdleVideoUploadResult {
   message: string;
   videoId: string;
-  urls: {
-    forward: string;
-    reverse: string;
-    loopSafe: string;
-  };
-  metadata: {
-    duration: number;
-    loopDuration: number;
-    width: number;
-    height: number;
-    fps: number;
-    safeCutPoints: number[];
-    processingTimeMs: number;
-  };
-  qc: {
-    passed: boolean;
-    issues: string[];
-    originalSpec: Record<string, unknown>;
-    processedSpec: Record<string, unknown>;
-  };
+  url: string;
+  tips: string[];
 }
 
 export interface IdleVideoStatus {
@@ -194,14 +176,15 @@ export interface IdleVideoStatus {
 }
 
 export const checkIdleVideoDependencies = () =>
-  http.get<{ ready: boolean; dependencies: { ffmpeg: boolean; vidstab: boolean; version: string }; warnings: string[] }>('/idle-video/check');
+  http.get<{ ready: boolean; mode: string; message: string; requirements: string[] }>('/idle-video/check');
 
-export const processIdleVideo = (agentId: string, videoFile: File) => {
+// 上传 IDLE 视频（运营人员手动剪辑好的可循环视频）
+export const uploadIdleVideo = (agentId: string, videoFile: File) => {
   const formData = new FormData();
   formData.append('video', videoFile);
-  return http.post<IdleVideoProcessResult>(`/idle-video/process/${agentId}`, formData, {
+  return http.post<IdleVideoUploadResult>(`/idle-video/upload/${agentId}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 300000, // 5分钟超时（视频处理耗时）
+    timeout: 60000, // 1分钟超时（只是上传，无需处理）
   });
 };
 

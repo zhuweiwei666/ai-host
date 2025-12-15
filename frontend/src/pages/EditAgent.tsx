@@ -189,7 +189,7 @@ const EditAgent: React.FC = () => {
     }
   };
 
-  // 处理 IDLE 视频上传
+  // 处理 IDLE 视频上传（简化版，直接上传无需服务端处理）
   const handleIdleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !id) return;
@@ -199,8 +199,8 @@ const EditAgent: React.FC = () => {
       return;
     }
 
-    if (file.size > 500 * 1024 * 1024) {
-      alert('视频文件过大，请选择小于 500MB 的文件');
+    if (file.size > 100 * 1024 * 1024) {
+      alert('视频文件过大，请选择小于 100MB 的文件');
       return;
     }
 
@@ -208,27 +208,19 @@ const EditAgent: React.FC = () => {
     setIdleVideoError('');
 
     try {
-      const { processIdleVideo } = await import('../api');
-      const result = await processIdleVideo(id, file);
+      const { uploadIdleVideo } = await import('../api');
+      const result = await uploadIdleVideo(id, file);
       
-      if (result.data.qc && !result.data.qc.passed) {
-        setIdleVideoError(`QC 警告: ${result.data.qc.issues.join(', ')}`);
-      }
-
-      alert(`IDLE 视频处理完成！\n\n` +
-        `处理耗时: ${(result.data.metadata.processingTimeMs / 1000).toFixed(1)}s\n` +
-        `原片时长: ${result.data.metadata.duration.toFixed(2)}s\n` +
-        `循环时长: ${result.data.metadata.loopDuration.toFixed(2)}s\n` +
-        `安全切点: ${result.data.metadata.safeCutPoints.length} 个`);
+      alert(`IDLE 视频上传成功！\n\n${result.data.tips.join('\n')}`);
 
       // 刷新状态
       await loadIdleVideoStatus();
       await loadPreviewVideos();
     } catch (err: unknown) {
-      console.error('[EditAgent] IDLE video processing failed:', err);
-      const errorMessage = err instanceof Error ? err.message : '处理失败';
-      setIdleVideoError(`处理失败: ${errorMessage}`);
-      alert(`IDLE 视频处理失败: ${errorMessage}`);
+      console.error('[EditAgent] IDLE video upload failed:', err);
+      const errorMessage = err instanceof Error ? err.message : '上传失败';
+      setIdleVideoError(`上传失败: ${errorMessage}`);
+      alert(`IDLE 视频上传失败: ${errorMessage}`);
     } finally {
       setIdleVideoUploading(false);
       // 清空 input 以允许重复选择同一文件
@@ -983,12 +975,11 @@ const EditAgent: React.FC = () => {
                             )}
                           </div>
                           <div className="text-xs text-green-800 mt-1">
-                            上传 3-5s 的待机视频，系统自动处理：规范化 → 稳定化 → 生成循环 → 检测切点
+                            上传手动剪辑好的可循环视频（3-5s，首尾帧一致），客户端将直接 loop 播放
                           </div>
                           {idleVideoStatus?.idleVideo && (
                             <div className="text-xs text-green-700 mt-1">
-                              当前: {idleVideoStatus.idleVideo.duration.toFixed(1)}s | 
-                              切点: {idleVideoStatus.idleVideo.safeCutPoints.length} 个
+                              ✅ 已上传 IDLE 视频
                             </div>
                           )}
                           {idleVideoError && (
@@ -1018,7 +1009,7 @@ const EditAgent: React.FC = () => {
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               disabled={idleVideoUploading}
                             />
-                            {idleVideoUploading ? '处理中...' : (idleVideoStatus?.hasLoopSafe ? '重新上传' : '上传 IDLE 视频')}
+                            {idleVideoUploading ? '上传中...' : (idleVideoStatus?.hasLoopSafe ? '重新上传' : '上传 IDLE 视频')}
                           </label>
                         </div>
                       </div>
