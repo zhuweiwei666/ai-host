@@ -114,6 +114,25 @@ router.get('/manifest/:agentId', async (req, res) => {
     // 按 sortOrder 排序
     idle.sort((a, b) => a.sortOrder - b.sortOrder);
     
+    // 确保defaultIdleIndex指向正确的idle视频
+    // 如果defaultPreviewIndex指向的视频不在idle列表中，使用第一个idle视频
+    let defaultIdleIndex = 0;
+    if (agent.defaultPreviewIndex !== undefined && agent.defaultPreviewIndex !== null) {
+      // 找到defaultPreviewIndex对应的视频ID
+      const defaultVideoId = videos[agent.defaultPreviewIndex]?._id?.toString();
+      if (defaultVideoId) {
+        // 在idle列表中找到对应的索引
+        const foundIndex = idle.findIndex(asset => asset.id === defaultVideoId);
+        if (foundIndex >= 0) {
+          defaultIdleIndex = foundIndex;
+        } else {
+          // 如果找不到，使用第一个idle视频
+          defaultIdleIndex = 0;
+          console.log(`[LiveSkin Manifest] Warning: defaultPreviewIndex ${agent.defaultPreviewIndex} video not in idle list, using first idle video`);
+        }
+      }
+    }
+    
     const manifest = {
       agentId: agent._id.toString(),
       agentName: agent.name,
@@ -122,7 +141,7 @@ router.get('/manifest/:agentId', async (req, res) => {
       assets: {
         idle, // 只返回idle视频
       },
-      defaultIdleIndex: agent.defaultPreviewIndex || 0,
+      defaultIdleIndex: defaultIdleIndex, // 确保指向正确的idle视频索引
       totalAssets: idle.length,
       generatedAt: new Date().toISOString(),
     };

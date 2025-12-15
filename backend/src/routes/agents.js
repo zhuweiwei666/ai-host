@@ -547,15 +547,39 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
     // 如果没有找到idle视频，使用默认视频（第一个）
     const finalIdleVideos = idleVideos.length > 0 ? idleVideos : (videos.length > 0 ? [videos[0]] : []);
     
-    const defaultIndex = typeof agent.defaultPreviewIndex === 'number' ? agent.defaultPreviewIndex : 0;
-    const defaultClip = finalIdleVideos[defaultIndex] || finalIdleVideos[0] || null;
+    // 确保defaultIndex指向正确的idle视频
+    // 如果defaultPreviewIndex指向的视频不在idle列表中，使用第一个idle视频
+    let defaultIndex = 0;
+    let defaultClip = finalIdleVideos[0] || null;
+    
+    if (typeof agent.defaultPreviewIndex === 'number' && agent.defaultPreviewIndex >= 0) {
+      // 找到defaultPreviewIndex对应的视频
+      const defaultVideo = videos[agent.defaultPreviewIndex];
+      if (defaultVideo) {
+        const defaultVideoId = defaultVideo.id || defaultVideo._id?.toString();
+        // 在finalIdleVideos中找到对应的视频
+        const foundIndex = finalIdleVideos.findIndex(v => {
+          const vid = v.id || v._id?.toString();
+          return vid === defaultVideoId;
+        });
+        if (foundIndex >= 0) {
+          defaultIndex = foundIndex;
+          defaultClip = finalIdleVideos[foundIndex];
+        } else {
+          // 如果找不到，使用第一个idle视频
+          console.log(`[LiveSkin Manifest iOS] Warning: defaultPreviewIndex ${agent.defaultPreviewIndex} video not in idle list, using first idle video`);
+          defaultIndex = 0;
+          defaultClip = finalIdleVideos[0] || null;
+        }
+      }
+    }
 
     // 简化的manifest：只返回idle视频，移除所有情绪相关逻辑
     const manifest = {
       version: version, // 动态版本号，视频更新时自动变化
       agentId,
       agentName: agent.name,
-      defaultIndex: defaultIndex < finalIdleVideos.length ? defaultIndex : 0,
+      defaultIndex: defaultIndex, // 确保指向正确的idle视频索引
       defaultClip,
       // 只返回idle视频
       clips: {
