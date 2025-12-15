@@ -9,11 +9,7 @@
 
 const StorySession = require('../models/StorySession');
 const Agent = require('../models/Agent');
-const axios = require('axios');
-
-// AI API 配置
-const AI_API_URL = process.env.XAI_API_URL || 'https://api.x.ai/v1/chat/completions';
-const AI_API_KEY = process.env.XAI_API_KEY;
+const ProviderFactory = require('../providers/providerFactory');
 
 /**
  * 获取当前应该使用的故事节拍
@@ -119,29 +115,17 @@ function buildUserInputPrompt(session, userInput) {
 /**
  * 调用 AI 生成内容
  */
-async function generateContent(systemPrompt, userPrompt, model = 'grok-4-1-fast-reasoning') {
+async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') {
   try {
-    const response = await axios.post(
-      AI_API_URL,
-      {
-        model: model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.8,
-        max_tokens: 1000,
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${AI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 60000,
-      }
-    );
+    const provider = ProviderFactory.getProvider(model);
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
     
-    return response.data.choices[0].message.content;
+    const result = await provider.chat(model, messages, 0.8, { maxTokens: 1000 });
+    
+    return result.content;
   } catch (error) {
     console.error('[StoryService] AI generation failed:', error.message);
     throw new Error('AI 生成失败，请稍后重试');
@@ -153,18 +137,17 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-4-1-fast-
  */
 async function extractStateUpdate(content) {
   try {
-    const response = await axios.post(
-      AI_API_URL,
+    const model = 'grok-3-fast';
+    const provider = ProviderFactory.getProvider(model);
+    
+    const messages = [
       {
-        model: 'grok-3-mini-fast',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个JSON提取器。根据给定的故事段落，提取状态变化。只输出JSON，不要其他内容。'
-          },
-          {
-            role: 'user',
-            content: `根据以下段落，提取状态变化，只输出 JSON：
+        role: 'system',
+        content: '你是一个JSON提取器。根据给定的故事段落，提取状态变化。只输出JSON，不要其他内容。'
+      },
+      {
+        role: 'user',
+        content: `根据以下段落，提取状态变化，只输出 JSON：
 
 段落内容：
 ${content}
@@ -177,21 +160,12 @@ ${content}
   "newEvent": "新发生的关键事件或null",
   "lastAction": "本段最后一句话（必填）"
 }`
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 200,
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${AI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 15000,
       }
-    );
+    ];
     
-    const text = response.data.choices[0].message.content;
+    const result = await provider.chat(model, messages, 0.1, { maxTokens: 200 });
+    
+    const text = result.content;
     // 尝试解析 JSON
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
