@@ -61,7 +61,7 @@ export interface VoiceExtractResult {
   sourceUrl: string;
 }
 
-// ==================== Preview Videos (LiveSkin) ====================
+// ==================== Preview Videos (LiveSkin FSM) ====================
 export interface PreviewVideoItem {
   id: string;
   url: string;
@@ -76,6 +76,15 @@ export interface PreviewVideoItem {
   tags?: string[];
   scaleLevel?: number;
   index?: number;
+  // FSM 相关字段
+  assetType?: 'idle' | 'reaction' | 'transition' | 'speak';
+  loopSafe?: boolean;
+  loopSafeUrl?: string;
+  safeCutPoints?: number[];
+  poseId?: string;
+  emotionId?: string;
+  fromPose?: string;
+  toPose?: string;
 }
 
 export interface PreviewVideosResponse {
@@ -102,6 +111,46 @@ export const updatePreviewVideo = (
     >
   >
 ) => http.put<{ video: PreviewVideoItem }>(`/preview/videos/${agentId}/${videoId}`, updates);
+
+// ==================== LiveSkin FSM API ====================
+export interface LiveSkinManifest {
+  agentId: string;
+  agentName: string;
+  version: number;
+  status: string;
+  assets: {
+    idle: PreviewVideoItem[];
+    reactions: Record<string, PreviewVideoItem[]>;
+    transitions: PreviewVideoItem[];
+    speak: PreviewVideoItem[];
+  };
+  defaultIdleIndex: number;
+  totalAssets: number;
+  generatedAt: string;
+}
+
+export const getLiveSkinManifest = (agentId: string) =>
+  http.get<LiveSkinManifest>(`/liveskin/manifest/${agentId}`);
+
+export const updateVideoAssetType = (
+  agentId: string,
+  videoId: string,
+  assetType: string,
+  emotionId?: string
+) => http.put<{ video: Partial<PreviewVideoItem> }>(`/liveskin/video/${agentId}/${videoId}`, {
+  assetType,
+  emotionId,
+});
+
+export const batchUpdateAssetTypes = (agentId: string) =>
+  http.post<{ message: string; total: number }>(`/liveskin/batch-update/${agentId}`, {});
+
+export const reportLiveSkinEvent = (data: {
+  agentId: string;
+  eventType: 'reaction_queued' | 'reaction_played' | 'reaction_skipped' | 'fsm_state_change';
+  data?: Record<string, unknown>;
+  timestamp?: string;
+}) => http.post<{ recorded: boolean }>('/liveskin/event', data);
 
 // User Interface
 export interface User {

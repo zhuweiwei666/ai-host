@@ -137,7 +137,13 @@ const EditAgent: React.FC = () => {
   });
 
   // ==================== LiveSkin tagging (previewVideos) ====================
-  const [previewVideos, setPreviewVideos] = useState<Array<{ id: string; url: string; tags?: string[] }>>([]);
+  const [previewVideos, setPreviewVideos] = useState<Array<{ 
+    id: string; 
+    url: string; 
+    tags?: string[];
+    assetType?: 'idle' | 'reaction' | 'transition' | 'speak';
+    emotionId?: string;
+  }>>([]);
   const [previewVideosError, setPreviewVideosError] = useState<string>('');
   const [previewVideosLoading, setPreviewVideosLoading] = useState(false);
   const [previewVideosMigrating, setPreviewVideosMigrating] = useState(false);
@@ -177,12 +183,13 @@ const EditAgent: React.FC = () => {
   );
 
   const previewMetaByUrl = useMemo(() => {
-    const m = new Map<string, { id: string; tags?: string[] }>();
+    const m = new Map<string, { id: string; tags?: string[]; assetType?: string; emotionId?: string }>();
     previewVideos.forEach((v) => {
       if (!v.url) return;
+      const meta = { id: v.id, tags: v.tags, assetType: v.assetType, emotionId: v.emotionId };
       // Store both raw and canonical keys to reduce mismatch.
-      m.set(v.url, { id: v.id, tags: v.tags });
-      m.set(canonicalizeUrlKey(v.url), { id: v.id, tags: v.tags });
+      m.set(v.url, meta);
+      m.set(canonicalizeUrlKey(v.url), meta);
     });
     return m;
   }, [previewVideos]);
@@ -204,7 +211,13 @@ const EditAgent: React.FC = () => {
     setPreviewVideosLoading(true);
     try {
       const resp = await getPreviewVideos(id);
-      const videos = (resp.data?.videos || []).map((v) => ({ id: v.id, url: v.url, tags: v.tags || [] }));
+      const videos = (resp.data?.videos || []).map((v) => ({ 
+        id: v.id, 
+        url: v.url, 
+        tags: v.tags || [],
+        assetType: v.assetType,
+        emotionId: v.emotionId,
+      }));
       setPreviewVideos(videos);
     } catch (e: any) {
       setPreviewVideosError(e?.response?.data?.message || e?.message || 'Failed to load preview videos');
@@ -236,6 +249,18 @@ const EditAgent: React.FC = () => {
     }
     await updatePreviewVideo(id, videoId, { tags });
     setPreviewVideos((prev) => prev.map((v) => (v.id === videoId ? { ...v, tags } : v)));
+  };
+
+  // FSM 资产类型更新
+  const handleSetAssetType = async (videoId: string, assetType: string, emotionId?: string) => {
+    if (!id) return;
+    if (videoId.startsWith('legacy_')) {
+      setPreviewVideosError('当前视频仍是 legacy，请先点击"迁移到 previewVideos"后再设置类型。');
+      return;
+    }
+    const { updateVideoAssetType } = await import('../api');
+    await updateVideoAssetType(id, videoId, assetType, emotionId);
+    setPreviewVideos((prev) => prev.map((v) => (v.id === videoId ? { ...v, assetType: assetType as any, emotionId } : v)));
   };
 
   const [uploading, setUploading] = useState(false);
@@ -999,6 +1024,7 @@ const EditAgent: React.FC = () => {
                       ? {
                           getVideoMeta,
                           onSetVideoTags: handleSetVideoTags,
+                          onSetAssetType: handleSetAssetType,
                           tagQuickOptions,
                         }
                       : {})}

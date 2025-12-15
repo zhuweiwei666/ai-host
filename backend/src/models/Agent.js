@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// 视频预览配置 Schema
+// 视频预览配置 Schema (LiveSkin FSM 资产)
 const PreviewVideoSchema = new mongoose.Schema({
   url: { type: String, required: true },           // 视频 URL
   thumbnailUrl: { type: String, default: '' },     // 缩略图/封面图 URL
@@ -11,8 +11,22 @@ const PreviewVideoSchema = new mongoose.Schema({
   format: { type: String, default: 'mp4' },        // 视频格式
   isVertical: { type: Boolean, default: true },    // 是否竖屏
   sortOrder: { type: Number, default: 0 },         // 排序顺序
-  tags: [String],                                   // 标签：如 'sexy', 'cute', 'dance'
+  tags: [String],                                   // 标签：如 'idle', 'happy', 'shy'
   scaleLevel: { type: Number, default: 1, min: 1, max: 5 }, // 尺度等级 1-5
+  
+  // ========== FSM 状态机相关字段 ==========
+  assetType: { 
+    type: String, 
+    enum: ['idle', 'reaction', 'transition', 'speak'], 
+    default: 'idle' 
+  },                                               // 资产类型
+  loopSafe: { type: Boolean, default: false },     // 是否 ping-pong 处理过（无缝循环）
+  loopSafeUrl: { type: String, default: '' },      // ping-pong 版本 URL
+  safeCutPoints: [Number],                         // 安全切点时间戳（秒），如 [0.5, 1.0, 1.5]
+  poseId: { type: String, default: 'neutral' },    // 起止姿态 ID（用于匹配过渡）
+  emotionId: { type: String, default: '' },        // 情绪 ID（reaction 专用，如 'happy', 'shy'）
+  fromPose: { type: String, default: '' },         // 过渡起始姿态（transition 专用）
+  toPose: { type: String, default: '' },           // 过渡目标姿态（transition 专用）
 }, { _id: true });
 
 const AgentSchema = new mongoose.Schema({

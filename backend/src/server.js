@@ -202,6 +202,7 @@ loadRoute('/api/profile', './routes/profile');
 loadRoute('/api/analytics', './routes/analytics');
 loadRoute('/api/alert', './routes/alert');
 loadRoute('/api/preview', './routes/preview');
+loadRoute('/api/liveskin', './routes/liveskin');
 loadRoute('/api/avatar-assets', './routes/avatarAssets');
 loadRoute('/api/billing', './routes/billing');
 loadRoute('/api/admin', './routes/adminWallet');

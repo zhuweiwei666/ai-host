@@ -6,7 +6,20 @@ interface MediaPair {
   videoUrl: string;
 }
 
-type VideoMeta = { id?: string; tags?: string[] } | null | undefined;
+type VideoMeta = { 
+  id?: string; 
+  tags?: string[]; 
+  assetType?: 'idle' | 'reaction' | 'transition' | 'speak';
+  emotionId?: string;
+} | null | undefined;
+
+// ========== FSM 资产类型 ==========
+const ASSET_TYPES: { id: string; label: string; color: string }[] = [
+  { id: 'idle', label: 'IDLE 待机', color: 'blue' },
+  { id: 'reaction', label: 'REACTION 反应', color: 'green' },
+  { id: 'transition', label: 'TRANSITION 过渡', color: 'yellow' },
+  { id: 'speak', label: 'SPEAK 说话', color: 'purple' },
+];
 
 // 20个情绪标签 - 中文映射
 const TAG_LABELS: Record<string, string> = {
@@ -36,6 +49,9 @@ const TAG_LABELS: Record<string, string> = {
   source: '原始',
 };
 
+// 情绪标签（用于 reaction 类型）
+const EMOTION_TAGS = ['happy', 'excited', 'flirty', 'shy', 'love', 'proud', 'sad', 'angry', 'surprised', 'scared', 'confused', 'bored'];
+
 // 标签分类
 const TAG_CATEGORIES: { name: string; color: string; tags: string[] }[] = [
   { name: '状态', color: 'blue', tags: ['idle', 'loopable', 'talk', 'listen'] },
@@ -54,6 +70,7 @@ interface MediaItemProps {
   onPreview: (url: string) => void;
   getVideoMeta?: (videoUrl: string) => VideoMeta;
   onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
+  onSetAssetType?: (videoId: string, assetType: string, emotionId?: string) => Promise<void> | void;
   tagQuickOptions?: string[];
 }
 
@@ -67,6 +84,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
   onPreview,
   getVideoMeta,
   onSetVideoTags,
+  onSetAssetType,
 }) => {
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -76,10 +94,52 @@ const MediaItem: React.FC<MediaItemProps> = ({
   const [tagDraft, setTagDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [tags, setTags] = React.useState<string[]>(Array.isArray(meta?.tags) ? meta!.tags! : []);
+  const [assetType, setAssetType] = React.useState<string>(meta?.assetType || 'idle');
+  const [emotionId, setEmotionId] = React.useState<string>(meta?.emotionId || '');
 
   React.useEffect(() => {
     setTags(Array.isArray(meta?.tags) ? meta!.tags! : []);
-  }, [meta?.tags?.join(',')]);
+    setAssetType(meta?.assetType || 'idle');
+    setEmotionId(meta?.emotionId || '');
+  }, [meta?.tags?.join(','), meta?.assetType, meta?.emotionId]);
+
+  // 更新资产类型
+  const handleAssetTypeChange = async (newType: string) => {
+    if (!videoId || !onSetAssetType) return;
+    const prevType = assetType;
+    const prevEmotion = emotionId;
+    setAssetType(newType);
+    // 如果切换到非 reaction 类型，清空 emotionId
+    if (newType !== 'reaction') {
+      setEmotionId('');
+    }
+    try {
+      setSaving(true);
+      await onSetAssetType(videoId, newType, newType === 'reaction' ? emotionId : undefined);
+    } catch (e) {
+      console.error('[DraggableMediaList] Failed to save assetType:', e);
+      setAssetType(prevType);
+      setEmotionId(prevEmotion);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 更新情绪 ID
+  const handleEmotionChange = async (newEmotion: string) => {
+    if (!videoId || !onSetAssetType || assetType !== 'reaction') return;
+    const prevEmotion = emotionId;
+    setEmotionId(newEmotion);
+    try {
+      setSaving(true);
+      await onSetAssetType(videoId, assetType, newEmotion);
+    } catch (e) {
+      console.error('[DraggableMediaList] Failed to save emotionId:', e);
+      setEmotionId(prevEmotion);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleTag = async (t: string) => {
     if (!videoId || !onSetVideoTags) return;
@@ -136,6 +196,10 @@ const MediaItem: React.FC<MediaItemProps> = ({
       orange: {
         selected: 'bg-orange-500 text-white border-orange-500',
         normal: 'bg-orange-50 text-orange-700 border-orange-200 hover:border-orange-400 hover:bg-orange-100',
+      },
+      yellow: {
+        selected: 'bg-yellow-500 text-white border-yellow-500',
+        normal: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:border-yellow-400 hover:bg-yellow-100',
       },
       purple: {
         selected: 'bg-purple-500 text-white border-purple-500',
@@ -195,11 +259,61 @@ const MediaItem: React.FC<MediaItemProps> = ({
         </div>
       </div>
 
-      {/* 视频标签（LiveSkin）- 20个情绪标签 */}
+      {/* 视频标签（LiveSkin FSM）*/}
       {pair.videoUrl && taggingEnabled ? (
         <div className="w-52 min-w-[13rem]">
           {videoId ? (
             <div className="space-y-2">
+              {/* FSM 资产类型选择器 */}
+              {onSetAssetType && (
+                <div className="pb-1.5 border-b border-gray-200">
+                  <div className="text-[10px] text-gray-500 mb-1 font-medium">FSM 类型:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {ASSET_TYPES.map((at) => {
+                      const isSelected = assetType === at.id;
+                      const style = getTagStyle('', isSelected, at.color);
+                      return (
+                        <button
+                          key={at.id}
+                          type="button"
+                          onClick={() => handleAssetTypeChange(at.id)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] border transition-all ${style}`}
+                          title={at.label}
+                        >
+                          {at.label.split(' ')[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* 情绪选择（仅 reaction 类型显示） */}
+                  {assetType === 'reaction' && (
+                    <div className="mt-1.5">
+                      <div className="text-[9px] text-gray-500 mb-0.5">情绪:</div>
+                      <div className="flex flex-wrap gap-0.5">
+                        {EMOTION_TAGS.map((em) => {
+                          const isSelected = emotionId === em;
+                          return (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => handleEmotionChange(em)}
+                              className={`px-1 py-0.5 rounded text-[9px] border transition-all ${
+                                isSelected 
+                                  ? 'bg-green-500 text-white border-green-500' 
+                                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'
+                              }`}
+                              title={TAG_LABELS[em]}
+                            >
+                              {TAG_LABELS[em]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 已选标签展示 */}
               {tags.length > 0 && (
                 <div className="pb-1.5 border-b border-gray-200">
@@ -322,6 +436,7 @@ interface DraggableMediaListProps {
   onPreview: (url: string) => void;
   getVideoMeta?: (videoUrl: string) => VideoMeta;
   onSetVideoTags?: (videoId: string, tags: string[]) => Promise<void> | void;
+  onSetAssetType?: (videoId: string, assetType: string, emotionId?: string) => Promise<void> | void;
   tagQuickOptions?: string[];
 }
 
@@ -333,6 +448,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
   onPreview,
   getVideoMeta,
   onSetVideoTags,
+  onSetAssetType,
   tagQuickOptions,
 }) => {
   // 创建配对数据（图片和视频一一对应）
@@ -392,6 +508,7 @@ const DraggableMediaList: React.FC<DraggableMediaListProps> = ({
             onPreview={onPreview}
             getVideoMeta={getVideoMeta}
             onSetVideoTags={onSetVideoTags}
+            onSetAssetType={onSetAssetType}
             tagQuickOptions={tagQuickOptions}
           />
         ))}

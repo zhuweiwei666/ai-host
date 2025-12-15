@@ -63,7 +63,16 @@ router.get('/videos/:agentId', async (req, res) => {
         sortOrder: v.sortOrder,
         tags: v.tags || [],
         scaleLevel: v.scaleLevel,
-        index
+        index,
+        // FSM 相关字段
+        assetType: v.assetType || 'idle',
+        loopSafe: v.loopSafe || false,
+        loopSafeUrl: v.loopSafeUrl || '',
+        safeCutPoints: v.safeCutPoints || [],
+        poseId: v.poseId || 'neutral',
+        emotionId: v.emotionId || '',
+        fromPose: v.fromPose || '',
+        toPose: v.toPose || '',
       }));
     } 
     // 兼容旧的 coverVideoUrls 字段

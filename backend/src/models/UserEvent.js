@@ -48,6 +48,12 @@ const UserEventSchema = new mongoose.Schema({
       // 用户状态
       'returned',                // 回流用户
       'churned',                 // 流失（长时间未访问）
+      
+      // ========== LiveSkin FSM 相关 ==========
+      'reaction_queued',         // 反应入队（用户触发事件）
+      'reaction_played',         // 反应播放完成
+      'reaction_skipped',        // 反应跳过（TTS占用/超时等）
+      'fsm_state_change',        // 状态机状态变化
     ]
   },
   
@@ -79,6 +85,22 @@ const UserEventSchema = new mongoose.Schema({
     source: String,                // 来源（chat/gallery/push/home）
     position: Number,              // 在列表中的位置
     searchQuery: String,           // 搜索词
+    
+    // ========== LiveSkin FSM 相关 ==========
+    reactionData: {
+      emotionId: String,           // 情绪 ID（happy/shy/excited 等）
+      queuedAt: Date,              // 入队时间
+      playedAt: Date,              // 播放时间
+      latencyMs: Number,           // 从入队到播放的延迟（毫秒）
+      skipReason: String,          // 跳过原因：tts_playing/expired/queue_full
+      fsmState: String,            // 当时的 FSM 状态
+      videoAssetId: String,        // 播放的视频资产 ID
+    },
+    fsmStateChange: {
+      fromState: String,           // 原状态
+      toState: String,             // 新状态
+      trigger: String,             // 触发原因
+    },
   },
   
   // ========== 上下文信息 ==========
