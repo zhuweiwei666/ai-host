@@ -531,136 +531,47 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
 
     videos.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-    // Categorize by tags (best-effort). We provide both legacy "clips" and new "buckets"
-    // so iOS can avoid complex filtering logic.
+    // 简化：只返回idle视频，移除所有情绪切换逻辑
     const hasTag = (v, t) => (v.tags || []).includes(t);
-    const hasPrefix = (v, p) => (v.tags || []).some((x) => typeof x === 'string' && x.startsWith(p));
-    const shotOf = (v) => {
-      if (hasTag(v, 'closeup')) return 'closeup';
-      if (hasTag(v, 'halfbody')) return 'halfbody';
-      if (hasTag(v, 'fullbody')) return 'fullbody';
-      return 'any';
-    };
-
-    const idleAll = videos.filter((v) => hasTag(v, 'idle') || hasTag(v, 'loopable'));
-    const talkAll = videos.filter((v) => hasTag(v, 'talk') || hasTag(v, 'speak'));
-    const reactAll = videos.filter((v) => hasPrefix(v, 'react_'));
-
-    const bucketByShot = (arr) => {
-      const out = { closeup: [], halfbody: [], fullbody: [], any: [] };
-      for (const v of arr) out[shotOf(v)].push(v);
-      // Fallback: if a shot bucket is empty, use any
-      if (!out.closeup.length) out.closeup = out.any.slice();
-      if (!out.halfbody.length) out.halfbody = out.any.slice();
-      if (!out.fullbody.length) out.fullbody = out.any.slice();
-      return out;
-    };
-
-    const reactMap = {
-      react_happy: videos.filter((v) => hasTag(v, 'react_happy')),
-      react_shy: videos.filter((v) => hasTag(v, 'react_shy')),
-      react_angry: videos.filter((v) => hasTag(v, 'react_angry')),
-      react_surprised: videos.filter((v) => hasTag(v, 'react_surprised')),
-      react_sad: videos.filter((v) => hasTag(v, 'react_sad')),
-      react_flirty: videos.filter((v) => hasTag(v, 'react_flirty')),
-      react_caring: videos.filter((v) => hasTag(v, 'react_caring')),
-      react_excited: videos.filter((v) => hasTag(v, 'react_excited')),
-      react_thinking: videos.filter((v) => hasTag(v, 'react_thinking')),
-      react_laugh: videos.filter((v) => hasTag(v, 'react_laugh')),
-    };
-
-    const otherReact = reactAll.filter((v) => !Object.values(reactMap).some((arr) => arr.some((x) => x.id === v.id)));
-
+    
+    // 只筛选idle或loopable标签的视频，其他全部忽略
+    const idleVideos = videos.filter((v) => {
+      // 如果视频有assetType字段，只处理idle类型
+      if (v.assetType && v.assetType !== 'idle') {
+        return false;
+      }
+      // 否则根据tags判断：idle或loopable
+      return hasTag(v, 'idle') || hasTag(v, 'loopable') || !v.tags || v.tags.length === 0;
+    });
+    
+    // 如果没有找到idle视频，使用默认视频（第一个）
+    const finalIdleVideos = idleVideos.length > 0 ? idleVideos : (videos.length > 0 ? [videos[0]] : []);
+    
     const defaultIndex = typeof agent.defaultPreviewIndex === 'number' ? agent.defaultPreviewIndex : 0;
-    const defaultClip = videos[defaultIndex] || videos[0] || null;
+    const defaultClip = finalIdleVideos[defaultIndex] || finalIdleVideos[0] || null;
 
-    // Recommended playback + UI defaults (iOS can override)
+    // 简化的manifest：只返回idle视频，移除所有情绪相关逻辑
     const manifest = {
       version: version, // 动态版本号，视频更新时自动变化
       agentId,
       agentName: agent.name,
-      defaultIndex,
+      defaultIndex: defaultIndex < finalIdleVideos.length ? defaultIndex : 0,
       defaultClip,
-      // Legacy shape (keep for backward compatibility)
+      // 只返回idle视频
       clips: {
-        all: videos,
-        idle: idleAll.length ? idleAll : (defaultClip ? [defaultClip] : []),
-        talk: talkAll,
-        react: Object.fromEntries(Object.entries(reactMap).map(([k, v]) => [k.replace('react_', ''), v])),
-        otherReact,
+        idle: finalIdleVideos,
       },
-      // New shape: pre-bucketed for clients (idle/talk/react -> closeup/halfbody)
-      buckets: {
-        idle: bucketByShot(idleAll.length ? idleAll : (defaultClip ? [defaultClip] : [])),
-        talk: bucketByShot(talkAll.length ? talkAll : (idleAll.length ? idleAll : (defaultClip ? [defaultClip] : []))),
-        react: Object.fromEntries(
-          Object.entries(reactMap)
-            .filter(([, arr]) => Array.isArray(arr) && arr.length)
-            .map(([k, arr]) => [k, bucketByShot(arr)])
-        ),
-        otherReact: bucketByShot(otherReact),
-      },
-      defaults: {
-        idleShot: 'closeup',
-        talkShot: 'closeup',
-        // if no explicit react cue, pick one based on mood mapping (client may override)
-        reactFallbackByMood: {
-          happy: 'react_happy',
-          excited: 'react_excited',
-          flirty: 'react_flirty',
-          shy: 'react_shy',
-          caring: 'react_caring',
-          thinking: 'react_thinking',
-          sad: 'react_sad',
-          angry: 'react_angry',
-          surprised: 'react_surprised',
-          laugh: 'react_laugh',
-          neutral: 'react_happy',
-        },
-      },
+      // 简化的播放提示：只循环播放idle
       playbackHints: {
-        // For AVPlayerLayer-based implementation
-        crossfadeMs: 200,
-        loopIdle: true,
-        idleMinHoldMs: 1200,
-        talkMinHoldMs: 600,
-        reactCooldownMs: 8000,
-        preferPreloadCount: 4,
-      },
-      // Compatibility aliases for iOS clients that expect different naming
-      transitions: {
-        crossfadeMs: 200,
-      },
-      cameraHints: {
-        idleZoom: 1.0,
-        speakZoom: 1.04,
-        transitionDuration: 0.8,
+        loopIdle: true, // 强制循环
+        preferPreloadCount: 2, // 预加载2个视频即可
       },
       ui: {
         // Relative safe area (0..1) for subtitle placement
         subtitleSafeArea: { x: 0.08, y: 0.72, w: 0.84, h: 0.18 },
-        // Keep UI minimal: no chat bubbles in immersive mode
         recommendedTextMode: 'subtitle',
       },
-      // Another alias (some clients model subtitleSafeArea at top-level)
       subtitleSafeArea: { x: 0.08, y: 0.72, w: 0.84, h: 0.18 },
-      tagsSpec: {
-        recommended: [
-          'idle',
-          'loopable',
-          'talk',
-          'react_happy',
-          'react_shy',
-          'react_angry',
-          'react_surprised',
-          'react_sad',
-          'react_flirty',
-          'closeup',
-          'halfbody',
-          'fullbody',
-          'source',
-        ],
-      },
     };
 
     // 设置响应头，防止manifest被缓存

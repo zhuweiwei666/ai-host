@@ -1231,13 +1231,11 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
       replyOptions = profileService.generateReplyOptions(finalDetectionStatus.round + 1, agent.name);
     }
     
-    const mood = inferMoodFromStage({ isNSFWStage, intimacy: finalIntimacy });
+    // 移除情绪切换逻辑，不再返回mood和cues
     const immersivePayload = immersive
       ? {
-          // New + compat: some clients use emotion, some use mood
-          mood,
-          emotion: mood,
-          cues: buildImmersiveCues({ agentId, mood, hasAudio: !!audioUrl }),
+          // 简化：只返回基本信息，不包含情绪切换
+          loopIdle: true, // 告诉客户端只循环播放idle
         }
       : null;
     

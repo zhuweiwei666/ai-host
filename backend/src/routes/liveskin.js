@@ -54,17 +54,14 @@ router.get('/manifest/:agentId', async (req, res) => {
     
     const videos = agent.previewVideos || [];
     
-    // 按 assetType 分类
+    // 简化：只返回idle视频，移除所有情绪切换逻辑
     const idle = [];
-    const reactions = {};
-    const transitions = [];
-    const speak = [];
     
     // 计算版本号：基于Agent更新时间 + 所有idle视频URL的hash
     // 如果updatedAt不存在或太旧，使用当前时间确保版本号变化
     const crypto = require('crypto');
     const idleVideoUrls = videos
-      .filter(v => v.assetType === 'idle' || !v.assetType)
+      .filter(v => v.assetType === 'idle' || !v.assetType) // 只处理idle或未分类的视频
       .map(v => (v.url || v.loopSafeUrl || '').split('?')[0]) // 移除已有查询参数，只取基础URL
       .filter(Boolean)
       .sort()
@@ -84,7 +81,13 @@ router.get('/manifest/:agentId', async (req, res) => {
     
     console.log(`[LiveSkin Manifest] Agent: ${agent.name}, Version: ${version}, UpdatedAt: ${agent.updatedAt}, IdleVideos: ${idleVideoUrls.split('|').length}`);
     
+    // 只处理idle视频，其他类型全部忽略
     videos.forEach((v, index) => {
+      // 只处理idle类型或未分类的视频（默认为idle）
+      if (v.assetType && v.assetType !== 'idle') {
+        return; // 跳过非idle视频
+      }
+      
       // 在视频URL上添加版本参数，避免浏览器缓存旧视频
       // 先移除URL中可能已有的版本参数，再添加新的
       const cleanUrl = v.url ? v.url.split('?')[0].split('&')[0] : '';
@@ -95,52 +98,21 @@ router.get('/manifest/:agentId', async (req, res) => {
       const asset = {
         id: v._id.toString(),
         url: urlWithVersion,
-        loopSafeUrl: loopSafeUrlWithVersion || '',
+        loopSafeUrl: loopSafeUrlWithVersion || urlWithVersion, // 如果没有loopSafeUrl，使用url
         thumbnailUrl: v.thumbnailUrl || '',
         duration: v.duration || 0,
         width: v.width || 0,
         height: v.height || 0,
-        safeCutPoints: v.safeCutPoints || [],
-        poseId: v.poseId || 'neutral',
-        emotionId: v.emotionId || '',
-        fromPose: v.fromPose || '',
-        toPose: v.toPose || '',
-        loopSafe: v.loopSafe || false,
+        loopSafe: true, // 所有idle视频默认可循环
         tags: v.tags || [],
-        scaleLevel: v.scaleLevel || 1,
         sortOrder: v.sortOrder || index,
       };
       
-      switch (v.assetType) {
-        case 'idle':
-          idle.push(asset);
-          break;
-        case 'reaction':
-          const emotionKey = v.emotionId || 'default';
-          if (!reactions[emotionKey]) {
-            reactions[emotionKey] = [];
-          }
-          reactions[emotionKey].push(asset);
-          break;
-        case 'transition':
-          transitions.push(asset);
-          break;
-        case 'speak':
-          speak.push(asset);
-          break;
-        default:
-          // 未分类的默认为 idle
-          idle.push(asset);
-      }
+      idle.push(asset);
     });
     
     // 按 sortOrder 排序
     idle.sort((a, b) => a.sortOrder - b.sortOrder);
-    transitions.sort((a, b) => a.sortOrder - b.sortOrder);
-    speak.sort((a, b) => a.sortOrder - b.sortOrder);
-    Object.keys(reactions).forEach(key => {
-      reactions[key].sort((a, b) => a.sortOrder - b.sortOrder);
-    });
     
     const manifest = {
       agentId: agent._id.toString(),
@@ -148,13 +120,10 @@ router.get('/manifest/:agentId', async (req, res) => {
       version: version, // 动态版本号，视频更新时自动变化
       status: agent.liveSkinStatus || 'pending',
       assets: {
-        idle,
-        reactions,
-        transitions,
-        speak,
+        idle, // 只返回idle视频
       },
       defaultIdleIndex: agent.defaultPreviewIndex || 0,
-      totalAssets: videos.length,
+      totalAssets: idle.length,
       generatedAt: new Date().toISOString(),
     };
     
