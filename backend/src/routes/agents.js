@@ -489,48 +489,101 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
 
     videos.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-    // Categorize by tags (best-effort, iOS can still fallback to defaultIndex)
+    // Categorize by tags (best-effort). We provide both legacy "clips" and new "buckets"
+    // so iOS can avoid complex filtering logic.
     const hasTag = (v, t) => (v.tags || []).includes(t);
     const hasPrefix = (v, p) => (v.tags || []).some((x) => typeof x === 'string' && x.startsWith(p));
-
-    const idle = videos.filter((v) => hasTag(v, 'idle') || hasTag(v, 'loopable'));
-    const talk = videos.filter((v) => hasTag(v, 'talk') || hasTag(v, 'speak'));
-    const react = {
-      happy: videos.filter((v) => hasTag(v, 'react_happy')),
-      shy: videos.filter((v) => hasTag(v, 'react_shy')),
-      angry: videos.filter((v) => hasTag(v, 'react_angry')),
-      surprised: videos.filter((v) => hasTag(v, 'react_surprised')),
-      sad: videos.filter((v) => hasTag(v, 'react_sad')),
-      flirty: videos.filter((v) => hasTag(v, 'react_flirty')),
+    const shotOf = (v) => {
+      if (hasTag(v, 'closeup')) return 'closeup';
+      if (hasTag(v, 'halfbody')) return 'halfbody';
+      if (hasTag(v, 'fullbody')) return 'fullbody';
+      return 'any';
     };
 
-    // Any react_* tags that aren't in the preset map
-    const otherReact = videos
-      .filter((v) => hasPrefix(v, 'react_'))
-      .filter((v) => !Object.values(react).some((arr) => arr.some((x) => x.id === v.id)));
+    const idleAll = videos.filter((v) => hasTag(v, 'idle') || hasTag(v, 'loopable'));
+    const talkAll = videos.filter((v) => hasTag(v, 'talk') || hasTag(v, 'speak'));
+    const reactAll = videos.filter((v) => hasPrefix(v, 'react_'));
+
+    const bucketByShot = (arr) => {
+      const out = { closeup: [], halfbody: [], fullbody: [], any: [] };
+      for (const v of arr) out[shotOf(v)].push(v);
+      // Fallback: if a shot bucket is empty, use any
+      if (!out.closeup.length) out.closeup = out.any.slice();
+      if (!out.halfbody.length) out.halfbody = out.any.slice();
+      if (!out.fullbody.length) out.fullbody = out.any.slice();
+      return out;
+    };
+
+    const reactMap = {
+      react_happy: videos.filter((v) => hasTag(v, 'react_happy')),
+      react_shy: videos.filter((v) => hasTag(v, 'react_shy')),
+      react_angry: videos.filter((v) => hasTag(v, 'react_angry')),
+      react_surprised: videos.filter((v) => hasTag(v, 'react_surprised')),
+      react_sad: videos.filter((v) => hasTag(v, 'react_sad')),
+      react_flirty: videos.filter((v) => hasTag(v, 'react_flirty')),
+      react_caring: videos.filter((v) => hasTag(v, 'react_caring')),
+      react_excited: videos.filter((v) => hasTag(v, 'react_excited')),
+      react_thinking: videos.filter((v) => hasTag(v, 'react_thinking')),
+      react_laugh: videos.filter((v) => hasTag(v, 'react_laugh')),
+    };
+
+    const otherReact = reactAll.filter((v) => !Object.values(reactMap).some((arr) => arr.some((x) => x.id === v.id)));
 
     const defaultIndex = typeof agent.defaultPreviewIndex === 'number' ? agent.defaultPreviewIndex : 0;
     const defaultClip = videos[defaultIndex] || videos[0] || null;
 
     // Recommended playback + UI defaults (iOS can override)
     const manifest = {
-      version: 1,
+      version: 2,
       agentId,
       agentName: agent.name,
       defaultIndex,
       defaultClip,
+      // Legacy shape (keep for backward compatibility)
       clips: {
         all: videos,
-        idle: idle.length ? idle : (defaultClip ? [defaultClip] : []),
-        talk,
-        react,
+        idle: idleAll.length ? idleAll : (defaultClip ? [defaultClip] : []),
+        talk: talkAll,
+        react: Object.fromEntries(Object.entries(reactMap).map(([k, v]) => [k.replace('react_', ''), v])),
         otherReact,
       },
-      playback: {
+      // New shape: pre-bucketed for clients (idle/talk/react -> closeup/halfbody)
+      buckets: {
+        idle: bucketByShot(idleAll.length ? idleAll : (defaultClip ? [defaultClip] : [])),
+        talk: bucketByShot(talkAll.length ? talkAll : (idleAll.length ? idleAll : (defaultClip ? [defaultClip] : []))),
+        react: Object.fromEntries(
+          Object.entries(reactMap)
+            .filter(([, arr]) => Array.isArray(arr) && arr.length)
+            .map(([k, arr]) => [k, bucketByShot(arr)])
+        ),
+        otherReact: bucketByShot(otherReact),
+      },
+      defaults: {
+        idleShot: 'closeup',
+        talkShot: 'closeup',
+        // if no explicit react cue, pick one based on mood mapping (client may override)
+        reactFallbackByMood: {
+          happy: 'react_happy',
+          excited: 'react_excited',
+          flirty: 'react_flirty',
+          shy: 'react_shy',
+          caring: 'react_caring',
+          thinking: 'react_thinking',
+          sad: 'react_sad',
+          angry: 'react_angry',
+          surprised: 'react_surprised',
+          laugh: 'react_laugh',
+          neutral: 'react_happy',
+        },
+      },
+      playbackHints: {
         // For AVPlayerLayer-based implementation
         crossfadeMs: 200,
         loopIdle: true,
         idleMinHoldMs: 1200,
+        talkMinHoldMs: 600,
+        reactCooldownMs: 8000,
+        preferPreloadCount: 4,
       },
       // Compatibility aliases for iOS clients that expect different naming
       transitions: {
@@ -563,6 +616,7 @@ router.get('/:id/live-skin-manifest', optionalAuth, async (req, res) => {
           'closeup',
           'halfbody',
           'fullbody',
+          'source',
         ],
       },
     };

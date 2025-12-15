@@ -26,6 +26,10 @@ interface OutfitManagerProps {
 }
 
 export function OutfitManager({ agentId }: OutfitManagerProps) {
+  // Temporarily disabled (not used right now)
+  const ENABLE_OUTFIT_MANAGER = false;
+  if (!ENABLE_OUTFIT_MANAGER) return null;
+
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null); // outfitId or 'all'

@@ -49,11 +49,20 @@ async function generateVideoFromImage({
   fps = 12,
   frames = 25,
   loop = true,
+  // Optional: Improve identity consistency / quality (depends on RunPod API implementation)
+  seed,
+  steps,
+  min_guidance,
+  max_guidance,
+  noise_aug,
 }) {
   const base = requireEnv('RUNPOD_VIDEO_API');
 
   // Download source image (we upload bytes to RunPod)
   const imageBuf = await downloadToBuffer(imageUrl);
+  if (!imageBuf || imageBuf.length < 128) {
+    throw new Error(`RunPod source image too small/invalid (len=${imageBuf?.length || 0})`);
+  }
 
   const form = new FormData();
   form.append('image', imageBuf, { filename: 'avatar.jpg', contentType: 'image/jpeg' });
@@ -61,6 +70,11 @@ async function generateVideoFromImage({
   form.append('fps', String(fps));
   form.append('frames', String(frames));
   form.append('loop', String(loop));
+  if (typeof seed === 'number' && Number.isFinite(seed) && seed > 0) form.append('seed', String(seed));
+  if (typeof steps === 'number' && Number.isFinite(steps) && steps > 0) form.append('steps', String(steps));
+  if (typeof min_guidance === 'number' && Number.isFinite(min_guidance)) form.append('min_guidance', String(min_guidance));
+  if (typeof max_guidance === 'number' && Number.isFinite(max_guidance)) form.append('max_guidance', String(max_guidance));
+  if (typeof noise_aug === 'number' && Number.isFinite(noise_aug)) form.append('noise_aug', String(noise_aug));
 
   const endpoint = `${base.replace(/\/$/, '')}${getGeneratePath()}`;
   const resp = await axios.post(endpoint, form, {

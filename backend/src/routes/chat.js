@@ -180,17 +180,41 @@ const buildImmersiveCues = ({ agentId, mood, hasAudio }) => {
   // - prefer switching to talk/react clips while speaking
   // - otherwise stay on idle loop
   const preferTags = [];
-  if (hasAudio) preferTags.push('talk');
-  if (mood?.primary) preferTags.push(`react_${mood.primary}`);
+  // Prefer original/source clips when available
+  preferTags.push('source');
+
+  // Shot hint (we currently support closeup + halfbody)
+  const shot = 'closeup';
+  preferTags.push(shot);
+
+  if (hasAudio) {
+    preferTags.push('talk');
+  } else {
+    // default visual state is idle when not speaking
+    preferTags.push('idle');
+    preferTags.push('loopable');
+  }
+
+  const reactTag = mood?.primary ? `react_${mood.primary}` : null;
+  const shouldReact = !hasAudio && (mood?.intensity ?? 0) >= 0.85;
+  if (reactTag && shouldReact) preferTags.unshift(reactTag);
 
   return {
     mode: 'video-first',
     state: hasAudio ? 'SPEAK' : 'TEXT',
+    mood: mood?.primary || 'neutral',
+    intensity: clamp01(mood?.intensity ?? 0.5),
     clip: {
       preferTags,
       fallbackTags: ['idle', 'loopable'],
       crossfadeMs: 200,
       loopIdle: true,
+      minHoldMs: hasAudio ? 600 : 1200,
+      reactCooldownMs: 8000,
+    },
+    shot: {
+      prefer: shot,
+      allow: ['closeup', 'halfbody'],
     },
     camera: {
       // iOS applies on container view (CGAffineTransform) for AVPlayerLayer
@@ -1201,7 +1225,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
           cues: buildImmersiveCues({ agentId, mood, hasAudio: !!audioUrl }),
         }
       : null;
-
+    
     sendSuccess(res, HTTP_STATUS.OK, { 
       reply, 
       audioUrl: audioUrl, 

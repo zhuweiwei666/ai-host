@@ -593,7 +593,7 @@ const ChatPage: React.FC = () => {
           ) : (
             <SpatialAvatar
               src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/64')}
-              alt={agent.name}
+            alt={agent.name} 
               width={40}
               height={40}
               // Use the exported portrait defaults; tweak per-agent later if needed.
@@ -606,7 +606,7 @@ const ChatPage: React.FC = () => {
                 driftAmpPx: 0.8,
               }}
               className="w-10 h-10 rounded-full bg-gray-200"
-            />
+          />
           )}
           <div>
             <h1 className="text-lg font-bold text-gray-900">{agent.name}</h1>
@@ -684,7 +684,7 @@ const ChatPage: React.FC = () => {
                 />
             ) : (
                 <SpatialBackdrop
-                  src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')}
+                    src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/400x600')} 
                   className="sb"
                   opacity={0.30}
                 />
@@ -713,8 +713,8 @@ const ChatPage: React.FC = () => {
                 </div>
               ) : (
                 <SpatialAvatar
-                  src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')}
-                  alt={agent.name}
+                src={normalizeImageUrl(agent.avatarUrl, 'https://via.placeholder.com/120')} 
+                alt={agent.name}
                   width={96}
                   height={96}
                   layers={DEFAULT_AVATAR_LAYERS}

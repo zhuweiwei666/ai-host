@@ -21,6 +21,10 @@ const Agents: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const currentStyle = searchParams.get('style') || 'all';
+  const clearStyleFilter = () => {
+    // Clear ?style=... so the list shows everything again
+    navigate('/', { replace: false });
+  };
 
   const fetchAgents = async () => {
     try {
@@ -112,6 +116,20 @@ const Agents: React.FC = () => {
       
       {activePanel === 'agents' && (
         <div className="animate-fade-in">
+          {currentStyle !== 'all' && (
+            <div className="mb-4 mx-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-3">
+              <div>
+                当前正在按风格过滤：<b>{currentStyle}</b>（所以你只会看到该风格下的主播）
+              </div>
+              <button
+                type="button"
+                onClick={clearStyleFilter}
+                className="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-900 hover:bg-amber-100"
+              >
+                清除过滤（显示全部）
+              </button>
+            </div>
+          )}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 px-2">
             <div className="space-y-2">
                 <h2 className="text-4xl font-bold gradient-text">

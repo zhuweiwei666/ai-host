@@ -25,6 +25,8 @@ const AgentSchema = new mongoose.Schema({
   // New: Support multiple media files
   avatarUrls: { type: [String], default: [] }, // Array of image URLs
   coverVideoUrls: { type: [String], default: [] }, // Array of video URLs
+  // Backup of coverVideoUrls (for migrations / LiveSkin experiments)
+  coverVideoUrlsBackup: { type: [String], default: [] },
   privatePhotoUrls: { type: [String], default: [] }, // Array of NSFW/Paid image URLs
 
   // ========== 空间照片 / 动态皮肤资产包 ==========
@@ -51,6 +53,8 @@ const AgentSchema = new mongoose.Schema({
   // ========== 视频预览系统 ==========
   previewVideos: [PreviewVideoSchema],              // 预览视频列表（带元数据）
   defaultPreviewIndex: { type: Number, default: 0 }, // 默认播放的视频索引
+  // Backup of previewVideos (for LiveSkin experiments / rollbacks)
+  previewVideosBackup: [PreviewVideoSchema],
 
   // ========== LiveSkin（视频优先沉浸式）生成状态 ==========
   // These fields are optional; iOS reads from live-skin-manifest (derived from previewVideos),
@@ -58,6 +62,9 @@ const AgentSchema = new mongoose.Schema({
   liveSkinStatus: { type: String, enum: ['pending', 'generating', 'ready', 'failed'], default: 'pending' },
   liveSkinGeneratedAt: { type: Date },
   liveSkinLastError: { type: String, default: '' },
+  // Stable seed to reduce identity drift across generated clips for this agent.
+  // 0/undefined means "not assigned yet" (assigned on first generation).
+  liveSkinSeed: { type: Number },
   description: { type: String, default: '' },
   modelName: { type: String, required: true, default: 'grok-4-1-fast-reasoning' },
   temperature: { type: Number, default: 0.7 },

@@ -17,6 +17,11 @@ interface UgcImageGalleryProps {
 }
 
 const UgcImageGallery: React.FC<UgcImageGalleryProps> = ({ agentId }) => {
+  // Temporarily disabled (not used right now)
+  // Keep component code for future re-enable without breaking imports.
+  const ENABLE_UGC_GALLERY = false;
+  if (!ENABLE_UGC_GALLERY) return null;
+
   const [images, setImages] = useState<UgcImage[]>([]);
   const [stats, setStats] = useState<UgcImageStats | null>(null);
   const [loading, setLoading] = useState(false);

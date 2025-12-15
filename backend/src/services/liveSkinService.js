@@ -21,23 +21,29 @@ function ensureArray(v) {
 
 const DEFAULT_ACTIONS = [
   // Idle should be smooth and truly loopable
-  { name: 'idle_1', tags: ['idle', 'loopable'], motion: 28, fps: 12, frames: 36, loop: true, sortOrder: 0 },
-  { name: 'idle_2', tags: ['idle', 'loopable'], motion: 36, fps: 12, frames: 36, loop: true, sortOrder: 1 },
+  { name: 'idle_1', tags: ['idle', 'loopable'], motion: 28, fps: 12, frames: 36, loop: true, steps: 30, sortOrder: 0 },
+  { name: 'idle_2', tags: ['idle', 'loopable'], motion: 36, fps: 12, frames: 36, loop: true, steps: 30, sortOrder: 1 },
   // A bit more motion for speaking / emphasis
-  { name: 'talk_1', tags: ['talk'], motion: 55, fps: 12, frames: 24, loop: false, sortOrder: 10 },
-  { name: 'talk_2', tags: ['talk'], motion: 70, fps: 12, frames: 24, loop: false, sortOrder: 11 },
-  { name: 'react_happy', tags: ['react_happy'], motion: 75, fps: 12, frames: 18, loop: false, sortOrder: 20 },
-  { name: 'react_shy', tags: ['react_shy'], motion: 45, fps: 12, frames: 18, loop: false, sortOrder: 21 },
-  { name: 'react_flirty', tags: ['react_flirty'], motion: 65, fps: 12, frames: 18, loop: false, sortOrder: 22 },
-  { name: 'react_sad', tags: ['react_sad'], motion: 40, fps: 12, frames: 18, loop: false, sortOrder: 23 },
-  { name: 'react_angry', tags: ['react_angry'], motion: 70, fps: 12, frames: 18, loop: false, sortOrder: 24 },
-  { name: 'react_surprised', tags: ['react_surprised'], motion: 85, fps: 12, frames: 18, loop: false, sortOrder: 25 },
+  { name: 'talk_1', tags: ['talk'], motion: 55, fps: 12, frames: 24, loop: false, steps: 25, sortOrder: 10 },
+  { name: 'talk_2', tags: ['talk'], motion: 70, fps: 12, frames: 24, loop: false, steps: 25, sortOrder: 11 },
+  { name: 'react_happy', tags: ['react_happy'], motion: 75, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 20 },
+  { name: 'react_shy', tags: ['react_shy'], motion: 45, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 21 },
+  { name: 'react_flirty', tags: ['react_flirty'], motion: 65, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 22 },
+  { name: 'react_sad', tags: ['react_sad'], motion: 40, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 23 },
+  { name: 'react_angry', tags: ['react_angry'], motion: 70, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 24 },
+  { name: 'react_surprised', tags: ['react_surprised'], motion: 85, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 25 },
   // Additional emotional flavors for immersion
-  { name: 'react_caring', tags: ['react_caring'], motion: 48, fps: 12, frames: 18, loop: false, sortOrder: 26 },
-  { name: 'react_excited', tags: ['react_excited'], motion: 90, fps: 12, frames: 18, loop: false, sortOrder: 27 },
-  { name: 'react_thinking', tags: ['react_thinking'], motion: 35, fps: 12, frames: 18, loop: false, sortOrder: 28 },
-  { name: 'react_laugh', tags: ['react_laugh'], motion: 80, fps: 12, frames: 18, loop: false, sortOrder: 29 },
+  { name: 'react_caring', tags: ['react_caring'], motion: 48, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 26 },
+  { name: 'react_excited', tags: ['react_excited'], motion: 90, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 27 },
+  { name: 'react_thinking', tags: ['react_thinking'], motion: 35, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 28 },
+  { name: 'react_laugh', tags: ['react_laugh'], motion: 80, fps: 12, frames: 18, loop: false, steps: 25, sortOrder: 29 },
 ];
+
+function stableActionSeed(baseSeed, sortOrder = 0) {
+  // 31-bit positive int (FastAPI treats seed=0 as "random")
+  const s = (Number(baseSeed) + Number(sortOrder) * 9973) % 2147483647;
+  return s <= 0 ? 1 : s;
+}
 
 function run(cmd, args, { timeoutMs = 180000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -114,6 +120,13 @@ async function generateClipsForAgent({
   const srcImage = imageUrl || agent.avatarUrls?.[0] || agent.avatarUrl;
   if (!srcImage) throw new Error('Missing imageUrl/avatar for agent');
 
+  // Stable seed per agent to reduce identity drift across multiple generated clips
+  let baseSeed = Number(agent.liveSkinSeed) || 0;
+  if (!baseSeed) {
+    baseSeed = crypto.randomInt(1, 2147483647);
+    await Agent.updateOne({ _id: agentId }, { $set: { liveSkinSeed: baseSeed } }, { strict: false });
+  }
+
   // Mark status (schema might not have this field; routes use strict:false, but we keep updateOne strict via $set).
   await Agent.updateOne(
     { _id: agentId },
@@ -123,9 +136,21 @@ async function generateClipsForAgent({
 
   const results = [];
   for (const a of actions) {
-    const { name, tags, motion, fps, frames, loop, sortOrder } = a;
+    const { name, tags, motion, fps, frames, loop, sortOrder, steps } = a;
     try {
-      const gen = await generateVideoFromImage({ imageUrl: srcImage, motion, fps, frames, loop });
+      const seed = stableActionSeed(baseSeed, sortOrder);
+      const gen = await generateVideoFromImage({
+        imageUrl: srcImage,
+        motion,
+        fps,
+        frames,
+        loop,
+        seed,
+        steps,
+        min_guidance: 1.0,
+        max_guidance: 3.0,
+        noise_aug: 0.02,
+      });
       const videoBuf = await downloadToBuffer(gen.videoUrl);
       // Make output iOS-friendly and correct aspect ratio
       let finalVideoBuf = videoBuf;
@@ -199,10 +224,6 @@ async function generateClipsForAgent({
     { strict: false }
   );
 
-  // Optional: sync legacy coverVideoUrls so old clients still see videos
-  const coverUrls = merged.map((v) => v.url).filter(Boolean);
-  await Agent.updateOne({ _id: agentId }, { $set: { coverVideoUrls: coverUrls } }, { strict: false });
-
   return {
     agentId,
     sourceImageUrl: srcImage,
@@ -215,6 +236,7 @@ async function generateClipsForAgent({
 
 module.exports = {
   DEFAULT_ACTIONS,
+  transcodeForIOS,
   generateClipsForAgent,
 };
 

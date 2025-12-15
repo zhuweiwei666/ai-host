@@ -35,6 +35,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
 }) => {
   const isFirst = index === 0;
   const isLast = index === total - 1;
+  const taggingEnabled = !!(getVideoMeta && onSetVideoTags);
   const meta = pair.videoUrl && getVideoMeta ? getVideoMeta(pair.videoUrl) : null;
   const videoId = meta?.id;
   const [tagDraft, setTagDraft] = React.useState('');
@@ -47,11 +48,16 @@ const MediaItem: React.FC<MediaItemProps> = ({
 
   const toggleTag = async (t: string) => {
     if (!videoId || !onSetVideoTags) return;
+    const prev = tags;
     const next = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t];
     setTags(next);
     try {
       setSaving(true);
       await onSetVideoTags(videoId, next);
+    } catch (e) {
+      console.error('[DraggableMediaList] Failed to save tags:', e);
+      setTags(prev);
+      alert('保存标签失败，请确认已保存 Agent 并稍后重试。');
     } finally {
       setSaving(false);
     }
@@ -65,12 +71,17 @@ const MediaItem: React.FC<MediaItemProps> = ({
       setTagDraft('');
       return;
     }
+    const prev = tags;
     const next = [...tags, t];
     setTags(next);
     setTagDraft('');
     try {
       setSaving(true);
       await onSetVideoTags(videoId, next);
+    } catch (e) {
+      console.error('[DraggableMediaList] Failed to add tag:', e);
+      setTags(prev);
+      alert('保存标签失败，请确认已保存 Agent 并稍后重试。');
     } finally {
       setSaving(false);
     }
@@ -112,7 +123,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
       {/* 视频预览 */}
       <div className="relative">
         <video
-          src={pair.videoUrl}
+          src={normalizeImageUrl(pair.videoUrl, '')}
           className="w-20 h-20 rounded-md object-cover border border-blue-300"
           muted
           onMouseEnter={(e) => e.currentTarget.play()}
@@ -127,7 +138,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
       </div>
 
       {/* 视频标签（LiveSkin） */}
-      {pair.videoUrl ? (
+      {pair.videoUrl && taggingEnabled ? (
         <div className="w-20">
           {videoId ? (
             <div className="space-y-1">
@@ -154,46 +165,42 @@ const MediaItem: React.FC<MediaItemProps> = ({
                   {tags.map((t) => (
                     <span key={t} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-700">
                       {t}
-                      {onSetVideoTags ? (
-                        <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => toggleTag(t)} title="移除">
-                          ×
-                        </button>
-                      ) : null}
+                      <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => toggleTag(t)} title="移除">
+                        ×
+                      </button>
                     </span>
                   ))}
                 </div>
               )}
 
-              {onSetVideoTags ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    value={tagDraft}
-                    onChange={(e) => setTagDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    placeholder="tag"
-                    className="w-12 px-1 py-0.5 text-[10px] border border-gray-300 rounded"
-                  />
-                  <button
-                    type="button"
-                    onClick={addTag}
-                    className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 hover:bg-gray-300"
-                    disabled={saving}
-                    title="添加"
-                  >
-                    +
-                  </button>
-                  {saving ? <span className="text-[10px] text-gray-400">…</span> : null}
-                </div>
-              ) : null}
+              <div className="flex items-center gap-1">
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  placeholder="tag"
+                  className="w-12 px-1 py-0.5 text-[10px] border border-gray-300 rounded"
+                />
+                <button
+                  type="button"
+                  onClick={addTag}
+                  className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 hover:bg-gray-300"
+                  disabled={saving}
+                  title="添加"
+                >
+                  +
+                </button>
+                {saving ? <span className="text-[10px] text-gray-400">…</span> : null}
+              </div>
             </div>
           ) : (
             <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
-              需迁移后打标签
+              未入库/无 videoId：请先点击 Save 保存，然后点“刷新”（或先迁移到 previewVideos）
             </div>
           )}
         </div>

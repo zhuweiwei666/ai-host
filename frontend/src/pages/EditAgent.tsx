@@ -15,9 +15,15 @@ import {
 import ModelSelect from '../components/ModelSelect';
 import VoiceSelectionDialog from '../components/VoiceSelectionDialog';
 import DraggableMediaList from '../components/DraggableMediaList';
-import UgcImageGallery from '../components/UgcImageGallery';
-import OutfitManager from '../components/OutfitManager';
 import { normalizeImageUrl } from '../utils/imageUrl';
+
+const canonicalizeUrlKey = (url: string) => {
+  if (!url) return '';
+  // Normalize relative /uploads/* into absolute (same as image normalization),
+  // then strip query/hash to improve matching across signed URLs.
+  const normalized = normalizeImageUrl(url, '');
+  return normalized.split('#')[0].split('?')[0].trim();
+};
 
 const CORE_PROMPT_TEMPLATE = `**[核心人设协议]**
 
@@ -157,13 +163,19 @@ const EditAgent: React.FC = () => {
   const previewMetaByUrl = useMemo(() => {
     const m = new Map<string, { id: string; tags?: string[] }>();
     previewVideos.forEach((v) => {
-      if (v.url) m.set(v.url, { id: v.id, tags: v.tags });
+      if (!v.url) return;
+      // Store both raw and canonical keys to reduce mismatch.
+      m.set(v.url, { id: v.id, tags: v.tags });
+      m.set(canonicalizeUrlKey(v.url), { id: v.id, tags: v.tags });
     });
     return m;
   }, [previewVideos]);
 
   const getVideoMeta = useMemo(() => {
-    return (videoUrl: string) => previewMetaByUrl.get(videoUrl) || null;
+    return (videoUrl: string) =>
+      previewMetaByUrl.get(videoUrl) ||
+      previewMetaByUrl.get(canonicalizeUrlKey(videoUrl)) ||
+      null;
   }, [previewMetaByUrl]);
 
   const hasLegacyPreviewVideos = useMemo(() => {
@@ -966,9 +978,14 @@ const EditAgent: React.FC = () => {
                       }));
                     }}
                     onPreview={setPreviewImage}
-                    getVideoMeta={getVideoMeta}
-                    onSetVideoTags={handleSetVideoTags}
-                    tagQuickOptions={tagQuickOptions}
+                    // Only enable LiveSkin tagging after the agent is created (has id).
+                    {...(isEdit && id
+                      ? {
+                          getVideoMeta,
+                          onSetVideoTags: handleSetVideoTags,
+                          tagQuickOptions,
+                        }
+                      : {})}
                   />
 
                   {/* 私有图片单独显示 */}
@@ -1195,15 +1212,7 @@ const EditAgent: React.FC = () => {
             </div>
           </div>
 
-          {/* AI UGC 相册 - 只在编辑模式显示 */}
-          {isEdit && id && (
-            <UgcImageGallery agentId={id} />
-          )}
-
-          {/* Outfit 私房照管理 - 只在编辑模式显示 */}
-          {isEdit && id && (
-            <OutfitManager agentId={id} agentName={formData.name} />
-          )}
+          {/* 暂时隐藏：AI UGC 相册 / 私房照管理（当前用不上） */}
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Custom Personality & Appearance</label>
