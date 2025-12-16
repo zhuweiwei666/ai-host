@@ -31,12 +31,25 @@ const StorySessionSchema = new mongoose.Schema({
     max: 100
   },
   
+  // 好感度系统
+  affection: {
+    level: { type: Number, default: 0, min: 0, max: 100 },  // 好感度 0-100
+    stage: { 
+      type: String, 
+      enum: ['陌生', '熟悉', '暧昧', '热恋', '深爱'], 
+      default: '陌生' 
+    },
+    lastChange: { type: Number, default: 0 },  // 上次变化值（用于显示 +5 等）
+  },
+  
   // 当前场景状态
   state: {
     scene: { type: String, default: '初始场景' },     // 当前场景
     time: { type: String, default: '傍晚' },          // 时间
-    mood: { type: String, default: '平静' },          // 氛围
+    mood: { type: String, default: '害羞' },          // 角色心情
+    action: { type: String, default: '' },            // 角色当前动作
     clothes: { type: String, default: '' },           // 角色当前穿着
+    expression: { type: String, default: '' },        // 角色表情
     lastAction: { type: String, default: '' },        // 上一段结尾（用于承接）
   },
   
@@ -132,6 +145,29 @@ StorySessionSchema.methods.advanceProgress = function(amount = 3) {
   if (this.progress >= 100) {
     this.progress = 20 + Math.random() * 30; // 回到 20-50% 之间，开启新章节
   }
+  return this;
+};
+
+// 更新好感度
+StorySessionSchema.methods.updateAffection = function(change) {
+  const oldLevel = this.affection.level;
+  this.affection.level = Math.max(0, Math.min(100, oldLevel + change));
+  this.affection.lastChange = change;
+  
+  // 根据好感度更新阶段
+  const level = this.affection.level;
+  if (level >= 80) {
+    this.affection.stage = '深爱';
+  } else if (level >= 60) {
+    this.affection.stage = '热恋';
+  } else if (level >= 40) {
+    this.affection.stage = '暧昧';
+  } else if (level >= 20) {
+    this.affection.stage = '熟悉';
+  } else {
+    this.affection.stage = '陌生';
+  }
+  
   return this;
 };
 

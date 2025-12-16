@@ -882,8 +882,16 @@ export interface StoryState {
   scene: string;
   time: string;
   mood: string;
+  action?: string;
   clothes: string;
+  expression?: string;
   lastAction: string;
+}
+
+export interface StoryAffection {
+  level: number;       // 0-100
+  stage: '陌生' | '熟悉' | '暧昧' | '热恋' | '深爱';
+  lastChange: number;  // 上次变化值（如 +5）
 }
 
 export interface StoryParagraph {
@@ -914,6 +922,7 @@ export interface StoryStartResponse {
   openingImageUrl?: string | null;  // 开场配图
   progress: number;
   state: StoryState;
+  affection: StoryAffection;  // 好感度数据
   paragraphs: StoryParagraph[];
   isExisting: boolean;
   imageGenerating?: boolean; // 是否有图片正在生成
@@ -926,10 +935,18 @@ export interface StoryContinueResponse {
   paragraphIndex?: number;   // 段落索引（用于轮询图片）
   progress: number;
   state: StoryState;
+  affection?: StoryAffection;  // 好感度数据
   isEnding: boolean;
   balance?: number;
   cost?: number;
   imageGenerating?: boolean; // 是否有图片正在生成
+}
+
+export interface StoryPhotoResponse {
+  imageUrl: string;
+  prompt: string;
+  balance?: number;
+  cost?: number;
 }
 
 export interface ParagraphImageResponse {
@@ -960,6 +977,10 @@ export const restartStory = (agentId: string) =>
 // 获取用户所有活跃故事
 export const getUserStorySessions = () =>
   http.get<{ agentId: { _id: string; name: string; avatarUrls: string[] }; progress: number; updatedAt: string }[]>('/story/user/sessions');
+
+// 生成角色写真
+export const generateStoryPhoto = (sessionId: string) =>
+  http.post<StoryPhotoResponse>('/story/photo', { sessionId });
 
 // 获取段落图片状态（用于轮询）
 export const getParagraphImage = (sessionId: string, paragraphIndex: number) =>

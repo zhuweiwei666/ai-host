@@ -76,6 +76,7 @@ function getCurrentBeat(storyBeats, progress) {
 function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const currentBeat = getCurrentBeat(config.storyBeats, session.progress);
+  const affection = session.affection || { level: 0, stage: '陌生' };
   
   const ratingGuide = {
     mild: '暧昧暗示',
@@ -83,7 +84,7 @@ function buildSystemPrompt(agent, session) {
     explicit: '露骨描写'
   };
   
-  return `你正在以论坛帖子的方式讲述一个故事。每次只发一层楼的内容。
+  return `你正在讲述一个互动故事。每次只输出一段内容。
 
 ## 你是谁
 名字：${agent.name}
@@ -92,34 +93,45 @@ function buildSystemPrompt(agent, session) {
 
 ## 当前状态
 - 场景：${session.state.scene}
-- 氛围：${session.state.mood}
+- 心情：${session.state.mood}
 - 穿着：${session.state.clothes || '日常装扮'}
-- 进度：${session.progress}%
+- 好感度：${affection.level}%（${affection.stage}）
 - 上文：${session.state.lastAction || '开始...'}
 
 ## 当前目标
 ${currentBeat.goal || '自然发展'}
 
 ## 输出格式【必须严格遵守】
-每次回复必须包含两部分，用换行分隔：
+每次回复必须包含以下部分，用换行分隔：
 
-1. 文字内容：30-50字，第一人称"我"视角，像论坛回帖一样简短有趣
-2. 图片标签：[IMG: 画面描述]，描述当前配图，必须包含人物动作、表情、视角
+1. 角色对话：用「」包裹角色说的话
+2. 动作描写：用普通文字描述角色动作和场景
+3. 内心独白：用（）包裹角色心理活动
+4. 好感变化：[好感+X] 或 [好感-X]，X是1-10的数字
+5. 状态变化：[表情:XXX] [动作:XXX] [心情:XXX]
+6. 图片标签：[IMG: 画面描述]
 
 ## 示例输出
-我轻轻咬着嘴唇，手指不自觉地卷起发梢，偷偷看了他一眼。
-[IMG: 咬唇，手指卷发，眼神含羞，侧脸特写，微微低头]
+「嗯？你怎么知道我在这里...」
 
-## 尺度控制
-- 0-30%：暧昧期（眼神、试探、初次接触）
-- 30-60%：升温期（肢体接触、暧昧氛围）
-- 60-90%：高潮期（${ratingGuide[config.contentRating || 'moderate']}）
-- 90-100%：余韵
+她微微侧过头，发丝滑落肩膀，眼神有些闪躲。
+
+（他居然找到这里了...心跳好快）
+
+[好感+3]
+[表情:害羞脸红] [动作:低头卷发] [心情:小鹿乱撞]
+[IMG: 侧脸特写，害羞表情，手指卷发，阳光透过窗户]
+
+## 尺度控制（基于好感度）
+- 0-20%陌生：礼貌但保持距离
+- 20-40%熟悉：开始放松，偶尔调皮
+- 40-60%暧昧：${ratingGuide[config.contentRating || 'moderate']}
+- 60-80%热恋：更加亲密大胆
+- 80-100%深爱：完全交付信任
 
 ## 禁止
-- 禁止超过50字
-- 禁止总结或旁白
-- 禁止使用"你"作为主语`;
+- 禁止超过100字
+- 禁止使用"你"作为主语，用"他"指代用户`;
 }
 
 function buildContinuePrompt(session) {
@@ -148,23 +160,40 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') 
 }
 
 function parseAIResponse(response) {
+  // 提取图片描述
   const imgMatch = response.match(/\[IMG:\s*([^\]]+)\]/i);
+  let imagePrompt = imgMatch ? imgMatch[1].trim() : null;
   
-  let content = response;
-  let imagePrompt = null;
-  
-  if (imgMatch) {
-    imagePrompt = imgMatch[1].trim();
-    content = response.replace(imgMatch[0], '').trim();
+  // 提取好感度变化
+  const affectionMatch = response.match(/\[好感([+-])(\d+)\]/);
+  let affectionChange = 0;
+  if (affectionMatch) {
+    affectionChange = parseInt(affectionMatch[2]) * (affectionMatch[1] === '+' ? 1 : -1);
   }
   
-  content = content.replace(/\s+/g, ' ').trim();
+  // 提取状态变化
+  const stateChanges = {};
+  const expressionMatch = response.match(/\[表情[:：]([^\]]+)\]/);
+  const actionMatch = response.match(/\[动作[:：]([^\]]+)\]/);
+  const moodMatch = response.match(/\[心情[:：]([^\]]+)\]/);
   
-  if (content.length > 60) {
-    content = content.slice(0, 57) + '...';
-  }
+  if (expressionMatch) stateChanges.expression = expressionMatch[1].trim();
+  if (actionMatch) stateChanges.action = actionMatch[1].trim();
+  if (moodMatch) stateChanges.mood = moodMatch[1].trim();
   
-  return { content, imagePrompt };
+  // 清理内容：移除所有标签
+  let content = response
+    .replace(/\[IMG:\s*[^\]]+\]/gi, '')
+    .replace(/\[好感[+-]\d+\]/g, '')
+    .replace(/\[表情[:：][^\]]+\]/g, '')
+    .replace(/\[动作[:：][^\]]+\]/g, '')
+    .replace(/\[心情[:：][^\]]+\]/g, '')
+    .trim();
+  
+  // 保留格式化的换行
+  content = content.replace(/\n{3,}/g, '\n\n');
+  
+  return { content, imagePrompt, affectionChange, stateChanges };
 }
 
 /**
@@ -320,6 +349,7 @@ async function startStory(userId, agentId) {
       opening: session.paragraphs[0]?.content || agent.storyConfig?.opening || agent.defaultGreeting,
       progress: session.progress,
       state: session.state,
+      affection: session.affection || { level: 0, stage: '陌生', lastChange: 0 },
       paragraphs: session.paragraphs,
       isExisting: true,
     };
@@ -332,11 +362,18 @@ async function startStory(userId, agentId) {
     userId,
     agentId,
     progress: 0,
+    affection: {
+      level: 0,
+      stage: '陌生',
+      lastChange: 0,
+    },
     state: {
       scene: '初始场景',
       time: '傍晚',
-      mood: '平静',
+      mood: '害羞',
+      action: '',
       clothes: '',
+      expression: '',
       lastAction: openingText.slice(-50),
     },
     events: [],
@@ -363,6 +400,7 @@ async function startStory(userId, agentId) {
     openingImageUrl: null, // 前端显示 loading
     progress: 0,
     state: session.state,
+    affection: session.affection,
     paragraphs: session.paragraphs,
     isExisting: false,
     imageGenerating: true, // 告诉前端图片正在生成
@@ -385,9 +423,13 @@ async function continueStory(sessionId) {
   
   // 生成文字
   const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  const { content, imagePrompt } = parseAIResponse(rawResponse);
+  const { content, imagePrompt, affectionChange, stateChanges } = parseAIResponse(rawResponse);
   
   const stateUpdate = extractStateUpdate(content);
+  // 合并 AI 返回的状态变化
+  if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
+  if (stateChanges.action) stateUpdate.action = stateChanges.action;
+  if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
   // 先保存文字，imageUrl 为 null
   const paragraphIndex = session.paragraphs.length;
@@ -396,6 +438,11 @@ async function continueStory(sessionId) {
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
   
+  // 更新好感度
+  if (affectionChange) {
+    session.updateAffection(affectionChange);
+  }
+  
   await session.save();
   
   // 异步生成图片（不阻塞返回）
@@ -403,7 +450,7 @@ async function continueStory(sessionId) {
     generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
   }
   
-  console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%`);
+  console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
   return {
     content,
@@ -412,6 +459,7 @@ async function continueStory(sessionId) {
     paragraphIndex, // 用于轮询
     progress: session.progress,
     state: session.state,
+    affection: session.affection, // 好感度数据
     isEnding: false, // 故事永不结束
     imageGenerating: !!imagePrompt, // 告诉前端是否有图片在生成
   };
@@ -432,15 +480,23 @@ async function inputStory(sessionId, userInput) {
   const userPrompt = buildUserInputPrompt(session, userInput);
   
   const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  const { content, imagePrompt } = parseAIResponse(rawResponse);
+  const { content, imagePrompt, affectionChange, stateChanges } = parseAIResponse(rawResponse);
   
   const stateUpdate = extractStateUpdate(content);
+  // 合并 AI 返回的状态变化
+  if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
+  if (stateChanges.action) stateUpdate.action = stateChanges.action;
+  if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
   const paragraphIndex = session.paragraphs.length;
   session.addParagraph(content, 'user_input', userInput, null, imagePrompt);
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
+  
+  // 用户输入通常会增加好感度（如果 AI 没返回变化则默认+2）
+  const actualChange = affectionChange || 2;
+  session.updateAffection(actualChange);
   
   await session.save();
   
@@ -449,7 +505,7 @@ async function inputStory(sessionId, userInput) {
     generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
   }
   
-  console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%`);
+  console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
   return {
     content,
@@ -458,6 +514,7 @@ async function inputStory(sessionId, userInput) {
     paragraphIndex,
     progress: session.progress,
     state: session.state,
+    affection: session.affection, // 好感度数据
     isEnding: false, // 故事永不结束
     imageGenerating: !!imagePrompt,
   };
@@ -507,6 +564,91 @@ async function restartStory(userId, agentId) {
   return startStory(userId, agentId);
 }
 
+/**
+ * 生成写真 - 基于当前场景生成高质量角色写真
+ */
+async function generatePhoto(sessionId) {
+  const session = await StorySession.findById(sessionId);
+  if (!session) throw new Error('故事不存在');
+  
+  const agent = await Agent.findById(session.agentId);
+  if (!agent) throw new Error('角色不存在');
+  
+  const config = agent.storyConfig || {};
+  const appearance = config.appearance || agent.description || '';
+  const state = session.state;
+  const affection = session.affection || { level: 0, stage: '陌生' };
+  
+  // 根据好感度和当前状态构建写真 prompt
+  let poseDesc = '';
+  let expressionDesc = '';
+  let clothesDesc = state.clothes || '日常装扮';
+  
+  // 根据好感度阶段决定写真风格
+  if (affection.level >= 80) {
+    poseDesc = 'seductive pose, lying on bed, looking at viewer';
+    expressionDesc = 'loving eyes, gentle smile, intimate look';
+  } else if (affection.level >= 60) {
+    poseDesc = 'sensual pose, leaning forward, playful';
+    expressionDesc = 'flirty smile, bedroom eyes, teasing';
+  } else if (affection.level >= 40) {
+    poseDesc = 'cute pose, tilting head, hands near face';
+    expressionDesc = 'shy smile, blushing, curious look';
+  } else if (affection.level >= 20) {
+    poseDesc = 'casual pose, standing naturally';
+    expressionDesc = 'friendly smile, soft expression';
+  } else {
+    poseDesc = 'formal pose, standing straight';
+    expressionDesc = 'polite smile, reserved look';
+  }
+  
+  // 添加当前状态信息
+  if (state.expression) expressionDesc = state.expression + ', ' + expressionDesc;
+  if (state.action) poseDesc = state.action + ', ' + poseDesc;
+  
+  const style = agent.style === 'anime' 
+    ? 'anime style, illustration, masterpiece, best quality, ' 
+    : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, beautiful woman, ';
+  
+  const isNsfw = affection.level >= 60;
+  let photoPrompt = `${style}${appearance}, ${poseDesc}, ${expressionDesc}, ${clothesDesc}, portrait, detailed face`;
+  
+  if (isNsfw) {
+    photoPrompt = `nsfw, sensual, ${photoPrompt}`;
+  }
+  
+  console.log(`[StoryService] 生成写真: ${photoPrompt.substring(0, 100)}...`);
+  
+  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+  if (!referenceImage) {
+    throw new Error('角色没有参考图片');
+  }
+  
+  try {
+    const results = await imageGenerationService.generate(photoPrompt, {
+      referenceImage,
+      count: 1,
+      width: 768,
+      height: 1024,
+      strength: 0.5, // 写真用稍低的 strength 保持更多原图特征
+      style: agent.style || 'realistic'
+    });
+    
+    if (results && results.length > 0 && results[0].url) {
+      console.log('[StoryService] 写真生成成功');
+      return {
+        imageUrl: results[0].url,
+        prompt: photoPrompt,
+      };
+    }
+    
+    throw new Error('写真生成失败');
+  } catch (error) {
+    console.error('[StoryService] 写真生成失败:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   startStory,
   continueStory,
@@ -514,4 +656,5 @@ module.exports = {
   getStoryState,
   restartStory,
   getParagraphImage,
+  generatePhoto,
 };

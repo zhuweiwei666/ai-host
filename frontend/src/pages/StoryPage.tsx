@@ -3,21 +3,25 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   StoryParagraph,
   StoryState,
+  StoryAffection,
   startStory,
   continueStory,
   inputStory,
   restartStory,
   getAgent,
   getParagraphImage,
+  generateStoryPhoto,
   Agent,
 } from '../api';
 
 /**
  * 无限故事页面
  * 
- * 每段 = 内容 + 配图
- * 文字先出，图片异步加载
- * 故事永无止境
+ * 功能：
+ * - 好感度系统显示
+ * - 角色状态展示
+ * - 生成写真按钮
+ * - 内心戏/对话格式化
  */
 
 // 图片加载状态组件
@@ -46,14 +50,17 @@ export default function StoryPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [paragraphs, setParagraphs] = useState<StoryParagraph[]>([]);
   const [, setProgress] = useState(0);
-  const [, setStoryState] = useState<StoryState | null>(null);
+  const [storyState, setStoryState] = useState<StoryState | null>(null);
+  const [affection, setAffection] = useState<StoryAffection>({ level: 0, stage: '陌生', lastChange: 0 });
   
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingPhoto, setGeneratingPhoto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [userInput, setUserInput] = useState('');
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null); // 写真弹窗
   
   // 正在加载图片的段落索引集合
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
@@ -142,6 +149,9 @@ export default function StoryPage() {
         setParagraphs(storyRes.data.paragraphs);
         setProgress(storyRes.data.progress);
         setStoryState(storyRes.data.state);
+        if (storyRes.data.affection) {
+          setAffection(storyRes.data.affection);
+        }
         
         // 检查是否有图片需要轮询
         storyRes.data.paragraphs.forEach((p, idx) => {
@@ -189,6 +199,9 @@ export default function StoryPage() {
       setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
+      if (res.data.affection) {
+        setAffection(res.data.affection);
+      }
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
       }
@@ -231,6 +244,9 @@ export default function StoryPage() {
       setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
+      if (res.data.affection) {
+        setAffection(res.data.affection);
+      }
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
       }
@@ -270,6 +286,9 @@ export default function StoryPage() {
       setParagraphs(res.data.paragraphs);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
+      if (res.data.affection) {
+        setAffection(res.data.affection);
+      }
       
       res.data.paragraphs.forEach((p, idx) => {
         if (!p.imageUrl && p.imagePrompt) {
@@ -284,6 +303,27 @@ export default function StoryPage() {
     }
   };
 
+  // 生成写真
+  const handleGeneratePhoto = async () => {
+    if (!sessionId || generatingPhoto) return;
+    
+    try {
+      setGeneratingPhoto(true);
+      setError(null);
+      
+      const res = await generateStoryPhoto(sessionId);
+      setPhotoUrl(res.data.imageUrl);
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '生成写真失败';
+      setError(errorMessage);
+    } finally {
+      setGeneratingPhoto(false);
+    }
+  };
+
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -293,6 +333,16 @@ export default function StoryPage() {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  };
+  
+  // 格式化内容：高亮对话和内心戏
+  const formatContent = (content: string) => {
+    // 处理「对话」
+    let formatted = content.replace(/「([^」]+)」/g, '<span class="text-pink-400 font-medium">"$1"</span>');
+    // 处理（内心戏）
+    formatted = formatted.replace(/（([^）]+)）/g, '<span class="text-gray-400 italic text-sm">（$1）</span>');
+    formatted = formatted.replace(/\(([^)]+)\)/g, '<span class="text-gray-400 italic text-sm">（$1）</span>');
+    return formatted;
   };
   
   if (loading) {
@@ -309,7 +359,7 @@ export default function StoryPage() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between px-4 py-2">
           <button
             onClick={() => navigate(-1)}
             className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors"
@@ -320,7 +370,25 @@ export default function StoryPage() {
           </button>
           
           <div className="flex-1 text-center">
-            <h1 className="font-semibold text-base">{agent?.name}的故事</h1>
+            <h1 className="font-semibold text-base">{agent?.name}</h1>
+            {/* 好感度和状态 */}
+            <div className="flex items-center justify-center gap-2 text-xs mt-0.5">
+              <span className={`px-1.5 py-0.5 rounded ${
+                affection.stage === '深爱' ? 'bg-red-500/20 text-red-400' :
+                affection.stage === '热恋' ? 'bg-pink-500/20 text-pink-400' :
+                affection.stage === '暧昧' ? 'bg-purple-500/20 text-purple-400' :
+                affection.stage === '熟悉' ? 'bg-blue-500/20 text-blue-400' :
+                'bg-gray-500/20 text-gray-400'
+              }`}>
+                {affection.stage}
+              </span>
+              <span className="text-gray-500">{affection.level}%</span>
+              {affection.lastChange !== 0 && (
+                <span className={affection.lastChange > 0 ? 'text-green-400' : 'text-red-400'}>
+                  {affection.lastChange > 0 ? '+' : ''}{affection.lastChange}
+                </span>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-1 text-pink-400 text-sm">
@@ -329,6 +397,35 @@ export default function StoryPage() {
           </div>
         </div>
         
+        {/* 角色状态栏 */}
+        {storyState && (
+          <div className="px-4 py-1.5 bg-gray-800/50 flex items-center justify-center gap-3 text-xs text-gray-400 overflow-x-auto">
+            {storyState.expression && (
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                <span>表情:</span>
+                <span className="text-pink-300">{storyState.expression}</span>
+              </span>
+            )}
+            {storyState.action && (
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                <span>动作:</span>
+                <span className="text-blue-300">{storyState.action}</span>
+              </span>
+            )}
+            {storyState.mood && (
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                <span>心情:</span>
+                <span className="text-purple-300">{storyState.mood}</span>
+              </span>
+            )}
+            {storyState.clothes && (
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                <span>穿着:</span>
+                <span className="text-yellow-300">{storyState.clothes}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
       
       {error && (
@@ -388,9 +485,10 @@ export default function StoryPage() {
                     ) : null}
                   </div>
                   
-                  <p className="text-gray-100 leading-relaxed text-[15px]">
-                    {p.content}
-                  </p>
+                  <p 
+                    className="text-gray-100 leading-relaxed text-[15px] whitespace-pre-line"
+                    dangerouslySetInnerHTML={{ __html: formatContent(p.content) }}
+                  />
                   
                   <div className="flex items-center gap-6 mt-3 text-gray-500">
                     <button className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors">
@@ -450,9 +548,26 @@ export default function StoryPage() {
             </div>
             
             <div className="flex items-center gap-2">
+              {/* 生成写真按钮 */}
+              <button
+                onClick={handleGeneratePhoto}
+                disabled={generatingPhoto || generating}
+                className="px-4 py-3 bg-purple-600 text-white font-medium rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 text-sm"
+              >
+                {generatingPhoto ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                )}
+                <span>写真</span>
+              </button>
+              
+              {/* 继续故事按钮 */}
               <button
                 onClick={handleContinue}
-                disabled={generating}
+                disabled={generating || generatingPhoto}
                 className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-medium rounded-xl hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {generating ? (
@@ -462,7 +577,7 @@ export default function StoryPage() {
                   </>
                 ) : (
                   <>
-                    <span>继续</span>
+                    <span>继续故事</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
@@ -485,6 +600,7 @@ export default function StoryPage() {
           <div className="h-safe-area-inset-bottom bg-gray-900" />
         </div>
       
+      {/* 放大查看图片 */}
       {expandedImage && (
         <div 
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
@@ -498,6 +614,32 @@ export default function StoryPage() {
           <button 
             className="absolute top-4 right-4 p-2 text-white/70 hover:text-white"
             onClick={() => setExpandedImage(null)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+      
+      {/* 写真弹窗 */}
+      {photoUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4"
+          onClick={() => setPhotoUrl(null)}
+        >
+          <div className="text-center mb-4">
+            <h3 className="text-lg font-semibold text-white mb-1">{agent?.name}的写真</h3>
+            <p className="text-sm text-gray-400">基于当前好感度 {affection.level}% 生成</p>
+          </div>
+          <img 
+            src={photoUrl} 
+            alt="角色写真" 
+            className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-2xl"
+          />
+          <button 
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white"
+            onClick={() => setPhotoUrl(null)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

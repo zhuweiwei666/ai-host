@@ -172,6 +172,46 @@ router.post('/restart', requireAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/story/photo
+ * 生成角色写真
+ */
+const COST_PHOTO = 5;  // 生成写真消耗
+
+router.post('/photo', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.body;
+    
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+      return errors.badRequest(res, '无效的故事 ID');
+    }
+    
+    // 检查并扣费
+    try {
+      await walletService.consume(userId, COST_PHOTO, 'story_photo');
+    } catch (walletErr) {
+      return errors.badRequest(res, walletErr.message || '余额不足');
+    }
+    
+    const result = await storyService.generatePhoto(sessionId);
+    
+    // 获取当前余额
+    const balance = await walletService.getBalance(userId);
+    
+    console.log(`[Story API] Photo: sessionId=${sessionId}`);
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      ...result,
+      balance,
+      cost: COST_PHOTO,
+    });
+  } catch (err) {
+    console.error('[Story API] Photo error:', err);
+    errors.badRequest(res, err.message || '生成写真失败');
+  }
+});
+
+/**
  * GET /api/story/:sessionId/image/:index
  * 获取段落图片状态（用于轮询）
  */
