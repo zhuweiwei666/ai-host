@@ -45,7 +45,7 @@ export default function StoryPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [paragraphs, setParagraphs] = useState<StoryParagraph[]>([]);
-  const [progress, setProgress] = useState(0);
+  const [, setProgress] = useState(0);
   const [, setStoryState] = useState<StoryState | null>(null);
   
   const [loading, setLoading] = useState(true);
