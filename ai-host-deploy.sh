@@ -5,7 +5,26 @@ REMOTE_HOST="root@139.162.62.115"
 REMOTE_DIR="/root/ai-host"
 GIT_BRANCH="main" # 您的GitHub主分支名称，通常是main或master
 GIT_REPO="git@github.com:zhuweiwei666/ai-host.git" # GitHub 仓库地址
-PROJECT_DIR="/Users/zhuweiwei/ai-host" # 项目根目录的绝对路径
+
+# 项目根目录（自动推断：脚本所在目录）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
+
+# Flags
+DEPLOY_ONLY=false       # 只做“同步配置 + 远端拉取/重启”，不做本地提交/推送交互
+NON_INTERACTIVE=false   # 禁止任何 read 交互（用于 hook/CI）
+
+for arg in "$@"; do
+  case "$arg" in
+    --deploy-only)
+      DEPLOY_ONLY=true
+      NON_INTERACTIVE=true
+      ;;
+    --non-interactive)
+      NON_INTERACTIVE=true
+      ;;
+  esac
+done
 
 echo "============================================="
 echo "   AI Host 一键部署脚本 (GitHub → 服务器)    "
@@ -30,53 +49,61 @@ if [ ! -d .git ]; then
     exit 1
 fi
 
-# 1. 检查本地是否有未提交的更改
-echo -e "${YELLOW}[1/6] 检查本地代码状态...${NC}"
-git status --short
-
-# 询问是否要提交更改
-read -p "是否要将本地更改提交并推送到 GitHub? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}[2/6] 提交并推送代码到 GitHub...${NC}"
-    
-    # 添加所有更改
-    git add .
-    
-    # 获取提交信息
-    read -p "请输入提交信息 (直接回车使用默认信息): " commit_msg
-    if [ -z "$commit_msg" ]; then
-        commit_msg="Auto deploy: $(date '+%Y-%m-%d %H:%M:%S')"
-    fi
-    
-    # 提交
-    git commit -m "$commit_msg"
-    
-    # 推送到 GitHub
-    echo "正在推送到 GitHub..."
-    git push origin "$GIT_BRANCH"
-    
-    if [ $? -ne 0 ]; then
-        echo ""
-        echo -e "${RED}❌ 错误：推送到 GitHub 失败${NC}"
-        echo ""
-        echo "可能的原因："
-        echo "1. 未配置 GitHub SSH 公钥"
-        echo "2. SSH 密钥未添加到 GitHub 账户"
-        echo ""
-        echo "💡 解决方案："
-        echo "   运行以下命令获取配置指南："
-        echo "   $PROJECT_DIR/setup_github_ssh.sh"
-        echo ""
-        echo "或者，如果您想跳过推送直接部署，可以："
-        echo "   重新运行脚本，选择 'n' 跳过提交"
-        echo ""
-        exit 1
-    fi
-    
-    echo -e "${GREEN}✅ 代码已推送到 GitHub${NC}"
+# 1. 本地代码处理（可选）
+if [ "$DEPLOY_ONLY" = true ]; then
+  echo -e "${YELLOW}[1/6] deploy-only 模式：跳过本地提交/推送${NC}"
 else
-    echo -e "${YELLOW}⚠️  跳过提交，直接部署服务器上的最新代码${NC}"
+  echo -e "${YELLOW}[1/6] 检查本地代码状态...${NC}"
+  git status --short
+
+  if [ "$NON_INTERACTIVE" = true ]; then
+    echo -e "${YELLOW}⚠️  non-interactive 模式：不进行本地提交/推送（仅部署远端最新 main）${NC}"
+  else
+    # 询问是否要提交更改
+    read -p "是否要将本地更改提交并推送到 GitHub? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}[2/6] 提交并推送代码到 GitHub...${NC}"
+        
+        # 添加所有更改
+        git add .
+        
+        # 获取提交信息
+        read -p "请输入提交信息 (直接回车使用默认信息): " commit_msg
+        if [ -z "$commit_msg" ]; then
+            commit_msg="Auto deploy: $(date '+%Y-%m-%d %H:%M:%S')"
+        fi
+        
+        # 提交
+        git commit -m "$commit_msg"
+        
+        # 推送到 GitHub
+        echo "正在推送到 GitHub..."
+        git push origin "$GIT_BRANCH"
+        
+        if [ $? -ne 0 ]; then
+            echo ""
+            echo -e "${RED}❌ 错误：推送到 GitHub 失败${NC}"
+            echo ""
+            echo "可能的原因："
+            echo "1. 未配置 GitHub SSH 公钥"
+            echo "2. SSH 密钥未添加到 GitHub 账户"
+            echo ""
+            echo "💡 解决方案："
+            echo "   运行以下命令获取配置指南："
+            echo "   $PROJECT_DIR/setup_github_ssh.sh"
+            echo ""
+            echo "或者，如果您想跳过推送直接部署，可以："
+            echo "   重新运行脚本，选择 'n' 跳过提交"
+            echo ""
+            exit 1
+        fi
+        
+        echo -e "${GREEN}✅ 代码已推送到 GitHub${NC}"
+    else
+        echo -e "${YELLOW}⚠️  跳过提交，直接部署服务器上的最新代码${NC}"
+    fi
+  fi
 fi
 
 # 2. 同步配置文件到服务器（.env 等，但不包括代码文件，代码通过 Git 同步）

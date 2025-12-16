@@ -1,0 +1,41 @@
+#!/bin/bash
+set -euo pipefail
+
+# AI Host auto deploy git hook (post-commit)
+# Behavior:
+# - Only runs on main branch
+# - Pushes main to origin
+# - Triggers deploy script in background (logs to .git/aihost-auto-deploy.log)
+#
+# Enable/disable:
+# - Enabled when .git/hooks/aihost-auto-deploy.enabled exists
+
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+GIT_DIR="$(git rev-parse --git-dir 2>/dev/null || echo ".git")"
+
+if [ ! -f "${GIT_DIR}/hooks/aihost-auto-deploy.enabled" ]; then
+  exit 0
+fi
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+if [ "$BRANCH" != "main" ]; then
+  exit 0
+fi
+
+LOG_FILE="${GIT_DIR}/aihost-auto-deploy.log"
+
+(
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] post-commit: start"
+  echo "branch=${BRANCH}"
+
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] git push origin main"
+  git -C "$ROOT_DIR" push origin main
+
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] deploy: ./ai-host-deploy.sh --deploy-only"
+  "$ROOT_DIR/ai-host-deploy.sh" --deploy-only
+
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] post-commit: done"
+) >>"$LOG_FILE" 2>&1 &
+
+exit 0
+

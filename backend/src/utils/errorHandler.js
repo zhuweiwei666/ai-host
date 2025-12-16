@@ -147,8 +147,25 @@ const sendError = (res, statusCode, code, message, details = null) => {
  * @param {string} message - 成功消息（可选）
  */
 const sendSuccess = (res, statusCode = HTTP_STATUS.OK, data = null, message = null) => {
+  // iOS / 原始客户端兼容：部分客户端按“直接模型/数组”解码，不支持 { success, data } 包装
+  // 通过 server.js 中的中间件设置 res.locals.rawResponse=true
+  if (res?.locals?.rawResponse) {
+    // 尽量保持“raw”形状与 data 一致
+    if (data === null || data === undefined) {
+      return res.status(statusCode).json(message ? { message } : {});
+    }
+
+    // 如果 data 是对象，且有 message，则合并 message（不会影响现有字段）
+    if (message && typeof data === 'object' && !Array.isArray(data)) {
+      return res.status(statusCode).json({ ...data, message });
+    }
+
+    // 数组/原始类型：直接返回 data（message 无法与数组同时返回为同一顶层 JSON）
+    return res.status(statusCode).json(data);
+  }
+
   const successResponse = createSuccessResponse(statusCode, data, message);
-  res.status(statusCode).json(successResponse);
+  return res.status(statusCode).json(successResponse);
 };
 
 /**

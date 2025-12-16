@@ -71,6 +71,55 @@ function getCurrentBeat(storyBeats, progress) {
   return storyBeats[storyBeats.length - 1];
 }
 
+function estimateMaxTokensFromChars(maxChars) {
+  // 中文 + 标点通常接近 1-2 tokens/字符；这里取偏保守的系数，避免被 max_tokens 卡断
+  const est = Math.ceil((maxChars || 400) * 1.8);
+  return Math.max(200, Math.min(1200, est));
+}
+
+function getLengthSpec(agent, session) {
+  const config = agent.storyConfig || {};
+  const outputLength = config.outputLength || {};
+  const ranges = Array.isArray(outputLength.ranges) ? outputLength.ranges : [];
+
+  for (const r of ranges) {
+    const [minP, maxP] = r.progressRange || [0, 101];
+    if (session.progress >= minP && session.progress < maxP) {
+      const minChars = Number(r.minChars) || 320;
+      const maxChars = Number(r.maxChars) || 520;
+      return {
+        minChars,
+        maxChars,
+        maxTokens: Number(r.maxTokens) || estimateMaxTokensFromChars(maxChars),
+      };
+    }
+  }
+
+  // 默认：尽量贴近市面“单次生成一大段”的体验
+  if (session.progress < 20) {
+    return { minChars: 220, maxChars: 420, maxTokens: estimateMaxTokensFromChars(420) };
+  }
+  if (session.progress < 60) {
+    return { minChars: 320, maxChars: 560, maxTokens: estimateMaxTokensFromChars(560) };
+  }
+  return { minChars: 420, maxChars: 700, maxTokens: estimateMaxTokensFromChars(700) };
+}
+
+function estimateContentLength(text) {
+  if (!text) return 0;
+  // 不把空白算进“字数”，更贴近用户体感
+  return String(text).replace(/\s+/g, '').length;
+}
+
+function buildLengthRepairPrompt(rawResponse, lengthSpec) {
+  return `把下面这段内容改写为 ${lengthSpec.minChars}-${lengthSpec.maxChars} 字（不含标签），保持剧情一致、保持输出格式完全不变。
+不要解释，不要加标题，不要追加额外段落，只输出改写后的完整内容（仍需包含 [好感±X]、状态变化、[IMG: ...]）。
+
+原文开始：
+${rawResponse}
+原文结束。`;
+}
+
 /**
  * 构建论坛帖子风格的 System Prompt
  */
@@ -78,6 +127,7 @@ function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const currentBeat = getCurrentBeat(config.storyBeats, session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
+  const lengthSpec = getLengthSpec(agent, session);
   
   const ratingGuide = {
     mild: '暧昧暗示',
@@ -85,7 +135,7 @@ function buildSystemPrompt(agent, session) {
     explicit: '露骨描写'
   };
   
-  return `你正在讲述一个互动故事。每次只输出一段内容。
+  return `你正在讲述一个互动故事。每次只输出一段内容（建议 ${lengthSpec.minChars}-${lengthSpec.maxChars} 字，不含标签）。
 
 ## 你是谁
 名字：${agent.name}
@@ -131,7 +181,7 @@ ${currentBeat.goal || '自然发展'}
 - 80-100%深爱：完全交付信任
 
 ## 禁止
-- 禁止超过100字
+- 禁止少于${lengthSpec.minChars}字或超过${lengthSpec.maxChars}字（不含标签）
 - 禁止使用"你"作为主语，用"他"指代用户`;
 }
 
@@ -144,7 +194,7 @@ function buildUserInputPrompt(session, userInput) {
 回应他。进度 ${session.progress}%。直接输出内容+图片标签。`;
 }
 
-async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') {
+async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', opts = {}) {
   try {
     const provider = ProviderFactory.getProvider(model);
     const messages = [
@@ -152,7 +202,9 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast') 
       { role: 'user', content: userPrompt }
     ];
     
-    const result = await provider.chat(model, messages, 0.9, { maxTokens: 200 });
+    const temperature = typeof opts.temperature === 'number' ? opts.temperature : 0.9;
+    const maxTokens = typeof opts.maxTokens === 'number' ? opts.maxTokens : 200;
+    const result = await provider.chat(model, messages, temperature, { maxTokens });
     return result.content;
   } catch (error) {
     console.error('[StoryService] AI generation failed:', error.message);
@@ -440,10 +492,22 @@ async function continueStory(sessionId) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildContinuePrompt(session);
+  const lengthSpec = getLengthSpec(agent, session);
+  const modelName = agent.modelName || 'grok-3-fast';
   
   // 生成文字
-  const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  const { content, imagePrompt, affectionChange, stateChanges } = parseAIResponse(rawResponse);
+  let rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  let parsed = parseAIResponse(rawResponse);
+
+  // 如果字数偏离目标区间，做一次“改写对齐长度”的修复（最多一次，避免无限循环/过度扣费）
+  const len = estimateContentLength(parsed.content);
+  if (len < lengthSpec.minChars || len > lengthSpec.maxChars) {
+    const repairPrompt = buildLengthRepairPrompt(rawResponse, lengthSpec);
+    rawResponse = await generateContent(systemPrompt, repairPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.7 });
+    parsed = parseAIResponse(rawResponse);
+  }
+
+  const { content, imagePrompt, affectionChange, stateChanges } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
@@ -501,9 +565,19 @@ async function inputStory(sessionId, userInput) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
+  const lengthSpec = getLengthSpec(agent, session);
+  const modelName = agent.modelName || 'grok-3-fast';
   
-  const rawResponse = await generateContent(systemPrompt, userPrompt, agent.modelName || 'grok-3-fast');
-  const { content, imagePrompt, affectionChange, stateChanges } = parseAIResponse(rawResponse);
+  let rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  let parsed = parseAIResponse(rawResponse);
+  const len = estimateContentLength(parsed.content);
+  if (len < lengthSpec.minChars || len > lengthSpec.maxChars) {
+    const repairPrompt = buildLengthRepairPrompt(rawResponse, lengthSpec);
+    rawResponse = await generateContent(systemPrompt, repairPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.7 });
+    parsed = parseAIResponse(rawResponse);
+  }
+
+  const { content, imagePrompt, affectionChange, stateChanges } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化

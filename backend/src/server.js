@@ -143,6 +143,26 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
+// Response format negotiation (iOS/raw client compatibility)
+// ============================================================
+// Some mobile clients decode responses as raw models/arrays and will fail on
+// the { success, statusCode, timestamp, data } envelope.
+// Heuristics:
+// - Explicit: ?raw=1, header x-response-format: raw, header x-client: ios
+// - Implicit: iOS networking stack often includes "CFNetwork" / "Darwin" in User-Agent
+app.use((req, res, next) => {
+  const ua = String(req.headers['user-agent'] || '');
+  const wantRawByQuery = req.query?.raw === '1' || req.query?.raw === 'true';
+  const wantRawByHeader =
+    String(req.headers['x-response-format'] || '').toLowerCase() === 'raw' ||
+    String(req.headers['x-client'] || '').toLowerCase() === 'ios';
+  const looksLikeIOS = /CFNetwork|Darwin/i.test(ua) && !/Mozilla/i.test(ua);
+
+  res.locals.rawResponse = Boolean(wantRawByQuery || wantRawByHeader || looksLikeIOS);
+  next();
+});
+
+// ============================================================
 // Health check endpoint (for monitoring/uptime checks)
 // ============================================================
 app.get('/api/health', (req, res) => {
