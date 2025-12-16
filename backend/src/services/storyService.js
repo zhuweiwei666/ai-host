@@ -11,7 +11,6 @@ const StorySession = require('../models/StorySession');
 const StoryImageCache = require('../models/StoryImageCache');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
-const grokImageProvider = require('../providers/grokImageProvider');
 const imageGenerationService = require('./imageGenerationService');
 
 /**
@@ -169,8 +168,10 @@ function parseAIResponse(response) {
 }
 
 /**
- * 生成图片 - Grok Aurora 优先，Fal.ai img2img 降级
- * 优先复用缓存，其次生成新图
+ * 生成图片 - Fal.ai Flux Pro v1.1 Redux (Img2Img) 最高质量
+ * - 不走 Grok 生图（质量不稳定）
+ * - 关闭安全检查（由 Fal 参数控制，且不做本地“黑图过滤”）
+ * - 优先复用缓存，其次生成新图
  */
 async function generateImageWithConsistency(imagePrompt, agent, progress) {
   if (!imagePrompt) {
@@ -213,44 +214,30 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
 
   let imageUrl = null;
 
-  // 3. 优先使用 Grok Aurora 模型
-  try {
-    console.log('[StoryService] 尝试 Grok Aurora 生成图片...');
-    const grokResults = await grokImageProvider.generate(fullPrompt, { n: 1 });
-    if (grokResults && grokResults.length > 0 && grokResults[0].url) {
-      imageUrl = grokResults[0].url;
-      console.log('[StoryService] Grok Aurora 生成成功');
-    }
-  } catch (grokError) {
-    console.warn('[StoryService] Grok Aurora 失败，降级到 Fal.ai:', grokError.message);
+  // 3. 仅使用 Fal.ai Img2Img（保持人物一致性 + 最高质量）
+  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+  if (!referenceImage) {
+    console.warn('[StoryService] 无参考图，Fal.ai img2img 不可用');
+    return null;
   }
 
-  // 4. Grok 失败则降级到 Fal.ai img2img
-  if (!imageUrl) {
-    const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
-    
-    if (referenceImage) {
-      try {
-        console.log('[StoryService] 使用 Fal.ai img2img...');
-        const results = await imageGenerationService.generate(fullPrompt, {
-          referenceImage,
-          count: 1,
-          width: 768,
-          height: 1024,
-          strength: 0.55,
-          style: agent.style || 'realistic'
-        });
+  try {
+    console.log('[StoryService] 使用 Fal.ai Flux Pro v1.1 Redux img2img...');
+    const results = await imageGenerationService.generate(fullPrompt, {
+      referenceImage,
+      count: 1,
+      width: 768,
+      height: 1024,
+      strength: 0.55,
+      style: agent.style || 'realistic'
+    });
 
-        if (results && results.length > 0 && results[0].url) {
-          imageUrl = results[0].url;
-          console.log('[StoryService] Fal.ai 生成成功');
-        }
-      } catch (falError) {
-        console.error('[StoryService] Fal.ai 也失败:', falError.message);
-      }
-    } else {
-      console.warn('[StoryService] 无参考图，Fal.ai img2img 不可用');
+    if (results && results.length > 0 && results[0].url) {
+      imageUrl = results[0].url;
+      console.log('[StoryService] Fal.ai 生成成功');
     }
+  } catch (falError) {
+    console.error('[StoryService] Fal.ai 生成失败:', falError.message);
   }
 
   // 5. 保存到缓存
