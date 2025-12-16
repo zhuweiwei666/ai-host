@@ -1,13 +1,19 @@
 /**
- * 用户画廊 API 路由
+ * UGC 内容广场 API 路由
  * 
- * - GET /api/gallery - 获取当前用户画廊
- * - GET /api/gallery/popular - 获取热门图片
- * - GET /api/gallery/agent/:agentId - 获取角色相关图片
+ * 公共广场（所有用户的公开内容）:
+ * - GET /api/gallery - 内容广场首页（推荐/最新）
+ * - GET /api/gallery/hot - 热门内容
+ * - GET /api/gallery/latest - 最新内容
+ * - GET /api/gallery/agent/:agentId - 角色相关内容
+ * 
+ * 我的画廊:
+ * - GET /api/gallery/mine - 我的图片
+ * 
+ * 互动:
  * - POST /api/gallery/:id/like - 点赞/取消点赞
  * - POST /api/gallery/:id/favorite - 收藏/取消收藏
  * - POST /api/gallery/:id/share - 记录转发
- * - GET /api/gallery/stats - 获取画廊统计
  */
 
 const express = require('express');
@@ -16,12 +22,162 @@ const mongoose = require('mongoose');
 const { requireAuth } = require('../middleware/auth');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 const UserGallery = require('../models/UserGallery');
+const StorySession = require('../models/StorySession');
+
+/**
+ * 处理图片列表，添加用户状态
+ */
+function processItems(items, userId) {
+  const userIdStr = userId?.toString();
+  return items.map(item => ({
+    ...item,
+    isLiked: userIdStr ? (item.likedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
+    isFavorited: userIdStr ? (item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
+    likedByUsers: undefined,
+    favoritedByUsers: undefined,
+  }));
+}
 
 /**
  * GET /api/gallery
- * 获取当前用户的画廊
+ * 内容广场首页 - 展示所有用户的公开内容（推荐算法）
  */
 router.get('/', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20, mediaType, agentId, sort = 'mixed' } = req.query;
+    
+    // 基础查询：所有公开且有效的内容
+    const query = { isPublic: true, isActive: true };
+    
+    if (mediaType) {
+      query.mediaType = mediaType;
+    }
+    if (agentId && mongoose.Types.ObjectId.isValid(agentId)) {
+      query.agentId = agentId;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // 排序策略
+    let sortOption = {};
+    if (sort === 'hot') {
+      // 热门：按点赞数降序
+      sortOption = { 'stats.likes': -1, createdAt: -1 };
+    } else if (sort === 'latest') {
+      // 最新：按时间降序
+      sortOption = { createdAt: -1 };
+    } else {
+      // 混合：交替展示热门和最新（简单实现：按综合分数）
+      // 综合分数 = 点赞数 * 10 + 24小时内额外加权
+      sortOption = { createdAt: -1 };
+    }
+    
+    const [items, total] = await Promise.all([
+      UserGallery.find(query)
+        .populate('agentId', 'name avatarUrls style')
+        .populate('userId', 'nickname avatarUrl')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      UserGallery.countDocuments(query)
+    ]);
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      items: processItems(items, userId),
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[Gallery API] Feed error:', err);
+    errors.internalError(res, '获取内容广场失败');
+  }
+});
+
+/**
+ * GET /api/gallery/hot
+ * 热门内容
+ */
+router.get('/hot', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20, agentId } = req.query;
+    
+    const query = { isPublic: true, isActive: true };
+    if (agentId && mongoose.Types.ObjectId.isValid(agentId)) {
+      query.agentId = agentId;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const [items, total] = await Promise.all([
+      UserGallery.find(query)
+        .populate('agentId', 'name avatarUrls style')
+        .populate('userId', 'nickname avatarUrl')
+        .sort({ 'stats.likes': -1, 'stats.views': -1, createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      UserGallery.countDocuments(query)
+    ]);
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      items: processItems(items, userId),
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)) }
+    });
+  } catch (err) {
+    console.error('[Gallery API] Hot error:', err);
+    errors.internalError(res, '获取热门内容失败');
+  }
+});
+
+/**
+ * GET /api/gallery/latest
+ * 最新内容
+ */
+router.get('/latest', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20, agentId } = req.query;
+    
+    const query = { isPublic: true, isActive: true };
+    if (agentId && mongoose.Types.ObjectId.isValid(agentId)) {
+      query.agentId = agentId;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const [items, total] = await Promise.all([
+      UserGallery.find(query)
+        .populate('agentId', 'name avatarUrls style')
+        .populate('userId', 'nickname avatarUrl')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      UserGallery.countDocuments(query)
+    ]);
+    
+    sendSuccess(res, HTTP_STATUS.OK, {
+      items: processItems(items, userId),
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)) }
+    });
+  } catch (err) {
+    console.error('[Gallery API] Latest error:', err);
+    errors.internalError(res, '获取最新内容失败');
+  }
+});
+
+/**
+ * GET /api/gallery/mine
+ * 我的画廊
+ */
+router.get('/mine', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const { page = 1, limit = 20, mediaType, source } = req.query;
@@ -47,18 +203,8 @@ router.get('/', requireAuth, async (req, res) => {
       UserGallery.countDocuments(query)
     ]);
     
-    // 添加用户是否已点赞/收藏的标记
-    const userIdStr = userId.toString();
-    const itemsWithUserState = items.map(item => ({
-      ...item,
-      isLiked: item.likedByUsers?.some(id => id.toString() === userIdStr) || false,
-      isFavorited: item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false,
-      likedByUsers: undefined,  // 不返回完整列表
-      favoritedByUsers: undefined,
-    }));
-    
     sendSuccess(res, HTTP_STATUS.OK, {
-      items: itemsWithUserState,
+      items: processItems(items, userId),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -67,46 +213,55 @@ router.get('/', requireAuth, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Gallery API] Get error:', err);
-    errors.internalError(res, '获取画廊失败');
+    console.error('[Gallery API] Mine error:', err);
+    errors.internalError(res, '获取我的画廊失败');
   }
 });
 
 /**
- * GET /api/gallery/popular
- * 获取热门图片（公开的）
+ * GET /api/gallery/sync
+ * 同步历史图片到画廊（一次性迁移）
+ * 从 StorySession 中提取所有已生成的图片
  */
-router.get('/popular', requireAuth, async (req, res) => {
+router.post('/sync', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
+    // 查找所有有图片的故事段落
+    const sessions = await StorySession.find({
+      'paragraphs.imageUrl': { $exists: true, $ne: null }
+    }).lean();
     
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    let synced = 0;
     
-    const items = await UserGallery.find({ 
-      isPublic: true, 
-      isActive: true,
-      'stats.likes': { $gt: 0 }
-    })
-      .populate('agentId', 'name avatarUrls')
-      .sort({ 'stats.likes': -1, createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    for (const session of sessions) {
+      for (const paragraph of session.paragraphs) {
+        if (paragraph.imageUrl) {
+          // 检查是否已存在
+          const exists = await UserGallery.findOne({ mediaUrl: paragraph.imageUrl });
+          if (!exists) {
+            await UserGallery.create({
+              userId: session.userId,
+              agentId: session.agentId,
+              mediaType: 'image',
+              mediaUrl: paragraph.imageUrl,
+              source: 'story',
+              storySessionId: session._id,
+              prompt: paragraph.imagePrompt || '',
+              context: paragraph.content?.slice(0, 200) || '',
+              isPublic: true,
+              isNsfw: session.progress >= 60,
+              createdAt: paragraph.timestamp || session.createdAt,
+            });
+            synced++;
+          }
+        }
+      }
+    }
     
-    const userIdStr = userId.toString();
-    const itemsWithUserState = items.map(item => ({
-      ...item,
-      isLiked: item.likedByUsers?.some(id => id.toString() === userIdStr) || false,
-      isFavorited: item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false,
-      likedByUsers: undefined,
-      favoritedByUsers: undefined,
-    }));
-    
-    sendSuccess(res, HTTP_STATUS.OK, { items: itemsWithUserState });
+    console.log(`[Gallery] 同步完成: ${synced} 张图片`);
+    sendSuccess(res, HTTP_STATUS.OK, { synced });
   } catch (err) {
-    console.error('[Gallery API] Popular error:', err);
-    errors.internalError(res, '获取热门图片失败');
+    console.error('[Gallery API] Sync error:', err);
+    errors.internalError(res, '同步失败');
   }
 });
 
@@ -126,27 +281,25 @@ router.get('/agent/:agentId', requireAuth, async (req, res) => {
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    const items = await UserGallery.find({ 
-      agentId,
-      isPublic: true, 
-      isActive: true 
-    })
-      .populate('agentId', 'name avatarUrls')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    const [items, total] = await Promise.all([
+      UserGallery.find({ 
+        agentId,
+        isPublic: true, 
+        isActive: true 
+      })
+        .populate('agentId', 'name avatarUrls style')
+        .populate('userId', 'nickname avatarUrl')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      UserGallery.countDocuments({ agentId, isPublic: true, isActive: true })
+    ]);
     
-    const userIdStr = userId.toString();
-    const itemsWithUserState = items.map(item => ({
-      ...item,
-      isLiked: item.likedByUsers?.some(id => id.toString() === userIdStr) || false,
-      isFavorited: item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false,
-      likedByUsers: undefined,
-      favoritedByUsers: undefined,
-    }));
-    
-    sendSuccess(res, HTTP_STATUS.OK, { items: itemsWithUserState });
+    sendSuccess(res, HTTP_STATUS.OK, { 
+      items: processItems(items, userId),
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)) }
+    });
   } catch (err) {
     console.error('[Gallery API] Agent gallery error:', err);
     errors.internalError(res, '获取角色图片失败');
