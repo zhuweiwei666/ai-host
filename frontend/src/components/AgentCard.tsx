@@ -100,18 +100,20 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus, 
           </div>
         </div>
         
-        {/* 名称：在头像下方，占据整个宽度 */}
-        <div className="mb-2">
+        {/* 名称：在头像下方 */}
+        <div className="mb-1">
           <h3 className="text-xl font-bold text-gray-900 text-center break-words">{agent.name}</h3>
         </div>
         
-        {/* Model信息：在名称下方 */}
-        <div className="mb-3">
-          <p className="text-xs text-gray-500 text-center break-words">Model: {agent.modelName?.split('/').pop() || 'N/A'}</p>
-        </div>
+        {/* 角色标签 */}
+        {agent.storyConfig?.tagline && (
+          <div className="mb-2">
+            <p className="text-xs text-pink-600 font-medium text-center">{agent.storyConfig.tagline}</p>
+          </div>
+        )}
         
-        {/* 性别和上架按钮：同一行，居中 */}
-        <div className="flex items-center justify-center gap-2.5 mb-4">
+        {/* 性别和上架按钮 */}
+        <div className="flex items-center justify-center gap-2.5 mb-3">
           <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold capitalize shadow-sm whitespace-nowrap ${
             agent.gender === 'female' ? 'bg-gradient-to-r from-pink-100 to-rose-100 text-pink-700 border border-pink-200/50' : 
             agent.gender === 'male' ? 'bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border border-blue-200/50' : 
@@ -119,6 +121,15 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus, 
           }`}>
             {agent.gender}
           </span>
+          {agent.storyConfig?.contentRating && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+              agent.storyConfig.contentRating === 'explicit' ? 'bg-red-100 text-red-700' :
+              agent.storyConfig.contentRating === 'moderate' ? 'bg-orange-100 text-orange-700' :
+              'bg-green-100 text-green-700'
+            }`}>
+              {agent.storyConfig.contentRating === 'explicit' ? '🔥' : agent.storyConfig.contentRating === 'moderate' ? '💕' : '💚'}
+            </span>
+          )}
         {onToggleStatus && (
             <button 
               onClick={onToggleStatus}
@@ -141,10 +152,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onDelete, onToggleStatus, 
           )}
           </div>
         
-        {/* 描述区域：固定高度确保显示 */}
+        {/* 故事简介 */}
         <div className="mb-4 min-h-[3rem]">
           <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
-            {agent.description || 'No description provided.'}
+            {agent.storyConfig?.synopsis || agent.description || 'No description provided.'}
           </p>
         </div>
 

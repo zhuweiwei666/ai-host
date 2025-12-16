@@ -41,6 +41,16 @@ export interface Agent {
   stage3Prompt?: string;
   stage1Threshold?: number;
   stage2Threshold?: number;
+  // 故事模式配置
+  storyConfig?: {
+    enabled?: boolean;
+    tagline?: string;      // 角色标签，如"禁忌继母 · 三天独处"
+    synopsis?: string;     // 故事简介
+    opening?: string;      // 开场白
+    personality?: string;  // 性格描述
+    appearance?: string;   // 外貌描述
+    contentRating?: 'mild' | 'moderate' | 'explicit';
+  };
 }
 
 export interface VoiceModel {

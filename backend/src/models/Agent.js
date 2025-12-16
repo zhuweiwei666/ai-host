@@ -165,6 +165,12 @@ const AgentSchema = new mongoose.Schema({
     // 是否启用剧情模式
     enabled: { type: Boolean, default: true },
     
+    // 角色标签（前端展示用，如"禁忌继母 · 三天独处"）
+    tagline: { type: String, default: '' },
+    
+    // 故事简介（前端展示用，1-2句话描述剧情）
+    synopsis: { type: String, default: '' },
+    
     // 开场白（故事第一段）
     opening: { type: String, default: '' },
     
