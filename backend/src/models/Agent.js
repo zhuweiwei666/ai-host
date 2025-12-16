@@ -155,6 +155,7 @@ const AgentSchema = new mongoose.Schema({
   // ========== 用户创建统计（用于推荐排序）==========
   stats: {
     totalChats: { type: Number, default: 0 },
+    totalInteractions: { type: Number, default: 0 },  // 累计互动次数（故事模式）
     uniqueUsers: { type: Number, default: 0 },
     avgRating: { type: Number, default: 0 },
     totalRatings: { type: Number, default: 0 }

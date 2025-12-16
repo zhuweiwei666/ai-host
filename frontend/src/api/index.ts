@@ -755,6 +755,7 @@ export interface UserAgent {
   status?: 'online' | 'offline';
   stats?: {
     totalChats: number;
+    totalInteractions: number;  // 累计互动次数（故事模式）
     uniqueUsers: number;
     avgRating: number;
     totalRatings: number;

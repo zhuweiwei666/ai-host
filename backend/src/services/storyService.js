@@ -450,6 +450,9 @@ async function continueStory(sessionId) {
     generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
   }
   
+  // 更新角色累计互动次数
+  await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
+  
   console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
   return {
@@ -504,6 +507,9 @@ async function inputStory(sessionId, userInput) {
   if (imagePrompt) {
     generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
   }
+  
+  // 更新角色累计互动次数
+  await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
   
   console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
