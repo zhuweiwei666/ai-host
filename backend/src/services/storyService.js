@@ -483,7 +483,6 @@ function buildSystemPrompt(agent, session) {
   const paywallMoment = checkPaywallMoment(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
   const lengthSpec = getLengthSpec(agent, session);
-  const recentImg = getRecentImagePrompts(session, 3);
   
   const ratingGuide = {
     mild: '暧昧暗示，点到为止',
@@ -563,11 +562,6 @@ ${archetype.hooks ? archetype.hooks[0] : '「你...为什么要对我这么好�
 
 [好感+X]
 [表情:XXX] [动作:XXX] [心情:XXX]
-[IMG: 画面描述——配合高潮画面]
-
-## 图片要求
-- 配合本段最有张力的画面
-- 避免重复：${recentImg.length ? recentImg.map((s, i) => `(${i + 1})${s}`).join(' ') : '无'}
 
 ## 尺度递进
 - 0-20%：距离感+神秘好奇
@@ -887,21 +881,18 @@ async function startStory(userId, agentId) {
   
   await session.save();
   
-  // 异步生成开场图片
-  generateImageAsync(session._id, 0, openingImagePrompt, agentId);
+  // 不再自动生成开场图片，用户点击写真按钮时生成
   
   console.log(`[StoryService] New story started: sessionId=${session._id}`);
   
   return {
     sessionId: session._id,
     opening: openingText,
-    openingImageUrl: null, // 前端显示 loading
     progress: 0,
     state: session.state,
     affection: session.affection,
     paragraphs: session.paragraphs,
     isExisting: false,
-    imageGenerating: true, // 告诉前端图片正在生成
   };
 }
 
@@ -933,24 +924,17 @@ async function continueStory(sessionId) {
     parsed = parseAIResponse(rawResponse);
   }
 
-  const { content, imagePrompt, affectionChange, stateChanges } = parsed;
+  const { content, affectionChange, stateChanges } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
-
-  // 反重复 + 情景增强：如果 [IMG] 缺失或与最近几次相似，改用启发式 prompt
-  const recentImg = getRecentImagePrompts(session, 3);
-  let finalImagePrompt = imagePrompt ? enrichImagePrompt(imagePrompt, session, stateUpdate, session.paragraphs.length) : '';
-  if (!finalImagePrompt || isPromptTooSimilar(finalImagePrompt, recentImg)) {
-    finalImagePrompt = buildHeuristicImagePrompt(content, session.state, stateUpdate, session.paragraphs.length, session.progress);
-  }
   
-  // 先保存文字，imageUrl 为 null
+  // 保存段落（不再生成图片，用户点击写真时单独生成）
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'ai', null, null, finalImagePrompt);
+  session.addParagraph(content, 'ai', null, null, null);
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
@@ -962,11 +946,6 @@ async function continueStory(sessionId) {
   
   await session.save();
   
-  // 异步生成图片（不阻塞返回）
-  if (finalImagePrompt) {
-    generateImageAsync(session._id, paragraphIndex, finalImagePrompt, session.agentId);
-  }
-  
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
   
@@ -974,14 +953,10 @@ async function continueStory(sessionId) {
   
   return {
     content,
-    imageUrl: null, // 前端显示 loading
-    imagePrompt: finalImagePrompt,
-    paragraphIndex, // 用于轮询
+    paragraphIndex,
     progress: session.progress,
     state: session.state,
-    affection: session.affection, // 好感度数据
-    isEnding: false, // 故事永不结束
-    imageGenerating: !!finalImagePrompt, // 告诉前端是否有图片在生成
+    affection: session.affection,
   };
 }
 
@@ -1010,22 +985,17 @@ async function inputStory(sessionId, userInput) {
     parsed = parseAIResponse(rawResponse);
   }
 
-  const { content, imagePrompt, affectionChange, stateChanges } = parsed;
+  const { content, affectionChange, stateChanges } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
-
-  const recentImg = getRecentImagePrompts(session, 3);
-  let finalImagePrompt = imagePrompt ? enrichImagePrompt(imagePrompt, session, stateUpdate, session.paragraphs.length) : '';
-  if (!finalImagePrompt || isPromptTooSimilar(finalImagePrompt, recentImg)) {
-    finalImagePrompt = buildHeuristicImagePrompt(content, session.state, stateUpdate, session.paragraphs.length, session.progress);
-  }
   
+  // 保存段落（不再自动生成图片）
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'user_input', userInput, null, finalImagePrompt);
+  session.addParagraph(content, 'user_input', userInput, null, null);
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
@@ -1036,11 +1006,6 @@ async function inputStory(sessionId, userInput) {
   
   await session.save();
   
-  // 异步生成图片
-  if (finalImagePrompt) {
-    generateImageAsync(session._id, paragraphIndex, finalImagePrompt, session.agentId);
-  }
-  
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
   
@@ -1048,14 +1013,10 @@ async function inputStory(sessionId, userInput) {
   
   return {
     content,
-    imageUrl: null,
-    imagePrompt: finalImagePrompt,
     paragraphIndex,
     progress: session.progress,
     state: session.state,
-    affection: session.affection, // 好感度数据
-    isEnding: false, // 故事永不结束
-    imageGenerating: !!finalImagePrompt,
+    affection: session.affection,
   };
 }
 

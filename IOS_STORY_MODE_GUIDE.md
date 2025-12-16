@@ -10,8 +10,8 @@
 
 | 维度 | 传统对话模式 | 剧情模式 |
 |------|-------------|---------|
-| **交互形式** | 一问一答的聊天气泡 | 论坛帖子式的图文段落 |
-| **内容呈现** | 纯文字为主 | 每段配图，视觉化叙事 |
+| **交互形式** | 一问一答的聊天气泡 | 论坛帖子式的剧情段落 |
+| **内容呈现** | 纯文字为主 | 纯文字剧情 + 按需生成写真 |
 | **推进方式** | 用户必须输入才能继续 | 可点击"继续"自动推进 |
 | **情感系统** | 无 | 好感度系统 + 关系阶段 |
 | **剧情结构** | 无结构 | 10段式节拍（钩子→高潮） |
@@ -126,7 +126,7 @@ https://your-domain.com/api/story
 
 **POST** `/continue`
 
-让 AI 自动推进剧情，消耗 2 代币。
+让 AI 自动推进剧情，消耗 2 代币。**只返回文字，不生成图片**（图片需单独点击写真生成）。
 
 **请求：**
 ```json
@@ -139,8 +139,6 @@ https://your-domain.com/api/story
 ```json
 {
   "content": "「从今天起，你是我的。」\n\n他一把抓住她的手腕，将她抵在墙角，眼神危险又缠绵。\n\n（心跳漏了一拍...这个男人...）",
-  "imageUrl": null,
-  "imagePrompt": "intense eye contact, man cornering woman against wall, dramatic lighting",
   "paragraphIndex": 5,
   "progress": 28,
   "state": {
@@ -154,8 +152,6 @@ https://your-domain.com/api/story
     "stage": "熟悉",
     "lastChange": 5
   },
-  "isEnding": false,
-  "imageGenerating": true,
   "balance": 98,
   "cost": 2
 }
@@ -163,10 +159,12 @@ https://your-domain.com/api/story
 
 **字段说明：**
 - `content` - 本段剧情文字（已格式化，包含对话「」、动作描写、内心独白（））
-- `paragraphIndex` - 段落索引，用于轮询图片
+- `paragraphIndex` - 段落索引
 - `affection.lastChange` - 本次好感度变化（显示 +5 或 -3）
 - `balance` - 扣费后剩余代币
 - `cost` - 本次消耗
+
+> ⚠️ **注意**：继续剧情不再自动生成图片，用户需点击"写真"按钮单独生成
 
 ---
 
@@ -225,35 +223,19 @@ https://your-domain.com/api/story
 
 ---
 
-### 5️⃣ 轮询段落图片
+### 5️⃣ ~~轮询段落图片~~（已废弃）
 
-**GET** `/:sessionId/image/:index`
-
-图片异步生成，需要轮询获取。建议间隔 2 秒，最多轮询 30 次。
-
-**响应：**
-```json
-{
-  "imageUrl": "https://...",
-  "imageReady": true
-}
-```
-
-或：
-```json
-{
-  "imageUrl": null,
-  "imageReady": false
-}
-```
+> ⚠️ 剧情推进不再自动生成图片，此接口可忽略。图片通过 `/photo` 接口同步生成。
 
 ---
 
-### 6️⃣ 生成写真
+### 6️⃣ 生成写真（主要图片生成方式）
 
 **POST** `/photo`
 
-根据当前好感度生成角色写真，消耗 5 代币。
+根据当前好感度和剧情状态生成角色写真，消耗 5 代币。
+
+> ✨ **这是获取图片的主要方式**。剧情推进只返回文字，用户想看图时点击此按钮。
 
 **请求：**
 ```json
@@ -271,6 +253,13 @@ https://your-domain.com/api/story
   "cost": 5
 }
 ```
+
+**图片风格说明：**
+- 0-20% 好感度：正式、保持距离
+- 20-40%：友好、放松
+- 40-60%：害羞、好奇、暧昧
+- 60-80%：撩人、挑逗、大胆
+- 80-100%：亲密、性感、深情
 
 ---
 
@@ -326,11 +315,6 @@ https://your-domain.com/api/story
 │  ████████░░░░░░░░░░░           │  ← 好感度进度条
 ├─────────────────────────────────┤
 │                                 │
-│  ┌─────────────────────────┐   │
-│  │      [段落配图]          │   │  ← 可滚动的
-│  │                         │   │     段落列表
-│  └─────────────────────────┘   │
-│                                 │
 │  「你...是谁？」               │  ← 角色对话
 │                                 │
 │  她的眼神复杂，仿佛在看一个    │  ← 动作描写
@@ -340,24 +324,28 @@ https://your-domain.com/api/story
 │                                 │
 │  ───────────────────────       │
 │                                 │
-│  ┌─────────────────────────┐   │
-│  │      [下一段配图]        │   │
-│  │      (加载中...)         │   │
-│  └─────────────────────────┘   │
-│                                 │
 │  「从今天起，你是我的。」      │
+│                                 │
+│  他一把抓住她的手腕，将她抵在  │
+│  墙角，眼神危险又缠绵。        │
+│                                 │
+│  （心跳漏了一拍...这个男人...）│
 │  ...                           │
 │                                 │
 ├─────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐    │  ← 底部操作区
-│  │  继续 ▶  │  │  输入 ✏️ │    │
-│  │   -2💎   │  │   -2💎   │    │
-│  └──────────┘  └──────────┘    │
+│  ┌────────┐ ┌────────┐ ┌─────┐ │  ← 底部操作区
+│  │ 继续 ▶ │ │ 输入 ✏️│ │ 📷 │ │
+│  │  -2💎  │ │  -2💎  │ │-5💎 │ │
+│  └────────┘ └────────┘ └─────┘ │
 │                                 │
 │  [────────────输入框──────────] │  ← 可选输入
 │                                 │
 └─────────────────────────────────┘
+
+📷 = 生成写真按钮（根据当前好感度和剧情状态生成角色图片）
 ```
+
+> **设计说明**：剧情推进只返回文字，速度快、体验流畅。用户想看图时点击"写真"按钮单独生成高质量图片。
 
 ### 2. 段落卡片设计
 
@@ -367,23 +355,6 @@ struct ParagraphCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 配图（16:9 或 3:4）
-            if let imageUrl = paragraph.imageUrl {
-                AsyncImage(url: URL(string: imageUrl)) { image in
-                    image.resizable()
-                        .aspectRatio(3/4, contentMode: .fit)
-                        .cornerRadius(12)
-                } placeholder: {
-                    // 加载中占位
-                    ShimmerView()
-                        .aspectRatio(3/4, contentMode: .fit)
-                        .cornerRadius(12)
-                }
-            } else if paragraph.imageGenerating {
-                // 图片生成中
-                GeneratingPlaceholder()
-            }
-            
             // 文字内容（需要解析格式）
             StoryContentView(content: paragraph.content)
             
@@ -398,6 +369,8 @@ struct ParagraphCard: View {
         .shadow(radius: 2)
     }
 }
+
+// 注意：段落不再包含图片，图片通过"写真"功能单独生成
 ```
 
 ### 3. 文字格式解析
@@ -528,35 +501,39 @@ struct AffectionView: View {
 }
 ```
 
-### 5. 图片加载状态
+### 5. 写真展示弹窗
 
 ```swift
-struct ImageLoadingView: View {
-    @State private var dotCount = 1
+struct PhotoSheet: View {
+    let imageUrl: String?
+    let isLoading: Bool
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        ZStack {
-            // 渐变背景
-            LinearGradient(
-                colors: [.pink.opacity(0.3), .purple.opacity(0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            VStack(spacing: 12) {
-                // 加载动画
-                ProgressView()
-                    .scaleEffect(1.5)
-                
-                Text("画面生成中" + String(repeating: ".", count: dotCount))
-                    .foregroundColor(.white)
+        NavigationView {
+            ZStack {
+                if isLoading {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("写真生成中...")
+                            .foregroundColor(.secondary)
+                    }
+                } else if let url = imageUrl {
+                    AsyncImage(url: URL(string: url)) { image in
+                        image.resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } placeholder: {
+                        ProgressView()
+                    }
+                }
             }
-        }
-        .aspectRatio(3/4, contentMode: .fit)
-        .cornerRadius(12)
-        .onAppear {
-            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-                dotCount = (dotCount % 3) + 1
+            .navigationTitle("写真")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
             }
         }
     }
@@ -571,9 +548,10 @@ struct ActionButtonsView: View {
     let isLoading: Bool
     let onContinue: () -> Void
     let onInput: () -> Void
+    let onPhoto: () -> Void
     
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             // 继续按钮
             Button(action: onContinue) {
                 VStack(spacing: 4) {
@@ -589,7 +567,7 @@ struct ActionButtonsView: View {
                             .font(.caption)
                     }
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white.opacity(0.7))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -614,7 +592,7 @@ struct ActionButtonsView: View {
                             .font(.caption)
                     }
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white.opacity(0.7))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -623,66 +601,70 @@ struct ActionButtonsView: View {
                 .cornerRadius(12)
             }
             .disabled(isLoading || balance < 2)
+            
+            // 写真按钮
+            Button(action: onPhoto) {
+                VStack(spacing: 4) {
+                    Image(systemName: "camera.fill")
+                        .font(.headline)
+                    
+                    HStack(spacing: 2) {
+                        Text("-5")
+                        Image(systemName: "diamond.fill")
+                            .font(.caption)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(
+                    LinearGradient(
+                        colors: [.orange, .pink],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            .disabled(isLoading || balance < 5)
         }
     }
 }
 ```
 
-### 7. 图片轮询逻辑
+### 7. 写真生成逻辑
 
 ```swift
 class StoryViewModel: ObservableObject {
     @Published var paragraphs: [Paragraph] = []
+    @Published var currentPhoto: String?
+    @Published var isGeneratingPhoto = false
     
-    private var pollingTasks: [Int: Task<Void, Never>] = [:]
-    
-    func startImagePolling(sessionId: String, paragraphIndex: Int) {
-        // 取消已有的轮询任务
-        pollingTasks[paragraphIndex]?.cancel()
+    func generatePhoto(sessionId: String) async {
+        await MainActor.run {
+            isGeneratingPhoto = true
+        }
         
-        pollingTasks[paragraphIndex] = Task {
-            var attempts = 0
-            let maxAttempts = 30
-            
-            while attempts < maxAttempts && !Task.isCancelled {
-                do {
-                    let result = try await api.getParagraphImage(
-                        sessionId: sessionId,
-                        index: paragraphIndex
-                    )
-                    
-                    if result.imageReady, let url = result.imageUrl {
-                        await MainActor.run {
-                            // 更新段落图片
-                            if paragraphIndex < paragraphs.count {
-                                paragraphs[paragraphIndex].imageUrl = url
-                                paragraphs[paragraphIndex].imageGenerating = false
-                            }
-                        }
-                        return
-                    }
-                    
-                    // 等待 2 秒后重试
-                    try await Task.sleep(nanoseconds: 2_000_000_000)
-                    attempts += 1
-                    
-                } catch {
-                    print("Polling error: \(error)")
-                    break
-                }
-            }
-            
-            // 超时处理
+        do {
+            let result = try await api.generatePhoto(sessionId: sessionId)
             await MainActor.run {
-                if paragraphIndex < paragraphs.count {
-                    paragraphs[paragraphIndex].imageGenerating = false
-                    paragraphs[paragraphIndex].imageFailed = true
-                }
+                currentPhoto = result.imageUrl
+                balance = result.balance
+                isGeneratingPhoto = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error.localizedDescription
+                isGeneratingPhoto = false
             }
         }
     }
 }
 ```
+
+> **注意**：写真是同步生成的，调用后等待返回即可，无需轮询。生成时间约 5-15 秒。
 
 ---
 
@@ -766,8 +748,12 @@ class StoryViewModel: ObservableObject {
     @Published var balance: Int = 0
     @Published var error: String?
     
+    // 写真相关
+    @Published var currentPhoto: String?
+    @Published var isGeneratingPhoto: Bool = false
+    @Published var showPhotoSheet: Bool = false
+    
     private let api: StoryAPI
-    private var cancellables = Set<AnyCancellable>()
     
     func startStory(agentId: String) async {
         isLoading = true
@@ -779,11 +765,6 @@ class StoryViewModel: ObservableObject {
                 affection = result.affection
                 progress = result.progress
                 isLoading = false
-            }
-            
-            // 如果有图片正在生成，开始轮询
-            if let first = result.paragraphs.first, result.imageGenerating {
-                startImagePolling(sessionId: result.sessionId, paragraphIndex: 0)
             }
         } catch {
             await MainActor.run {
@@ -800,11 +781,12 @@ class StoryViewModel: ObservableObject {
         do {
             let result = try await api.continueStory(sessionId: sessionId)
             await MainActor.run {
-                // 添加新段落
+                // 添加新段落（纯文字，无图片）
                 let newParagraph = Paragraph(
                     content: result.content,
-                    imageUrl: nil,
-                    imageGenerating: result.imageGenerating
+                    source: "ai",
+                    userInput: nil,
+                    createdAt: Date()
                 )
                 paragraphs.append(newParagraph)
                 
@@ -813,19 +795,37 @@ class StoryViewModel: ObservableObject {
                 progress = result.progress
                 balance = result.balance
                 isLoading = false
-            }
-            
-            // 开始轮询图片
-            if result.imageGenerating {
-                startImagePolling(
-                    sessionId: sessionId,
-                    paragraphIndex: result.paragraphIndex
-                )
+                
+                // 自动滚动到底部
             }
         } catch {
             await MainActor.run {
                 self.error = error.localizedDescription
                 isLoading = false
+            }
+        }
+    }
+    
+    func generatePhoto() async {
+        guard let sessionId = session?.sessionId else { return }
+        
+        await MainActor.run {
+            isGeneratingPhoto = true
+            showPhotoSheet = true
+            currentPhoto = nil
+        }
+        
+        do {
+            let result = try await api.generatePhoto(sessionId: sessionId)
+            await MainActor.run {
+                currentPhoto = result.imageUrl
+                balance = result.balance
+                isGeneratingPhoto = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error.localizedDescription
+                isGeneratingPhoto = false
             }
         }
     }
@@ -836,12 +836,11 @@ class StoryViewModel: ObservableObject {
 
 ## ⚠️ 注意事项
 
-### 1. 图片加载
+### 1. 写真生成
 
-- 图片异步生成，通常需要 5-15 秒
-- 建议使用占位图 + 轮询
-- 轮询间隔 2 秒，最多 30 次
-- 超时后显示"加载失败，点击重试"
+- 写真是同步生成的，调用后等待返回即可
+- 生成时间约 5-15 秒，显示加载状态
+- 失败时显示"生成失败，点击重试"
 
 ### 2. 余额不足处理
 
@@ -900,34 +899,26 @@ struct Affection: Codable {
 struct Paragraph: Codable, Identifiable {
     var id: String { "\(createdAt?.timeIntervalSince1970 ?? 0)" }
     let content: String
-    var imageUrl: String?
-    let imagePrompt: String?
     let source: String  // "ai" or "user_input"
     let userInput: String?
     let createdAt: Date?
-    
-    // 本地状态
-    var imageGenerating: Bool = false
-    var imageFailed: Bool = false
 }
 
 struct ContinueResponse: Codable {
     let content: String
-    let imageUrl: String?
-    let imagePrompt: String?
     let paragraphIndex: Int
     let progress: Int
     let state: StoryState
     let affection: Affection
-    let isEnding: Bool
-    let imageGenerating: Bool
     let balance: Int
     let cost: Int
 }
 
-struct ImageStatusResponse: Codable {
-    let imageUrl: String?
-    let imageReady: Bool
+struct PhotoResponse: Codable {
+    let imageUrl: String
+    let prompt: String
+    let balance: Int
+    let cost: Int
 }
 ```
 
@@ -937,11 +928,11 @@ struct ImageStatusResponse: Codable {
 
 - [ ] 创建 `StoryAPI` 网络层
 - [ ] 创建 `StoryViewModel` 状态管理
-- [ ] 实现段落列表 UI
-- [ ] 实现文字格式解析器
+- [ ] 实现段落列表 UI（纯文字）
+- [ ] 实现文字格式解析器（对话/动作/内心）
 - [ ] 实现好感度显示组件
-- [ ] 实现图片轮询逻辑
-- [ ] 实现操作按钮
+- [ ] 实现操作按钮（继续/输入/写真）
+- [ ] 实现写真生成弹窗
 - [ ] 实现用户输入功能
 - [ ] 添加加载/错误状态
 - [ ] 测试完整流程
