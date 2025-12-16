@@ -105,8 +105,9 @@ function pickPose(paragraphIndex = 0, progress = 0) {
 function pickReferenceImage(agent) {
   const urls = Array.isArray(agent?.avatarUrls) ? agent.avatarUrls.filter(Boolean) : [];
   if (urls.length === 0) return agent?.avatarUrl || null;
-  // 随机挑一张参考图，避免一直锁死在同一张（同一构图/同一姿势）
-  return urls[Math.floor(Math.random() * urls.length)];
+  // 固定使用第一张作为“身份锚点”（通常是最能代表人物脸部的图）
+  // 之前随机轮换会导致“人物不像”，尤其在 text2img/低参考强度下更明显
+  return urls[0];
 }
 
 function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphIndex, progress) {
@@ -420,7 +421,12 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   
   // 追加“强变化姿势”指令，避免 flux 默认站姿
   const pose = pickPose(Math.floor((progress || 0) / 2), progress);
-  let fullPrompt = `${style}${appearance}, ${imagePrompt}, ${pose}`;
+  // 强身份约束：保留角色脸/发型/体态一致，只变动作/背景/镜头
+  const identityLock = agent.style === 'anime'
+    ? 'same character identity as reference image, same face, same hairstyle, same hair color, same eyes, keep identity consistent'
+    : 'same woman identity as reference image, same face, same hairstyle, same hair color, same eyes, keep identity consistent';
+
+  let fullPrompt = `${style}${appearance}, ${identityLock}, ${imagePrompt}, ${pose}, change background and pose while keeping identity`;
   
   if (isNsfw) {
     fullPrompt = `nsfw, sensual, ${fullPrompt}`;
@@ -439,22 +445,20 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
 
   try {
     console.log('[StoryService] 使用 Fal.ai Flux Pro v1.1 Redux img2img...');
-    // 进一步降低参考图影响，强制让构图/动作跟随 prompt
-    // Fal: image_prompt_strength 越大越“锁死”参考图；这里压到 0.03
-    const imagePromptStrength = 0.03;
-
-    // 强化：大部分段落直接 text2img，彻底打破“同姿势锁死”
-    // anime 风格更容易“站姿同质化”，直接提升比例
-    const forceRate = agent.style === 'anime' ? 0.85 : 0.7;
-    const shouldForceText2Img = Math.random() < forceRate;
+    // 关键：保留身份但不锁死姿势/构图
+    // Fal: image_prompt_strength 越大越贴近参考图（脸更像，但姿势也更容易锁）
+    // 经验值：0.12-0.28 之间能“保脸 + 允许动作背景变化”
+    const imagePromptStrength = typeof config.imagePromptStrength === 'number'
+      ? Math.max(0, Math.min(1, config.imagePromptStrength))
+      : (agent.style === 'anime' ? 0.22 : 0.18);
 
     const results = await imageGenerationService.generate(fullPrompt, {
-      referenceImage: shouldForceText2Img ? null : referenceImage,
+      referenceImage,
       count: 1,
       width: 768,
       height: 1024,
       // 提高变化强度，让构图/动作更跟随文案（参考图影响会按 (1 - strength) 映射）
-      strength: 0.9,
+      strength: 0.86,
       imagePromptStrength,
       style: agent.style || 'realistic'
     });
