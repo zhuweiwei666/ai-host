@@ -57,6 +57,14 @@ export interface Agent {
       moodHint?: string;
     }>;
   };
+  // 统计数据
+  stats?: {
+    totalChats: number;
+    totalInteractions: number;  // 累计互动次数（故事模式）
+    uniqueUsers: number;
+    avgRating: number;
+    totalRatings: number;
+  };
 }
 
 export interface VoiceModel {
