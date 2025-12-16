@@ -50,6 +50,12 @@ export interface Agent {
     personality?: string;  // 性格描述
     appearance?: string;   // 外貌描述
     contentRating?: 'mild' | 'moderate' | 'explicit';
+    storyBeats?: Array<{
+      progressRange: [number, number];
+      goal: string;
+      sceneHint?: string;
+      moodHint?: string;
+    }>;
   };
 }
 
