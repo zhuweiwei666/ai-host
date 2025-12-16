@@ -29,13 +29,22 @@ const StorySession = require('../models/StorySession');
  */
 function processItems(items, userId) {
   const userIdStr = userId?.toString();
-  return items.map(item => ({
-    ...item,
-    isLiked: userIdStr ? (item.likedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
-    isFavorited: userIdStr ? (item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
-    likedByUsers: undefined,
-    favoritedByUsers: undefined,
-  }));
+  return items.map(item => {
+    // 处理 populate 失败的情况，确保 userId 至少返回 _id
+    if (item.userId) {
+      if (typeof item.userId === 'object' && !item.userId.username) {
+        item.userId = { _id: item.userId._id || item.userId };
+      }
+    }
+    
+    return {
+      ...item,
+      isLiked: userIdStr ? (item.likedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
+      isFavorited: userIdStr ? (item.favoritedByUsers?.some(id => id.toString() === userIdStr) || false) : false,
+      likedByUsers: undefined,
+      favoritedByUsers: undefined,
+    };
+  });
 }
 
 /**
@@ -76,7 +85,7 @@ router.get('/', requireAuth, async (req, res) => {
     const [items, total] = await Promise.all([
       UserGallery.find(query)
         .populate('agentId', 'name avatarUrls style')
-        .populate('userId', 'nickname avatarUrl')
+        .populate('userId', 'username avatar')
         .sort(sortOption)
         .skip(skip)
         .limit(parseInt(limit))
@@ -118,7 +127,7 @@ router.get('/hot', requireAuth, async (req, res) => {
     const [items, total] = await Promise.all([
       UserGallery.find(query)
         .populate('agentId', 'name avatarUrls style')
-        .populate('userId', 'nickname avatarUrl')
+        .populate('userId', 'username avatar')
         .sort({ 'stats.likes': -1, 'stats.views': -1, createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -155,7 +164,7 @@ router.get('/latest', requireAuth, async (req, res) => {
     const [items, total] = await Promise.all([
       UserGallery.find(query)
         .populate('agentId', 'name avatarUrls style')
-        .populate('userId', 'nickname avatarUrl')
+        .populate('userId', 'username avatar')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -288,7 +297,7 @@ router.get('/agent/:agentId', requireAuth, async (req, res) => {
         isActive: true 
       })
         .populate('agentId', 'name avatarUrls style')
-        .populate('userId', 'nickname avatarUrl')
+        .populate('userId', 'username avatar')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
