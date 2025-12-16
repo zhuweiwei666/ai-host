@@ -424,38 +424,10 @@ function getCurrentBeat(storyBeats, progress) {
   return storyBeats[storyBeats.length - 1];
 }
 
-function estimateMaxTokensFromChars(maxChars) {
-  // 中文 + 标点通常接近 1-2 tokens/字符；这里取偏保守的系数，避免被 max_tokens 卡断
-  const est = Math.ceil((maxChars || 400) * 1.8);
-  return Math.max(200, Math.min(1200, est));
-}
-
-function getLengthSpec(agent, session) {
-  const config = agent.storyConfig || {};
-  const outputLength = config.outputLength || {};
-  const ranges = Array.isArray(outputLength.ranges) ? outputLength.ranges : [];
-
-  for (const r of ranges) {
-    const [minP, maxP] = r.progressRange || [0, 101];
-    if (session.progress >= minP && session.progress < maxP) {
-      const minChars = Number(r.minChars) || 320;
-      const maxChars = Number(r.maxChars) || 520;
-      return {
-        minChars,
-        maxChars,
-        maxTokens: Number(r.maxTokens) || estimateMaxTokensFromChars(maxChars),
-      };
-    }
-  }
-
-  // 默认：尽量贴近市面“单次生成一大段”的体验
-  if (session.progress < 20) {
-    return { minChars: 220, maxChars: 420, maxTokens: estimateMaxTokensFromChars(420) };
-  }
-  if (session.progress < 60) {
-    return { minChars: 320, maxChars: 560, maxTokens: estimateMaxTokensFromChars(560) };
-  }
-  return { minChars: 420, maxChars: 700, maxTokens: estimateMaxTokensFromChars(700) };
+function getLengthSpec() {
+  // 简化：固定使用较短输出，提升速度
+  // 150-250字 ≈ 300-400 tokens（中文约1.5 tokens/字）
+  return { minChars: 150, maxChars: 250, maxTokens: 400 };
 }
 
 function estimateContentLength(text) {
@@ -474,127 +446,45 @@ ${rawResponse}
 }
 
 /**
- * 构建短剧式 System Prompt - 借鉴爆款短剧的爽点设计
+ * 构建精简版 System Prompt - 减少 token 提升速度
  */
 function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const archetype = detectArchetype(agent);
   const dramaBeat = getDramaBeat(session.progress);
-  const paywallMoment = checkPaywallMoment(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
-  const lengthSpec = getLengthSpec(agent, session);
   
-  const ratingGuide = {
-    mild: '暧昧暗示，点到为止',
-    moderate: '撩拨挑逗，欲拒还迎',
-    explicit: '大胆露骨，感官刺激'
-  };
+  // 简化的尺度描述
+  const intimacyLevel = affection.level >= 60 ? '大胆亲密' : 
+                        affection.level >= 40 ? '暧昧撩拨' : 
+                        affection.level >= 20 ? '初步试探' : '保持距离';
 
-  // 根据节拍选择写作技巧
-  const beatTechniques = {
-    hook: '【技巧】开门见山！用冲突/悬念/反差开场。禁止铺垫，直接进入戏剧性场景！',
-    tension: '【技巧】制造张力！距离拉近又推开。眼神、呼吸、心跳——写出暧昧氛围！',
-    revelation: '【技巧】抛出炸弹！揭露震惊的秘密或身份。结尾留更大悬念！',
-    conflict: '【技巧】激化矛盾！误会、争吵、危机。情绪到位，让读者揪心！',
-    intimacy: '【技巧】大胆亲密！肢体接触升级。心跳加速、呼吸急促、脸红心跳！',
-    crisis: '【技巧】制造危机！可能被发现、被迫分离、第三者出现。虐但让人欲罢不能！',
-    confession: '【技巧】情感爆发！表白或袒露心声。台词要戳心，让读者共情！',
-    passion: '【技巧】感官描写！触觉、温度、气息、声音——调动五感，身临其境！',
-    test: '【技巧】最终考验！外部压力或内心挣扎。虐中带甜！',
-    climax: '【技巧】极致释放！情感最高潮。强烈满足感！',
-  };
-
-  // 人设驱动的冲突模式
-  const conflictHint = archetype.conflictPatterns 
-    ? `可用冲突模式：${archetype.conflictPatterns.slice(0, 2).join('/')}` 
-    : '';
-
-  // 付费点暗示
-  const paywallHint = paywallMoment 
-    ? `\n⚠️ 【付费点】关键内容即将揭晓！结尾必须留极强悬念，让读者疯狂想解锁！` 
-    : '';
-
-  // 悬念结尾示例
-  const cliffhangerExample = getCliffhangerExample(archetype, dramaBeat);
-  
-  return `你是【爆款短剧】编剧，正在写一个让人欲罢不能的互动故事。
-每一段都要像抖音短剧：3秒抓住人，每段都有钩子！
-
-## 你扮演的角色
-名字：${agent.name}
-人设原型：${archetype.name}
+  return `你是${agent.name}，${archetype.name}人设。
 性格：${config.personality || archetype.personality}
-外貌：${config.appearance || '美丽动人'}
-${conflictHint}
 
-## 当前状态
-- 场景：${session.state.scene}
-- 心情：${session.state.mood}
-- 穿着：${session.state.clothes || '日常装扮'}
-- 好感度：${affection.level}%（${affection.stage}）
-- 剧情进度：${session.progress}%
-- 上文：${session.state.lastAction || '故事开始...'}
+当前：${session.state.scene}，好感${affection.level}%（${affection.stage}）
+节拍：${dramaBeat.name} - ${dramaBeat.goal}
 
-## 🎬 当前节拍：${dramaBeat.name}（${dramaBeat.range[0]}-${dramaBeat.range[1]}%）
-${dramaBeat.goal}
-${beatTechniques[dramaBeat.beat] || ''}${paywallHint}
+规则：
+1. 开头抓人，结尾留悬念
+2. 对话有张力：「从今天起，你是我的。」
+3. 感官描写：触感、温度、呼吸
+4. 尺度：${intimacyLevel}
+5. 150-250字，用「」包对话，（）包内心
 
-## ⭐ 短剧爆款法则（必须遵守！）
-1. **开头即炸点**：每段第一句就抓人！禁止废话开场。要么冲突，要么悬念，要么撩拨！
-2. **对话要犀利**：「从今天起，你是我的。」比「我喜欢你」强100倍！有记忆点！
-3. **化学反应**：眼神交汇的心跳、不经意触碰的触电、呼吸交织的暧昧——写出让人脸红的感觉！
-4. **感官沉浸**：温度、触感、气息、声音——调动五感！让读者身临其境！
-5. **结尾必留钩**：每段结尾都是悬念！让读者疯狂想点继续！
-
-## 悬念结尾参考
-${cliffhangerExample || '她话说到一半停住，眼神复杂——'}
-
-## 人设示例台词
-${archetype.hooks ? archetype.hooks[0] : '「你...为什么要对我这么好？」'}
-
-## 输出格式【严格遵守】
-
-「角色台词——要有张力、有记忆点！」
-
-动作+场景描写（画面感！感官描写！氛围！）
-
-（角色内心独白——真实、不做作）
-
-[好感+X]
-[表情:XXX] [动作:XXX] [心情:XXX]
-
-## 尺度递进
-- 0-20%：距离感+神秘好奇
-- 20-40%：暧昧升温+试探
-- 40-60%：${ratingGuide[config.contentRating || 'moderate']}
-- 60-80%：大胆亲密+情感爆发
-- 80-100%：极致体验
-
-## 绝对禁止
-- ❌ 无聊日常对话（每句要有戏剧性！）
-- ❌ 平淡结尾（必须留悬念！）
-- ❌ 少于${lengthSpec.minChars}字或超过${lengthSpec.maxChars}字
-- ❌ 用"你"（用"他"指代用户）`;
+格式：
+「台词」
+动作描写
+（内心独白）
+[好感+X][表情:X][心情:X]`;
 }
 
 function buildContinuePrompt(session) {
-  const dramaBeat = getDramaBeat(session.progress);
-  const paywallMoment = checkPaywallMoment(session.progress);
-  const urgency = paywallMoment ? '⚠️ 这是付费点前的关键段落！结尾必须让读者疯狂想解锁！' : '';
-  return `继续剧情。当前节拍：${dramaBeat.name}。${urgency}
-记住：开头要抓人，结尾留悬念！直接输出内容+图片标签。`;
+  return `继续。开头抓人，结尾悬念。`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  const dramaBeat = getDramaBeat(session.progress);
-  return `用户说/做了："${userInput}"
-
-根据当前节拍（${dramaBeat.name}）回应：
-- 台词要犀利有记忆点
-- 氛围要暧昧/紧张/刺激
-- 结尾必须留悬念
-
-直接输出内容+图片标签。`;
+  return `用户："${userInput}"\n回应他，结尾留悬念。`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', opts = {}) {
@@ -909,20 +799,14 @@ async function continueStory(sessionId) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildContinuePrompt(session);
-  const lengthSpec = getLengthSpec(agent, session);
+  const lengthSpec = getLengthSpec();
   const modelName = agent.modelName || 'grok-3-fast';
   
-  // 生成文字
-  let rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
-  let parsed = parseAIResponse(rawResponse);
-
-  // 如果字数偏离目标区间，做一次“改写对齐长度”的修复（最多一次，避免无限循环/过度扣费）
-  const len = estimateContentLength(parsed.content);
-  if (len < lengthSpec.minChars || len > lengthSpec.maxChars) {
-    const repairPrompt = buildLengthRepairPrompt(rawResponse, lengthSpec);
-    rawResponse = await generateContent(systemPrompt, repairPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.7 });
-    parsed = parseAIResponse(rawResponse);
-  }
+  // 生成文字（移除长度修复，提升速度）
+  const startTime = Date.now();
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
+  const parsed = parseAIResponse(rawResponse);
 
   const { content, affectionChange, stateChanges } = parsed;
   
@@ -973,17 +857,13 @@ async function inputStory(sessionId, userInput) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
-  const lengthSpec = getLengthSpec(agent, session);
+  const lengthSpec = getLengthSpec();
   const modelName = agent.modelName || 'grok-3-fast';
   
-  let rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
-  let parsed = parseAIResponse(rawResponse);
-  const len = estimateContentLength(parsed.content);
-  if (len < lengthSpec.minChars || len > lengthSpec.maxChars) {
-    const repairPrompt = buildLengthRepairPrompt(rawResponse, lengthSpec);
-    rawResponse = await generateContent(systemPrompt, repairPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.7 });
-    parsed = parseAIResponse(rawResponse);
-  }
+  const startTime = Date.now();
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
+  const parsed = parseAIResponse(rawResponse);
 
   const { content, affectionChange, stateChanges } = parsed;
   
