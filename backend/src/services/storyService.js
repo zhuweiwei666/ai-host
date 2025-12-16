@@ -36,6 +36,108 @@ function extractTags(prompt) {
   return found;
 }
 
+function getRecentImagePrompts(session, n = 3) {
+  const out = [];
+  const paras = session?.paragraphs || [];
+  for (let i = paras.length - 1; i >= 0 && out.length < n; i--) {
+    const p = paras[i]?.imagePrompt;
+    if (p && typeof p === 'string' && p.trim()) out.push(p.trim());
+  }
+  return out;
+}
+
+function normalizePrompt(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[，。,\.!！\?？;；:：、\[\]\(\)（）"“”'‘’]/g, '');
+}
+
+function isPromptTooSimilar(prompt, recentPrompts) {
+  const p = normalizePrompt(prompt);
+  if (!p) return true;
+  for (const r of recentPrompts || []) {
+    const rr = normalizePrompt(r);
+    if (!rr) continue;
+    if (p === rr) return true;
+    // 包含关系且长度接近，视为重复
+    const minLen = Math.min(p.length, rr.length);
+    const maxLen = Math.max(p.length, rr.length);
+    if (minLen > 0 && maxLen > 0) {
+      if ((p.includes(rr) || rr.includes(p)) && minLen / maxLen > 0.7) return true;
+    }
+  }
+  return false;
+}
+
+function pickShot(paragraphIndex = 0, progress = 0) {
+  // 用镜头变化减少“动作同质化”
+  const shots = [
+    '半身近景，微微俯拍',
+    '正面特写，浅景深',
+    '侧脸特写，光影对比',
+    '全身中景，环境入镜',
+    '肩上视角（从他肩后看她）',
+    '手部特写（手势/动作细节）',
+  ];
+  const idx = Math.abs((paragraphIndex || 0) + Math.floor((progress || 0) / 10)) % shots.length;
+  return shots[idx];
+}
+
+function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphIndex, progress) {
+  const scene = stateUpdate?.scene || baseState?.scene || '室内';
+  const mood = stateUpdate?.mood || baseState?.mood || '';
+  const clothes = stateUpdate?.clothes || baseState?.clothes || '';
+  const expression = stateUpdate?.expression || baseState?.expression || '';
+  const action = stateUpdate?.action || baseState?.action || '';
+
+  // 从正文里捞一些动作/姿态关键词（非常轻量，不依赖模型）
+  const text = String(content || '');
+  const actionHints = [];
+  const hintWords = ['靠近', '后退', '回眸', '低头', '抬眼', '咬唇', '撩发', '伸手', '抱臂', '俯身', '转身', '轻笑', '眨眼', '侧过头', '贴近'];
+  for (const w of hintWords) {
+    if (text.includes(w)) actionHints.push(w);
+  }
+
+  const shot = pickShot(paragraphIndex, progress);
+  const parts = [
+    `${scene}`,
+    clothes ? `穿着：${clothes}` : null,
+    expression ? `表情：${expression}` : null,
+    mood ? `情绪：${mood}` : null,
+    action ? `动作：${action}` : null,
+    actionHints.length ? `细节：${Array.from(new Set(actionHints)).slice(0, 3).join('，')}` : null,
+    `镜头：${shot}`,
+    '画面要与本段剧情动作描写一致',
+  ].filter(Boolean);
+
+  return parts.join('，');
+}
+
+function enrichImagePrompt(imagePrompt, session, stateUpdate, paragraphIndex) {
+  const base = String(imagePrompt || '').trim();
+  const progress = session?.progress || 0;
+  const shot = pickShot(paragraphIndex, progress);
+  const scene = stateUpdate?.scene || session?.state?.scene;
+  const mood = stateUpdate?.mood || session?.state?.mood;
+  const clothes = stateUpdate?.clothes || session?.state?.clothes;
+  const expression = stateUpdate?.expression || session?.state?.expression;
+  const action = stateUpdate?.action || session?.state?.action;
+
+  const additions = [];
+  if (scene && !base.includes(scene)) additions.push(`场景：${scene}`);
+  if (clothes && !base.includes(clothes)) additions.push(`穿着：${clothes}`);
+  if (expression && !base.includes(expression)) additions.push(`表情：${expression}`);
+  if (mood && !base.includes(mood)) additions.push(`情绪：${mood}`);
+  if (action && !base.includes(action)) additions.push(`动作：${action}`);
+  if (!base.includes('镜头') && !base.includes('特写') && !base.includes('全身') && !base.includes('近景')) {
+    additions.push(`镜头：${shot}`);
+  }
+  additions.push('避免与上一张画面重复，换角度/构图/姿势');
+
+  return [base, additions.join('，')].filter(Boolean).join('，');
+}
+
 /**
  * 从 prompt 推断情绪
  */
@@ -128,6 +230,7 @@ function buildSystemPrompt(agent, session) {
   const currentBeat = getCurrentBeat(config.storyBeats, session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
   const lengthSpec = getLengthSpec(agent, session);
+  const recentImg = getRecentImagePrompts(session, 3);
   
   const ratingGuide = {
     mild: '暧昧暗示',
@@ -151,6 +254,8 @@ function buildSystemPrompt(agent, session) {
 
 ## 当前目标
 ${currentBeat.goal || '自然发展'}
+${currentBeat.sceneHint ? `- 场景提示：${currentBeat.sceneHint}` : ''}
+${currentBeat.moodHint ? `- 情绪提示：${currentBeat.moodHint}` : ''}
 
 ## 输出格式【必须严格遵守】
 每次回复必须包含以下部分，用换行分隔：
@@ -161,6 +266,12 @@ ${currentBeat.goal || '自然发展'}
 4. 好感变化：[好感+X] 或 [好感-X]，X是1-10的数字
 5. 状态变化：[表情:XXX] [动作:XXX] [心情:XXX]
 6. 图片标签：[IMG: 画面描述]
+
+## 图片标签规则（非常重要）
+- [IMG] 必须与本段“动作描写”严格一致，画面里要体现：场景/人物动作/表情/情绪/镜头
+- 禁止每次都写同一个动作（如总是“歪头微笑/风吹发丝”），需要随剧情变化
+- 最近 3 次图片标签（避免重复）：${recentImg.length ? recentImg.map((s, i) => `(${i + 1})${s}`).join(' ') : '无'}
+- 如果你发现将要重复，请主动改变：镜头（特写/半身/全身/肩后视角/手部特写）、构图、姿势、环境元素
 
 ## 示例输出
 「嗯？你怎么知道我在这里...」
@@ -266,8 +377,9 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   const mood = inferMood(imagePrompt, progress);
   const tags = extractTags(imagePrompt);
 
-  // 1. 尝试复用缓存的图片 (30% 概率复用)
-  if (Math.random() < 0.3) {
+  // 1. 尝试复用缓存的图片（降低复用概率，避免“同一动作/同一画面”）
+  // 旧版本 30% 会导致连续段落频繁复用同一张
+  if (Math.random() < 0.05) {
     try {
       const cached = await StoryImageCache.findReusable(agent._id, tags, mood, rating);
       if (cached) {
@@ -346,10 +458,18 @@ async function generateImageAsync(sessionId, paragraphIndex, imagePrompt, agentI
     if (!session) return;
 
     const progress = session.progress;
-    const imageUrl = await generateImageWithConsistency(imagePrompt, agent, progress);
+    // 用段落内容 + 当前状态补充图片 prompt，确保与文案情景一致且不重复
+    const paragraph = session.paragraphs?.[paragraphIndex];
+    const stateUpdate = session.state || {};
+    const enrichedPrompt = buildHeuristicImagePrompt(paragraph?.content, session.state, stateUpdate, paragraphIndex, progress);
+    const finalPrompt = imagePrompt ? `${imagePrompt}，${enrichedPrompt}` : enrichedPrompt;
+
+    const imageUrl = await generateImageWithConsistency(finalPrompt, agent, progress);
     
     if (imageUrl && session.paragraphs[paragraphIndex]) {
       session.paragraphs[paragraphIndex].imageUrl = imageUrl;
+      // 保存实际用于生图的 prompt（便于后续避免重复）
+      session.paragraphs[paragraphIndex].imagePrompt = finalPrompt;
       await session.save();
       console.log(`[StoryService] 异步图片已更新: sessionId=${sessionId}, index=${paragraphIndex}`);
       
@@ -514,10 +634,17 @@ async function continueStory(sessionId) {
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
+
+  // 反重复 + 情景增强：如果 [IMG] 缺失或与最近几次相似，改用启发式 prompt
+  const recentImg = getRecentImagePrompts(session, 3);
+  let finalImagePrompt = imagePrompt ? enrichImagePrompt(imagePrompt, session, stateUpdate, session.paragraphs.length) : '';
+  if (!finalImagePrompt || isPromptTooSimilar(finalImagePrompt, recentImg)) {
+    finalImagePrompt = buildHeuristicImagePrompt(content, session.state, stateUpdate, session.paragraphs.length, session.progress);
+  }
   
   // 先保存文字，imageUrl 为 null
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'ai', null, null, imagePrompt);
+  session.addParagraph(content, 'ai', null, null, finalImagePrompt);
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
@@ -530,8 +657,8 @@ async function continueStory(sessionId) {
   await session.save();
   
   // 异步生成图片（不阻塞返回）
-  if (imagePrompt) {
-    generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
+  if (finalImagePrompt) {
+    generateImageAsync(session._id, paragraphIndex, finalImagePrompt, session.agentId);
   }
   
   // 更新角色累计互动次数
@@ -542,13 +669,13 @@ async function continueStory(sessionId) {
   return {
     content,
     imageUrl: null, // 前端显示 loading
-    imagePrompt,
+    imagePrompt: finalImagePrompt,
     paragraphIndex, // 用于轮询
     progress: session.progress,
     state: session.state,
     affection: session.affection, // 好感度数据
     isEnding: false, // 故事永不结束
-    imageGenerating: !!imagePrompt, // 告诉前端是否有图片在生成
+    imageGenerating: !!finalImagePrompt, // 告诉前端是否有图片在生成
   };
 }
 
@@ -584,9 +711,15 @@ async function inputStory(sessionId, userInput) {
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
+
+  const recentImg = getRecentImagePrompts(session, 3);
+  let finalImagePrompt = imagePrompt ? enrichImagePrompt(imagePrompt, session, stateUpdate, session.paragraphs.length) : '';
+  if (!finalImagePrompt || isPromptTooSimilar(finalImagePrompt, recentImg)) {
+    finalImagePrompt = buildHeuristicImagePrompt(content, session.state, stateUpdate, session.paragraphs.length, session.progress);
+  }
   
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'user_input', userInput, null, imagePrompt);
+  session.addParagraph(content, 'user_input', userInput, null, finalImagePrompt);
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
@@ -598,8 +731,8 @@ async function inputStory(sessionId, userInput) {
   await session.save();
   
   // 异步生成图片
-  if (imagePrompt) {
-    generateImageAsync(session._id, paragraphIndex, imagePrompt, session.agentId);
+  if (finalImagePrompt) {
+    generateImageAsync(session._id, paragraphIndex, finalImagePrompt, session.agentId);
   }
   
   // 更新角色累计互动次数
@@ -610,13 +743,13 @@ async function inputStory(sessionId, userInput) {
   return {
     content,
     imageUrl: null,
-    imagePrompt,
+    imagePrompt: finalImagePrompt,
     paragraphIndex,
     progress: session.progress,
     state: session.state,
     affection: session.affection, // 好感度数据
     isEnding: false, // 故事永不结束
-    imageGenerating: !!imagePrompt,
+    imageGenerating: !!finalImagePrompt,
   };
 }
 
