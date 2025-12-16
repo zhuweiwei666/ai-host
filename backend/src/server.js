@@ -226,6 +226,7 @@ loadRoute('/api/user-agents', './routes/userAgents');
 loadRoute('/api/admin/review', './routes/adminReview');
 loadRoute('/api/story', './routes/story');
 loadRoute('/api/gallery', './routes/gallery');
+loadRoute('/api/media', './routes/media');
 
 // Static uploads (legacy - kept for backward compatibility with old files)
 // New uploads go directly to OSS, not through this endpoint
