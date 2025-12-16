@@ -49,7 +49,10 @@ export interface Agent {
     opening?: string;      // 开场白
     personality?: string;  // 性格描述
     appearance?: string;   // 外貌描述
+    backstory?: string;    // 背景/剧情设定
     contentRating?: 'mild' | 'moderate' | 'explicit';
+    // 生图：参考图影响强度（0..1），越大越“像参考图”（也更容易锁姿势）
+    imagePromptStrength?: number;
     storyBeats?: Array<{
       progressRange: [number, number];
       goal: string;

@@ -153,6 +153,18 @@ const EditAgent: React.FC = () => {
     systemPrompt: DEFAULT_CUSTOM_PROMPT,
     voiceId: '',
     status: 'online',
+    storyConfig: {
+      enabled: true,
+      tagline: '',
+      synopsis: '',
+      opening: '',
+      backstory: '',
+      appearance: '',
+      personality: '',
+      contentRating: 'moderate',
+      imagePromptStrength: undefined,
+      storyBeats: [],
+    },
   });
 
   // ==================== LiveSkin tagging (previewVideos) ====================
@@ -484,6 +496,16 @@ const EditAgent: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleStoryConfigChange = (key: keyof NonNullable<Agent['storyConfig']>, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      storyConfig: {
+        ...(prev.storyConfig || {}),
+        [key]: value,
+      },
+    }));
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setUploading(true);
@@ -576,15 +598,18 @@ const EditAgent: React.FC = () => {
   };
 
   const handleGenerateAvatar = async () => {
-    if (!formData.description.trim()) {
-      alert('请先填写 Description，AI 将根据描述生成头像。');
+    const appearance = formData.storyConfig?.appearance || '';
+    const fallback = formData.description || '';
+    const promptText = (appearance || fallback || '').trim();
+    if (!promptText) {
+      alert('请先填写【剧情设定→外观设定】（或旧的 description），AI 将根据外观设定生成头像。');
       return;
     }
     setGeneratingImage(true);
     setGeneratedCandidates([]);
     try {
       // Include gender and name in prompt context if available
-      const promptContext = `${formData.description} ${formData.gender ? `(${formData.gender})` : ''}`;
+      const promptContext = `${promptText} ${formData.gender ? `(${formData.gender})` : ''}`;
       const res = await generateAvatarImage(promptContext, { 
         count: 1,
         width: imageSize.width,
@@ -797,16 +822,108 @@ const EditAgent: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Description</label>
-            <textarea
-              name="description"
-              rows={3}
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="例如：A cute girl with pink hair, futuristic style..."
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-            />
-            <p className="text-xs text-gray-500 mt-1">描述越详细，生成的头像越准确。</p>
+            <label className="block text-sm font-medium text-gray-700">剧情设定（故事模式）</label>
+            <div className="mt-2 grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-gray-50 p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">一句话标签（tagline）</label>
+                  <input
+                    type="text"
+                    value={formData.storyConfig?.tagline || ''}
+                    onChange={(e) => handleStoryConfigChange('tagline', e.target.value)}
+                    placeholder="例如：禁忌继母 · 三天独处"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">故事简介（synopsis）</label>
+                  <input
+                    type="text"
+                    value={formData.storyConfig?.synopsis || ''}
+                    onChange={(e) => handleStoryConfigChange('synopsis', e.target.value)}
+                    placeholder="1-2 句话描述剧情主线"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">开场白（opening）</label>
+                <textarea
+                  rows={3}
+                  value={formData.storyConfig?.opening || ''}
+                  onChange={(e) => handleStoryConfigChange('opening', e.target.value)}
+                  placeholder="故事第一段（用户进入剧情时看到的开场）"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">剧情背景（backstory）</label>
+                <textarea
+                  rows={4}
+                  value={formData.storyConfig?.backstory || ''}
+                  onChange={(e) => handleStoryConfigChange('backstory', e.target.value)}
+                  placeholder="世界观/关系设定/关键禁忌点/冲突点/动机等（越清晰越好）"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">外观设定（appearance，用于生图/保角色）</label>
+                  <textarea
+                    rows={3}
+                    value={formData.storyConfig?.appearance || ''}
+                    onChange={(e) => handleStoryConfigChange('appearance', e.target.value)}
+                    placeholder="例如：162cm，银白长发，九尾狐耳…（尽量结构化）"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">性格设定（personality）</label>
+                  <textarea
+                    rows={3}
+                    value={formData.storyConfig?.personality || ''}
+                    onChange={(e) => handleStoryConfigChange('personality', e.target.value)}
+                    placeholder="例如：温柔但腹黑，喜欢诱导…（决定叙事口吻）"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">内容尺度（contentRating）</label>
+                  <select
+                    value={formData.storyConfig?.contentRating || 'moderate'}
+                    onChange={(e) => handleStoryConfigChange('contentRating', e.target.value as any)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  >
+                    <option value="mild">mild</option>
+                    <option value="moderate">moderate</option>
+                    <option value="explicit">explicit</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">保角色强度（imagePromptStrength 0-1，可选）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={typeof formData.storyConfig?.imagePromptStrength === 'number' ? formData.storyConfig?.imagePromptStrength : ''}
+                    onChange={(e) => handleStoryConfigChange('imagePromptStrength', e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                    placeholder="留空走默认：realistic 0.18 / anime 0.22"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-600">
+                说明：这部分会被故事模式直接使用；头像生成也会优先读取“外观设定”。
+              </p>
+            </div>
           </div>
 
           <div>
@@ -1410,17 +1527,7 @@ const EditAgent: React.FC = () => {
 
           {/* 暂时隐藏：AI UGC 相册 / 私房照管理（当前用不上） */}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Custom Personality & Appearance</label>
-            <textarea
-              name="systemPrompt"
-              rows={5}
-              value={formData.systemPrompt}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-            />
-            <p className="text-xs text-gray-500 mt-1">This text is appended after the core protocol to form the final System Prompt.</p>
-          </div>
+          {/* 说明：systemPrompt 仍保留在数据结构中（用于聊天模式），但编辑入口收敛到“剧情设定”以减少困惑 */}
 
           <div className="flex justify-end gap-4 pt-4">
             <button
