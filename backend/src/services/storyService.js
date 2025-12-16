@@ -9,6 +9,7 @@
 
 const StorySession = require('../models/StorySession');
 const StoryImageCache = require('../models/StoryImageCache');
+const UserGallery = require('../models/UserGallery');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
 const imageGenerationService = require('./imageGenerationService');
@@ -299,6 +300,25 @@ async function generateImageAsync(sessionId, paragraphIndex, imagePrompt, agentI
       session.paragraphs[paragraphIndex].imageUrl = imageUrl;
       await session.save();
       console.log(`[StoryService] 异步图片已更新: sessionId=${sessionId}, index=${paragraphIndex}`);
+      
+      // 保存到用户画廊
+      try {
+        const paragraph = session.paragraphs[paragraphIndex];
+        await UserGallery.addToGallery({
+          userId: session.userId,
+          agentId: session.agentId,
+          mediaType: 'image',
+          mediaUrl: imageUrl,
+          source: 'story',
+          storySessionId: session._id,
+          prompt: imagePrompt,
+          context: paragraph.content?.slice(0, 200) || '',
+          isNsfw: progress >= 60,
+        });
+        console.log(`[StoryService] 图片已保存到用户画廊`);
+      } catch (galleryErr) {
+        console.warn('[StoryService] 保存到画廊失败:', galleryErr.message);
+      }
     }
   } catch (err) {
     console.error('[StoryService] 异步图片生成失败:', err.message);
@@ -641,9 +661,29 @@ async function generatePhoto(sessionId) {
     });
     
     if (results && results.length > 0 && results[0].url) {
+      const imageUrl = results[0].url;
       console.log('[StoryService] 写真生成成功');
+      
+      // 保存到用户画廊
+      try {
+        await UserGallery.addToGallery({
+          userId: session.userId,
+          agentId: session.agentId,
+          mediaType: 'image',
+          mediaUrl: imageUrl,
+          source: 'photo',
+          storySessionId: session._id,
+          prompt: photoPrompt,
+          context: `好感度 ${affection.level}% - ${affection.stage}`,
+          isNsfw: isNsfw,
+        });
+        console.log('[StoryService] 写真已保存到用户画廊');
+      } catch (galleryErr) {
+        console.warn('[StoryService] 写真保存到画廊失败:', galleryErr.message);
+      }
+      
       return {
-        imageUrl: results[0].url,
+        imageUrl,
         prompt: photoPrompt,
       };
     }
