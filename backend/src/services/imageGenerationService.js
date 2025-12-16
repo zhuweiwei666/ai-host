@@ -15,6 +15,12 @@ class ImageGenerationService {
     this.apiKey = process.env.IMAGE_GEN_API_KEY;
   }
 
+  clamp01(x) {
+    const n = Number(x);
+    if (Number.isNaN(n)) return 0;
+    return Math.max(0, Math.min(1, n));
+  }
+
   /**
    * 生成图片
    * @param {string} prompt - 用户文案
@@ -24,6 +30,7 @@ class ImageGenerationService {
    * @param {number} options.width - 宽度
    * @param {number} options.height - 高度
    * @param {number} options.strength - 变化强度 0-1
+   * @param {number} options.imagePromptStrength - 参考图影响强度 0-1（Fal: image_prompt_strength）
    * @param {string} options.style - 风格
    */
   async generate(prompt, options = {}) {
@@ -32,7 +39,8 @@ class ImageGenerationService {
       count = 1, 
       width = 768, 
       height = 1152,
-      strength = 0.75,
+      strength = 0.75, // 我们内部语义：变化强度（越大越“不像参考图”）
+      imagePromptStrength,
       style = 'realistic'
     } = options;
 
@@ -64,7 +72,12 @@ class ImageGenerationService {
       count,
       width,
       height,
-      strength
+      strength,
+      // Fal 参数：image_prompt_strength 越大，越“贴近参考图”（构图/动作更像）
+      // 我们的 strength 越大，表示越“变化”。默认用 (1 - strength) 映射。
+      imagePromptStrength: (typeof imagePromptStrength === 'number')
+        ? this.clamp01(imagePromptStrength)
+        : this.clamp01(1 - strength)
     });
 
     // 上传到 R2
@@ -89,16 +102,24 @@ class ImageGenerationService {
   /**
    * Flux Pro Img2Img（最强模型）
    */
-  async generateWithImg2Img(prompt, { imageUrl, count, width, height, strength }) {
+  async generateWithImg2Img(prompt, { imageUrl, count, width, height, strength, imagePromptStrength }) {
     const endpoint = 'https://fal.run/fal-ai/flux-pro/v1.1/redux';
 
-    console.log(`[ImageGen] 调用 Flux Pro v1.1 Redux (最强), strength=${strength}`);
+    console.log(`[ImageGen] 调用 Flux Pro v1.1 Redux (最强)`, {
+      strength,
+      imagePromptStrength,
+    });
 
     const makeRequest = async () => {
+      // 随机 seed，避免服务端默认 seed 导致“看起来都一样”
+      const seed = Math.floor(Math.random() * 2_000_000_000);
       const payload = {
         prompt,
         image_url: imageUrl,
         image_size: { width, height },
+        // 关键：参考图影响强度（之前没传，导致始终用 Fal 默认值，画面容易“锁死”）
+        image_prompt_strength: imagePromptStrength,
+        seed,
         // 更高质量：增加步数与引导（成本/耗时更高）
         num_inference_steps: 36,
         guidance_scale: 4.0,
@@ -117,6 +138,7 @@ class ImageGenerationService {
         });
 
         if (response.data.images && response.data.images.length > 0) {
+          // Fal 可能返回多张，这里仍取第一张
           return response.data.images[0].url;
         }
 

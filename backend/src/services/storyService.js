@@ -84,6 +84,14 @@ function pickShot(paragraphIndex = 0, progress = 0) {
   return shots[idx];
 }
 
+function pickReferenceImage(agent, paragraphIndex = 0) {
+  const urls = Array.isArray(agent?.avatarUrls) ? agent.avatarUrls.filter(Boolean) : [];
+  if (urls.length === 0) return agent?.avatarUrl || null;
+  // 用索引轮换参考图，避免一直锁死在同一张（同一构图/同一姿势）
+  const idx = Math.abs(paragraphIndex) % urls.length;
+  return urls[idx];
+}
+
 function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphIndex, progress) {
   const scene = stateUpdate?.scene || baseState?.scene || '室内';
   const mood = stateUpdate?.mood || baseState?.mood || '';
@@ -409,7 +417,7 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   let imageUrl = null;
 
   // 3. 仅使用 Fal.ai Img2Img（保持人物一致性 + 最高质量）
-  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
+  const referenceImage = pickReferenceImage(agent, Math.floor((progress || 0) / 2));
   if (!referenceImage) {
     console.warn('[StoryService] 无参考图，Fal.ai img2img 不可用');
     return null;
@@ -422,7 +430,8 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
       count: 1,
       width: 768,
       height: 1024,
-      strength: 0.55,
+      // 提高变化强度，让构图/动作更跟随文案（参考图影响会按 (1 - strength) 映射）
+      strength: 0.82,
       style: agent.style || 'realistic'
     });
 
