@@ -84,12 +84,11 @@ function pickShot(paragraphIndex = 0, progress = 0) {
   return shots[idx];
 }
 
-function pickReferenceImage(agent, paragraphIndex = 0) {
+function pickReferenceImage(agent) {
   const urls = Array.isArray(agent?.avatarUrls) ? agent.avatarUrls.filter(Boolean) : [];
   if (urls.length === 0) return agent?.avatarUrl || null;
-  // 用索引轮换参考图，避免一直锁死在同一张（同一构图/同一姿势）
-  const idx = Math.abs(paragraphIndex) % urls.length;
-  return urls[idx];
+  // 随机挑一张参考图，避免一直锁死在同一张（同一构图/同一姿势）
+  return urls[Math.floor(Math.random() * urls.length)];
 }
 
 function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphIndex, progress) {
@@ -417,7 +416,7 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   let imageUrl = null;
 
   // 3. 仅使用 Fal.ai Img2Img（保持人物一致性 + 最高质量）
-  const referenceImage = pickReferenceImage(agent, Math.floor((progress || 0) / 2));
+  const referenceImage = pickReferenceImage(agent);
   if (!referenceImage) {
     console.warn('[StoryService] 无参考图，Fal.ai img2img 不可用');
     return null;
@@ -425,13 +424,21 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
 
   try {
     console.log('[StoryService] 使用 Fal.ai Flux Pro v1.1 Redux img2img...');
+    // 进一步降低参考图影响，强制让构图/动作跟随 prompt
+    // Fal: image_prompt_strength 越大越“锁死”参考图；这里压到 0.03
+    const imagePromptStrength = 0.03;
+
+    // 每隔几段强制 text2img，彻底打破“同姿势锁死”（人物一致性略降，但变化会大幅提升）
+    const shouldForceText2Img = (Math.floor(progress || 0) % 10) >= 7; // roughly 30%
+
     const results = await imageGenerationService.generate(fullPrompt, {
-      referenceImage,
+      referenceImage: shouldForceText2Img ? null : referenceImage,
       count: 1,
       width: 768,
       height: 1024,
       // 提高变化强度，让构图/动作更跟随文案（参考图影响会按 (1 - strength) 映射）
       strength: 0.82,
+      imagePromptStrength,
       style: agent.style || 'realistic'
     });
 

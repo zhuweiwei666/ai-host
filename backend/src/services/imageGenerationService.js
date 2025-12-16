@@ -48,13 +48,11 @@ class ImageGenerationService {
       throw new Error('IMAGE_GEN_API_KEY (Fal.ai) is not configured');
     }
 
-    if (!referenceImage) {
-      throw new Error('参考图是必需的');
-    }
+    const useReference = !!referenceImage;
 
     console.log(`[ImageGen] Flux Img2Img 开始`, {
       prompt: prompt.substring(0, 40) + '...',
-      referenceImage: referenceImage.substring(0, 50) + '...',
+      referenceImage: useReference ? referenceImage.substring(0, 50) + '...' : null,
       strength,
       size: `${width}x${height}`
     });
@@ -67,18 +65,24 @@ class ImageGenerationService {
       finalPrompt = `photorealistic, ${prompt}, 8k, detailed`;
     }
 
-    const imageUrls = await this.generateWithImg2Img(finalPrompt, {
-      imageUrl: referenceImage,
-      count,
-      width,
-      height,
-      strength,
-      // Fal 参数：image_prompt_strength 越大，越“贴近参考图”（构图/动作更像）
-      // 我们的 strength 越大，表示越“变化”。默认用 (1 - strength) 映射。
-      imagePromptStrength: (typeof imagePromptStrength === 'number')
-        ? this.clamp01(imagePromptStrength)
-        : this.clamp01(1 - strength)
-    });
+    const imageUrls = useReference
+      ? await this.generateWithImg2Img(finalPrompt, {
+          imageUrl: referenceImage,
+          count,
+          width,
+          height,
+          strength,
+          // Fal 参数：image_prompt_strength 越大，越“贴近参考图”（构图/动作更像）
+          // 我们的 strength 越大，表示越“变化”。默认用 (1 - strength) 映射。
+          imagePromptStrength: (typeof imagePromptStrength === 'number')
+            ? this.clamp01(imagePromptStrength)
+            : this.clamp01(1 - strength)
+        })
+      : await this.generateWithText2Img(finalPrompt, {
+          count,
+          width,
+          height
+        });
 
     // 上传到 R2
     const results = await Promise.all(imageUrls.map(async (remoteUrl) => {
@@ -97,6 +101,60 @@ class ImageGenerationService {
 
     console.log(`[ImageGen] 完成 ${results.length} 张`);
     return results;
+  }
+
+  /**
+   * Flux Pro Text2Img（用于“强变化”兜底）
+   * Model: fal-ai/flux-pro/v1.1
+   */
+  async generateWithText2Img(prompt, { count, width, height }) {
+    const endpoint = 'https://fal.run/fal-ai/flux-pro/v1.1';
+
+    console.log(`[ImageGen] 调用 Flux Pro v1.1 Text2Img`, {
+      size: `${width}x${height}`,
+      count
+    });
+
+    const makeRequest = async () => {
+      const seed = Math.floor(Math.random() * 2_000_000_000);
+      const payload = {
+        prompt,
+        image_size: { width, height },
+        seed,
+        num_inference_steps: 34,
+        guidance_scale: 4.5,
+        output_format: 'png',
+        safety_tolerance: "6",
+        enable_safety_checker: false
+      };
+
+      try {
+        const response = await axios.post(endpoint, payload, {
+          headers: {
+            'Authorization': `Key ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 60_000
+        });
+
+        if (response.data.images && response.data.images.length > 0) {
+          return response.data.images[0].url;
+        }
+
+        if (response.data.request_id) {
+          // 复用轮询逻辑
+          return await this.pollResult(response.data.request_id);
+        }
+
+        throw new Error('返回格式异常');
+      } catch (error) {
+        console.error('[ImageGen][Text2Img] 错误:', error.response?.data || error.message);
+        throw error;
+      }
+    };
+
+    const requests = Array(count).fill(null).map(() => makeRequest());
+    return Promise.all(requests);
   }
 
   /**
