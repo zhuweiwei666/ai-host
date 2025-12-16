@@ -65,9 +65,21 @@ export default function Apple3DPhoto({
 }: Apple3DPhotoProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const ref = useRef<HTMLDivElement | null>(null);
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
 
   const pointerTarget = useRef({ x: 0, y: 0, inside: false, lastMoveT: 0 });
   const pointer = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+
+  // 如果 width/height 是 'auto'，加载图片获取原始尺寸
+  useEffect(() => {
+    if (width === 'auto' || height === 'auto') {
+      const img = new Image();
+      img.onload = () => {
+        setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.src = src;
+    }
+  }, [src, width, height]);
 
   const config = useMemo(() => ({ tiltDeg, translatePx, glare, seed }), [tiltDeg, translatePx, glare, seed]);
 
@@ -153,11 +165,15 @@ export default function Apple3DPhoto({
     pointerTarget.current.lastMoveT = performance.now() / 1000;
   };
 
+  // 计算实际尺寸
+  const actualWidth = width === 'auto' ? (naturalSize?.w ?? 240) : width;
+  const actualHeight = height === 'auto' ? (naturalSize?.h ?? 240) : height;
+
   return (
     <div
       ref={ref}
       className={['a3d', className].filter(Boolean).join(' ')}
-      style={{ width, height, backgroundImage: `url(${src})` }}
+      style={{ width: actualWidth, height: actualHeight, backgroundImage: `url(${src})` }}
       onPointerMove={onPointerMove}
       onPointerEnter={() => {
         pointerTarget.current.inside = true;

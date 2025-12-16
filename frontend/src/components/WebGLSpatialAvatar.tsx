@@ -304,6 +304,7 @@ export default function WebGLSpatialAvatar({
 }: WebGLSpatialAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const shaderOverridesRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
   const shaderBaseRef = useRef<SpatialMeta['shader'] | undefined>(undefined);
   const seedRef = useRef<number>(0.123);
@@ -349,6 +350,11 @@ export default function WebGLSpatialAvatar({
           loadImageBitmap(meta.cutoutUrl),
           meta.fxTextureUrl ? loadImageBitmap(meta.fxTextureUrl) : Promise.resolve(null as any),
         ]);
+
+        // 如果需要原尺寸，设置自然尺寸
+        if (baseBmp && (width === 'auto' || height === 'auto')) {
+          setNaturalSize({ w: baseBmp.width, h: baseBmp.height });
+        }
 
         if (destroyed) return;
 
@@ -550,12 +556,16 @@ export default function WebGLSpatialAvatar({
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [metaUrl, prefersReducedMotion]);
+  }, [metaUrl, prefersReducedMotion, width, height]);
+
+  // 计算实际尺寸（支持原尺寸显示）
+  const actualWidth = width === 'auto' ? (naturalSize?.w ?? 220) : width;
+  const actualHeight = height === 'auto' ? (naturalSize?.h ?? 220) : height;
 
   return (
     <div
       className={['relative overflow-hidden rounded-2xl bg-gray-100', className].filter(Boolean).join(' ')}
-      style={{ width, height }}
+      style={{ width: actualWidth, height: actualHeight }}
       onPointerMove={(e) => {
         if (!interactive) return;
         const canvas = canvasRef.current;

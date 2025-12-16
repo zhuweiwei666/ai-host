@@ -93,6 +93,18 @@ export default function SpatialAvatar({
 }: SpatialAvatarProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const profile = useMemo<MotionProfile>(() => motion ?? DEFAULT_MOTION_PROFILE, [motion]);
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
+
+  // 如果 width/height 是 'auto'，加载图片获取原始尺寸
+  useEffect(() => {
+    if (width === 'auto' || height === 'auto') {
+      const img = new Image();
+      img.onload = () => {
+        setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.src = src;
+    }
+  }, [src, width, height]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -326,9 +338,13 @@ export default function SpatialAvatar({
   const onFocus = () => setActive(true);
   const onBlur = () => setActive(false);
 
+  // 计算实际尺寸（支持原尺寸显示）
+  const actualWidth = width === 'auto' ? (naturalSize?.w ?? 160) : width;
+  const actualHeight = height === 'auto' ? (naturalSize?.h ?? 160) : height;
+
   const rootStyle: React.CSSProperties = {
-    width,
-    height,
+    width: actualWidth,
+    height: actualHeight,
     // Base layer is the original PNG.
     backgroundImage: `url(${src})`,
   };

@@ -375,20 +375,20 @@ const SpatialAvatarLab: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full sm:w-auto">
+        <div className="w-full sm:w-auto sm:max-w-xl">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-semibold text-gray-800">Preview</div>
+              <div className="text-sm font-semibold text-gray-800">Preview（原尺寸）</div>
               <div className="text-xs text-gray-500">hover / tab focus 试试</div>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex justify-center overflow-auto max-h-[80vh]">
               {mode === 'webgl' ? (
                 assetPack?.metaUrl || currentBoundMeta ? (
                   <WebGLSpatialAvatar
                     metaUrl={assetPack?.metaUrl || currentBoundMeta}
-                    width={260}
-                    height={260}
+                    width="auto"
+                    height="auto"
                     className="shadow-lg"
                     shaderOverrides={currentShaderOverrides}
                     onPickFocus={(x, y) => {
@@ -402,8 +402,8 @@ const SpatialAvatarLab: React.FC = () => {
               ) : mode === 'layers' ? (
                 <SpatialAvatar
                   src={src}
-                  width={220}
-                  height={220}
+                  width="auto"
+                  height="auto"
                   layers={layers}
                   motion={motion}
                   interactive={interactive}
@@ -412,8 +412,8 @@ const SpatialAvatarLab: React.FC = () => {
               ) : (
                 <Apple3DPhoto
                   src={src}
-                  width={260}
-                  height={260}
+                  width="auto"
+                  height="auto"
                   interactive={interactive}
                   tiltDeg={8}
                   translatePx={10}
