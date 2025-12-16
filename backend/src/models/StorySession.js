@@ -125,12 +125,12 @@ StorySessionSchema.methods.addEvent = function(event) {
   return this;
 };
 
-// 推进进度
+// 推进进度（永不结束，循环剧情）
 StorySessionSchema.methods.advanceProgress = function(amount = 3) {
-  this.progress = Math.min(100, this.progress + amount);
+  this.progress = this.progress + amount;
+  // 剧情循环：超过100后重新从一定进度开始，模拟剧情发展
   if (this.progress >= 100) {
-    this.status = 'completed';
-    this.completedAt = new Date();
+    this.progress = 20 + Math.random() * 30; // 回到 20-50% 之间，开启新章节
   }
   return this;
 };

@@ -13,10 +13,11 @@ import {
 } from '../api';
 
 /**
- * 论坛帖子式故事页面
+ * 无限故事页面
  * 
- * 每层楼 = 一段内容 + 配图
+ * 每段 = 内容 + 配图
  * 文字先出，图片异步加载
+ * 故事永无止境
  */
 
 // 图片加载状态组件
@@ -46,7 +47,6 @@ export default function StoryPage() {
   const [paragraphs, setParagraphs] = useState<StoryParagraph[]>([]);
   const [progress, setProgress] = useState(0);
   const [, setStoryState] = useState<StoryState | null>(null);
-  const [isEnding, setIsEnding] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -170,7 +170,7 @@ export default function StoryPage() {
   
   // 继续剧情
   const handleContinue = async () => {
-    if (!sessionId || generating || isEnding) return;
+    if (!sessionId || generating) return;
     
     try {
       setGenerating(true);
@@ -189,7 +189,6 @@ export default function StoryPage() {
       setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
-      setIsEnding(res.data.isEnding);
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
       }
@@ -209,7 +208,7 @@ export default function StoryPage() {
   
   // 用户输入
   const handleInput = async () => {
-    if (!sessionId || generating || isEnding || !userInput.trim()) return;
+    if (!sessionId || generating || !userInput.trim()) return;
     
     try {
       setGenerating(true);
@@ -232,7 +231,6 @@ export default function StoryPage() {
       setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
-      setIsEnding(res.data.isEnding);
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
       }
@@ -272,7 +270,6 @@ export default function StoryPage() {
       setParagraphs(res.data.paragraphs);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
-      setIsEnding(false);
       
       res.data.paragraphs.forEach((p, idx) => {
         if (!p.imageUrl && p.imagePrompt) {
@@ -324,9 +321,6 @@ export default function StoryPage() {
           
           <div className="flex-1 text-center">
             <h1 className="font-semibold text-base">{agent?.name}的故事</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {paragraphs.length} 楼 · {Math.round(progress)}%
-            </p>
           </div>
           
           <div className="flex items-center gap-1 text-pink-400 text-sm">
@@ -335,12 +329,6 @@ export default function StoryPage() {
           </div>
         </div>
         
-        <div className="h-0.5 bg-gray-800">
-          <div 
-            className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
       </div>
       
       {error && (
@@ -377,8 +365,6 @@ export default function StoryPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-white">{agent?.name}</span>
-                    <span className="text-xs text-gray-500">#{idx + 1}楼</span>
-                    <span className="text-xs text-gray-500">·</span>
                     <span className="text-xs text-gray-500">{formatTime(p.createdAt)}</span>
                   </div>
                   
@@ -437,25 +423,10 @@ export default function StoryPage() {
             </div>
           </div>
         )}
-        
-        {isEnding && (
-          <div className="p-8 text-center">
-            <div className="text-4xl mb-3">🎉</div>
-            <h3 className="text-lg font-semibold text-pink-400 mb-2">故事完结</h3>
-            <p className="text-gray-400 text-sm mb-4">感谢你的陪伴</p>
-            <button 
-              onClick={handleRestart}
-              className="px-6 py-2 bg-pink-500 hover:bg-pink-600 rounded-full text-sm font-medium transition-colors"
-            >
-              再来一次
-            </button>
-          </div>
-        )}
       </div>
       
       {/* 底部操作栏 */}
-      {!isEnding && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
           <div className="p-3">
             <div className="flex items-center gap-2 mb-3">
               <input
@@ -491,9 +462,9 @@ export default function StoryPage() {
                   </>
                 ) : (
                   <>
-                    <span>下一楼</span>
+                    <span>继续</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </>
                 )}
@@ -513,7 +484,6 @@ export default function StoryPage() {
           
           <div className="h-safe-area-inset-bottom bg-gray-900" />
         </div>
-      )}
       
       {expandedImage && (
         <div 

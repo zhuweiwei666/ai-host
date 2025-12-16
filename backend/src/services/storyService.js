@@ -375,8 +375,8 @@ async function startStory(userId, agentId) {
 async function continueStory(sessionId) {
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
-  if (session.status !== 'active') throw new Error('故事已结束');
-  
+  // 故事永不结束，不检查 status
+
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
@@ -412,7 +412,7 @@ async function continueStory(sessionId) {
     paragraphIndex, // 用于轮询
     progress: session.progress,
     state: session.state,
-    isEnding: session.status === 'completed',
+    isEnding: false, // 故事永不结束
     imageGenerating: !!imagePrompt, // 告诉前端是否有图片在生成
   };
 }
@@ -423,8 +423,8 @@ async function continueStory(sessionId) {
 async function inputStory(sessionId, userInput) {
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
-  if (session.status !== 'active') throw new Error('故事已结束');
-  
+  // 故事永不结束，不检查 status
+
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
@@ -458,7 +458,7 @@ async function inputStory(sessionId, userInput) {
     paragraphIndex,
     progress: session.progress,
     state: session.state,
-    isEnding: session.status === 'completed',
+    isEnding: false, // 故事永不结束
     imageGenerating: !!imagePrompt,
   };
 }
