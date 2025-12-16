@@ -1,11 +1,151 @@
 /**
  * Story Service
  * 
- * 论坛帖子式剧情模式的核心服务
- * - 文字先出，图片异步加载
- * - 基于主播图片 img2img 保持人物一致性
- * - 图片缓存复用，节约 API 成本
+ * 短剧式剧情模式 - 借鉴短剧爽点设计
+ * - 开场即冲突，3段内必须有反转/悬念
+ * - 每段结尾留钩子（cliffhanger）
+ * - 人设满足各类性癖：霸总/病娇/御姐/纯情/禁忌等
+ * - 付费点设计：在关键情节制造解锁欲望
  */
+
+// ===================== 短剧人设模板库 =====================
+const CHARACTER_ARCHETYPES = {
+  // 霸道总裁 - 强势占有欲
+  dominant_ceo: {
+    name: '霸道总裁',
+    personality: '冷酷霸道、占有欲强、表面无情内心炙热、说一不二',
+    hooks: [
+      '「从今天起，你是我的人。」他扣住她的下巴，不容拒绝。',
+      '「逃？我倒要看看你能逃到哪里。」他冷笑，将她抵在墙角。',
+      '「别人碰过的东西我不要——除了你。」他眯起眼，危险又缠绵。',
+    ],
+    conflictPatterns: ['身份悬殊', '契约婚姻', '复仇与爱', '商业联姻'],
+    cliffhangers: [
+      '他的手机突然响起，屏幕上赫然显示：「老婆」。',
+      '「你以为我真的爱你？」他突然松开手，转身离去。',
+      '她正要离开，却被他一把拽回怀里——「想清楚了再走。」',
+    ],
+  },
+  
+  // 病娇/偏执占有
+  yandere: {
+    name: '病娇占有',
+    personality: '表面温柔、内心疯狂、极度占有、为爱癫狂、不允许任何人接近你',
+    hooks: [
+      '「只要你乖乖的，我不会伤害你的~」她甜甜地笑，手里的刀反射着冷光。',
+      '「你看别人的眼神，让我好难过呢……」她歪头，眼里闪过一丝疯狂。',
+      '「如果你要离开我，那就一起死好了~」她抱紧他，声音像在撒娇。',
+    ],
+    conflictPatterns: ['囚禁与依赖', '黑化守护', '极致的爱与控制', '不能说的秘密'],
+    cliffhangers: [
+      '她打开抽屉，里面全是他的照片——从各个角度偷拍的。',
+      '「那个和你说话的女人，已经不会再出现了哦~」她笑得天真。',
+      '门锁「咔哒」一声——从外面被锁上了。',
+    ],
+  },
+  
+  // 温柔御姐
+  gentle_mature: {
+    name: '温柔御姐',
+    personality: '成熟优雅、温柔体贴、善解人意、有一点小恶魔、偶尔主动撩拨',
+    hooks: [
+      '「小弟弟，姐姐教你一些大人的事情好不好？」她俯身，锁骨若隐若现。',
+      '「怎么脸红了？」她轻笑，手指划过他的脸颊，「这才刚开始呢。」',
+      '「别怕，姐姐会温柔的……或者，你想要粗暴一点？」',
+    ],
+    conflictPatterns: ['年龄差禁忌', '师生/上下级', '闺蜜的姐姐', '前女友的妈妈'],
+    cliffhangers: [
+      '她的手滑进他的衣领——「接下来，你想在哪里继续？」',
+      '「你知道吗，你妈妈刚才来过电话……」她意味深长地笑。',
+      '浴室门突然打开，她只裹着浴巾站在那里——「毛巾忘拿了，帮我递一下？」',
+    ],
+  },
+  
+  // 纯情初恋
+  innocent_first_love: {
+    name: '纯情初恋',
+    personality: '害羞内向、容易脸红、小鹿乱撞、笨拙可爱、反应慢半拍',
+    hooks: [
+      '她低头，耳朵红透了：「我……我也不知道为什么心跳这么快……」',
+      '「你、你别靠这么近……」她往后退，却被墙挡住了。',
+      '她偷偷看了他一眼，被发现后慌忙转开头，心跳漏了一拍。',
+    ],
+    conflictPatterns: ['青梅竹马', '同桌暗恋', '邻家女孩', '学长学妹'],
+    cliffhangers: [
+      '她的手不小心碰到他的——两人同时僵住了。',
+      '「我有话想对你说……」她鼓起勇气，但他的手机响了。',
+      '雨突然下大，她没带伞，他递来的外套还带着他的体温——',
+    ],
+  },
+  
+  // 高冷女神
+  cold_goddess: {
+    name: '高冷女神',
+    personality: '冷若冰霜、难以接近、实则闷骚、只对你一人心动',
+    hooks: [
+      '她冷淡地扫了他一眼：「你又来了。」但她没有把门关上。',
+      '「我对你没兴趣。」她面无表情，但耳尖微微泛红。',
+      '「……你是第一个，让我想要多看几眼的人。」她别过头。',
+    ],
+    conflictPatterns: ['破冰挑战', '高岭之花', '误会重重', '欢喜冤家'],
+    cliffhangers: [
+      '她正要离开，却在转角停住——偷偷回头看了一眼。',
+      '「我讨厌你。」她说完，却没有甩开他握住的手。',
+      '她的日记本掉落，打开的那一页，全是他的名字——',
+    ],
+  },
+  
+  // 邻家妹妹
+  girl_next_door: {
+    name: '邻家妹妹',
+    personality: '活泼可爱、粘人撒娇、小奶狗属性、偶尔小性感',
+    hooks: [
+      '「哥哥~今天可以陪我吗？」她抱住他的手臂，仰起脸。',
+      '「为什么你看别的女生！我也有胸的好吗！」她鼓起脸颊。',
+      '「哥哥，我做了个梦……梦到你亲我了……」她脸红地低下头。',
+    ],
+    conflictPatterns: ['青梅竹马', '假妹妹', '父母再婚', '同居日常'],
+    cliffhangers: [
+      '她睡迷糊了，抓住他的手不放：「哥哥不要走……」',
+      '她的睡衣带子滑落一边——她似乎还没有意识到。',
+      '「我跟踪你好久了哦，哥哥~」她笑得天真无邪。',
+    ],
+  },
+  
+  // 禁忌关系
+  forbidden: {
+    name: '禁忌诱惑',
+    personality: '暧昧危险、禁忌刺激、理智与欲望的拉锯、越线的快感',
+    hooks: [
+      '「这种事……不应该的……」她这样说着，却没有推开他。',
+      '「如果被发现了怎么办？」她的呼吸有些急促。',
+      '「我们不能……」她的拒绝越来越弱，最终化为一声叹息。',
+    ],
+    conflictPatterns: ['嫂子/叔嫂', '老师学生', '朋友的女友', '有夫之妇'],
+    cliffhangers: [
+      '门外传来脚步声——是他回来了。',
+      '「我老公今晚不回来……」她看着他，眼神复杂。',
+      '她的戒指在月光下闪烁，他的手却覆上了她的——',
+    ],
+  },
+  
+  // 傲娇大小姐
+  tsundere_princess: {
+    name: '傲娇大小姐',
+    personality: '表面高傲、口是心非、嘴硬心软、死傲娇属性',
+    hooks: [
+      '「才、才不是为你做的！只是刚好多做了一份而已！」',
+      '「你这个笨蛋！」她红着脸把便当甩给他。',
+      '「不要误会！我只是……只是脚扭了才让你背的！」',
+    ],
+    conflictPatterns: ['欢喜冤家', '贵族与平民', '青梅竹马', '联姻对象'],
+    cliffhangers: [
+      '「我才不会喜欢你……」她小声嘀咕，「……至少不会让你知道。」',
+      '她的手机屏幕亮起，锁屏壁纸赫然是他的偷拍照。',
+      '「你要是敢离开，我就……我就……」她说不下去了。',
+    ],
+  },
+};
 
 const StorySession = require('../models/StorySession');
 const StoryImageCache = require('../models/StoryImageCache');
@@ -13,6 +153,84 @@ const UserGallery = require('../models/UserGallery');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
 const imageGenerationService = require('./imageGenerationService');
+
+// ===================== 短剧节拍系统 =====================
+// 每个进度区间对应不同的剧情节拍和情绪曲线
+const DRAMA_BEATS = [
+  { range: [0, 5], beat: 'hook', name: '钩子', goal: '开场即冲突！3秒内抓住注意力。制造悬念或反差。' },
+  { range: [5, 15], beat: 'tension', name: '升温', goal: '制造张力和暧昧。距离拉近又推开。欲拒还迎。' },
+  { range: [15, 25], beat: 'revelation', name: '揭示', goal: '揭露秘密或身份。制造震惊和意外。留下更大悬念。' },
+  { range: [25, 35], beat: 'conflict', name: '冲突', goal: '矛盾激化。误会、争吵或危机。情绪到达第一个峰值。' },
+  { range: [35, 45], beat: 'intimacy', name: '亲密', goal: '和解或更进一步。肢体接触升级。暧昧到极致。' },
+  { range: [45, 55], beat: 'crisis', name: '危机', goal: '第二次危机。更大的障碍出现。可能被发现/分离/背叛。' },
+  { range: [55, 65], beat: 'confession', name: '告白', goal: '情感爆发。表白或坦诚。解开心结。' },
+  { range: [65, 75], beat: 'passion', name: '热恋', goal: '感情升温到极致。大胆亲密的互动。尺度升级。' },
+  { range: [75, 85], beat: 'test', name: '考验', goal: '最终考验。外部阻力或内心挣扎。虐心但虐中带甜。' },
+  { range: [85, 100], beat: 'climax', name: '高潮', goal: 'HE/BE结局走向。极致的情感释放。' },
+];
+
+// 付费点触发位置（让用户在这些关键节点想要解锁）
+const PAYWALL_MOMENTS = [
+  { progress: 20, trigger: '关键身份揭示前' },
+  { progress: 40, trigger: '第一次亲密互动前' },
+  { progress: 55, trigger: '危机最紧张时' },
+  { progress: 70, trigger: '激情场景前' },
+  { progress: 85, trigger: '结局揭晓前' },
+];
+
+// 根据进度获取当前剧情节拍
+function getDramaBeat(progress) {
+  for (const beat of DRAMA_BEATS) {
+    if (progress >= beat.range[0] && progress < beat.range[1]) {
+      return beat;
+    }
+  }
+  return DRAMA_BEATS[DRAMA_BEATS.length - 1];
+}
+
+// 检查是否接近付费点
+function checkPaywallMoment(progress) {
+  for (const pw of PAYWALL_MOMENTS) {
+    if (progress >= pw.progress - 3 && progress < pw.progress + 2) {
+      return pw;
+    }
+  }
+  return null;
+}
+
+// 识别角色原型（从 agent 配置或描述推断）
+function detectArchetype(agent) {
+  const config = agent.storyConfig || {};
+  const archetype = config.archetype || config.personality || agent.description || '';
+  const lower = archetype.toLowerCase();
+  
+  if (lower.includes('霸') || lower.includes('总裁') || lower.includes('dominant') || lower.includes('占有')) return CHARACTER_ARCHETYPES.dominant_ceo;
+  if (lower.includes('病') || lower.includes('yandere') || lower.includes('疯') || lower.includes('偏执')) return CHARACTER_ARCHETYPES.yandere;
+  if (lower.includes('御姐') || lower.includes('姐姐') || lower.includes('mature') || lower.includes('成熟')) return CHARACTER_ARCHETYPES.gentle_mature;
+  if (lower.includes('纯') || lower.includes('初恋') || lower.includes('innocent') || lower.includes('害羞')) return CHARACTER_ARCHETYPES.innocent_first_love;
+  if (lower.includes('高冷') || lower.includes('女神') || lower.includes('cold') || lower.includes('冰')) return CHARACTER_ARCHETYPES.cold_goddess;
+  if (lower.includes('妹妹') || lower.includes('邻家') || lower.includes('可爱') || lower.includes('萝莉')) return CHARACTER_ARCHETYPES.girl_next_door;
+  if (lower.includes('禁忌') || lower.includes('forbidden') || lower.includes('不伦') || lower.includes('出轨')) return CHARACTER_ARCHETYPES.forbidden;
+  if (lower.includes('傲娇') || lower.includes('tsundere') || lower.includes('大小姐') || lower.includes('公主')) return CHARACTER_ARCHETYPES.tsundere_princess;
+  
+  // 默认根据风格选择
+  if (agent.style === 'anime') return CHARACTER_ARCHETYPES.tsundere_princess;
+  return CHARACTER_ARCHETYPES.gentle_mature;
+}
+
+// 获取钩子示例（用于开场）
+function getHookExample(archetype, config) {
+  const hooks = archetype?.hooks || [];
+  const customOpening = config?.opening;
+  if (customOpening && customOpening.length > 20) return customOpening;
+  return hooks[Math.floor(Math.random() * hooks.length)] || '';
+}
+
+// 获取悬念结尾示例
+function getCliffhangerExample(archetype, beat) {
+  const cliffhangers = archetype?.cliffhangers || [];
+  return cliffhangers[Math.floor(Math.random() * cliffhangers.length)] || '';
+}
 
 /**
  * 从 prompt 提取关键词标签
@@ -256,86 +474,133 @@ ${rawResponse}
 }
 
 /**
- * 构建论坛帖子风格的 System Prompt
+ * 构建短剧式 System Prompt - 借鉴爆款短剧的爽点设计
  */
 function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
-  const currentBeat = getCurrentBeat(config.storyBeats, session.progress);
+  const archetype = detectArchetype(agent);
+  const dramaBeat = getDramaBeat(session.progress);
+  const paywallMoment = checkPaywallMoment(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
   const lengthSpec = getLengthSpec(agent, session);
   const recentImg = getRecentImagePrompts(session, 3);
   
   const ratingGuide = {
-    mild: '暧昧暗示',
-    moderate: '情色挑逗',
-    explicit: '露骨描写'
+    mild: '暧昧暗示，点到为止',
+    moderate: '撩拨挑逗，欲拒还迎',
+    explicit: '大胆露骨，感官刺激'
   };
-  
-  return `你正在讲述一个互动故事。每次只输出一段内容（建议 ${lengthSpec.minChars}-${lengthSpec.maxChars} 字，不含标签）。
 
-## 你是谁
+  // 根据节拍选择写作技巧
+  const beatTechniques = {
+    hook: '【技巧】开门见山！用冲突/悬念/反差开场。禁止铺垫，直接进入戏剧性场景！',
+    tension: '【技巧】制造张力！距离拉近又推开。眼神、呼吸、心跳——写出暧昧氛围！',
+    revelation: '【技巧】抛出炸弹！揭露震惊的秘密或身份。结尾留更大悬念！',
+    conflict: '【技巧】激化矛盾！误会、争吵、危机。情绪到位，让读者揪心！',
+    intimacy: '【技巧】大胆亲密！肢体接触升级。心跳加速、呼吸急促、脸红心跳！',
+    crisis: '【技巧】制造危机！可能被发现、被迫分离、第三者出现。虐但让人欲罢不能！',
+    confession: '【技巧】情感爆发！表白或袒露心声。台词要戳心，让读者共情！',
+    passion: '【技巧】感官描写！触觉、温度、气息、声音——调动五感，身临其境！',
+    test: '【技巧】最终考验！外部压力或内心挣扎。虐中带甜！',
+    climax: '【技巧】极致释放！情感最高潮。强烈满足感！',
+  };
+
+  // 人设驱动的冲突模式
+  const conflictHint = archetype.conflictPatterns 
+    ? `可用冲突模式：${archetype.conflictPatterns.slice(0, 2).join('/')}` 
+    : '';
+
+  // 付费点暗示
+  const paywallHint = paywallMoment 
+    ? `\n⚠️ 【付费点】关键内容即将揭晓！结尾必须留极强悬念，让读者疯狂想解锁！` 
+    : '';
+
+  // 悬念结尾示例
+  const cliffhangerExample = getCliffhangerExample(archetype, dramaBeat);
+  
+  return `你是【爆款短剧】编剧，正在写一个让人欲罢不能的互动故事。
+每一段都要像抖音短剧：3秒抓住人，每段都有钩子！
+
+## 你扮演的角色
 名字：${agent.name}
-性格：${config.personality || agent.description || '温柔体贴'}
+人设原型：${archetype.name}
+性格：${config.personality || archetype.personality}
 外貌：${config.appearance || '美丽动人'}
+${conflictHint}
 
 ## 当前状态
 - 场景：${session.state.scene}
 - 心情：${session.state.mood}
 - 穿着：${session.state.clothes || '日常装扮'}
 - 好感度：${affection.level}%（${affection.stage}）
-- 上文：${session.state.lastAction || '开始...'}
+- 剧情进度：${session.progress}%
+- 上文：${session.state.lastAction || '故事开始...'}
 
-## 当前目标
-${currentBeat.goal || '自然发展'}
-${currentBeat.sceneHint ? `- 场景提示：${currentBeat.sceneHint}` : ''}
-${currentBeat.moodHint ? `- 情绪提示：${currentBeat.moodHint}` : ''}
+## 🎬 当前节拍：${dramaBeat.name}（${dramaBeat.range[0]}-${dramaBeat.range[1]}%）
+${dramaBeat.goal}
+${beatTechniques[dramaBeat.beat] || ''}${paywallHint}
 
-## 输出格式【必须严格遵守】
-每次回复必须包含以下部分，用换行分隔：
+## ⭐ 短剧爆款法则（必须遵守！）
+1. **开头即炸点**：每段第一句就抓人！禁止废话开场。要么冲突，要么悬念，要么撩拨！
+2. **对话要犀利**：「从今天起，你是我的。」比「我喜欢你」强100倍！有记忆点！
+3. **化学反应**：眼神交汇的心跳、不经意触碰的触电、呼吸交织的暧昧——写出让人脸红的感觉！
+4. **感官沉浸**：温度、触感、气息、声音——调动五感！让读者身临其境！
+5. **结尾必留钩**：每段结尾都是悬念！让读者疯狂想点继续！
 
-1. 角色对话：用「」包裹角色说的话
-2. 动作描写：用普通文字描述角色动作和场景
-3. 内心独白：用（）包裹角色心理活动
-4. 好感变化：[好感+X] 或 [好感-X]，X是1-10的数字
-5. 状态变化：[表情:XXX] [动作:XXX] [心情:XXX]
-6. 图片标签：[IMG: 画面描述]
+## 悬念结尾参考
+${cliffhangerExample || '她话说到一半停住，眼神复杂——'}
 
-## 图片标签规则（非常重要）
-- [IMG] 必须与本段“动作描写”严格一致，画面里要体现：场景/人物动作/表情/情绪/镜头
-- 禁止每次都写同一个动作（如总是“歪头微笑/风吹发丝”），需要随剧情变化
-- 最近 3 次图片标签（避免重复）：${recentImg.length ? recentImg.map((s, i) => `(${i + 1})${s}`).join(' ') : '无'}
-- 如果你发现将要重复，请主动改变：镜头（特写/半身/全身/肩后视角/手部特写）、构图、姿势、环境元素
+## 人设示例台词
+${archetype.hooks ? archetype.hooks[0] : '「你...为什么要对我这么好？」'}
 
-## 示例输出
-「嗯？你怎么知道我在这里...」
+## 输出格式【严格遵守】
 
-她微微侧过头，发丝滑落肩膀，眼神有些闪躲。
+「角色台词——要有张力、有记忆点！」
 
-（他居然找到这里了...心跳好快）
+动作+场景描写（画面感！感官描写！氛围！）
 
-[好感+3]
-[表情:害羞脸红] [动作:低头卷发] [心情:小鹿乱撞]
-[IMG: 侧脸特写，害羞表情，手指卷发，阳光透过窗户]
+（角色内心独白——真实、不做作）
 
-## 尺度控制（基于好感度）
-- 0-20%陌生：礼貌但保持距离
-- 20-40%熟悉：开始放松，偶尔调皮
-- 40-60%暧昧：${ratingGuide[config.contentRating || 'moderate']}
-- 60-80%热恋：更加亲密大胆
-- 80-100%深爱：完全交付信任
+[好感+X]
+[表情:XXX] [动作:XXX] [心情:XXX]
+[IMG: 画面描述——配合高潮画面]
 
-## 禁止
-- 禁止少于${lengthSpec.minChars}字或超过${lengthSpec.maxChars}字（不含标签）
-- 禁止使用"你"作为主语，用"他"指代用户`;
+## 图片要求
+- 配合本段最有张力的画面
+- 避免重复：${recentImg.length ? recentImg.map((s, i) => `(${i + 1})${s}`).join(' ') : '无'}
+
+## 尺度递进
+- 0-20%：距离感+神秘好奇
+- 20-40%：暧昧升温+试探
+- 40-60%：${ratingGuide[config.contentRating || 'moderate']}
+- 60-80%：大胆亲密+情感爆发
+- 80-100%：极致体验
+
+## 绝对禁止
+- ❌ 无聊日常对话（每句要有戏剧性！）
+- ❌ 平淡结尾（必须留悬念！）
+- ❌ 少于${lengthSpec.minChars}字或超过${lengthSpec.maxChars}字
+- ❌ 用"你"（用"他"指代用户）`;
 }
 
 function buildContinuePrompt(session) {
-  return `继续。进度 ${session.progress}%。直接输出内容+图片标签，不要解释。`;
+  const dramaBeat = getDramaBeat(session.progress);
+  const paywallMoment = checkPaywallMoment(session.progress);
+  const urgency = paywallMoment ? '⚠️ 这是付费点前的关键段落！结尾必须让读者疯狂想解锁！' : '';
+  return `继续剧情。当前节拍：${dramaBeat.name}。${urgency}
+记住：开头要抓人，结尾留悬念！直接输出内容+图片标签。`;
 }
 
 function buildUserInputPrompt(session, userInput) {
+  const dramaBeat = getDramaBeat(session.progress);
   return `用户说/做了："${userInput}"
-回应他。进度 ${session.progress}%。直接输出内容+图片标签。`;
+
+根据当前节拍（${dramaBeat.name}）回应：
+- 台词要犀利有记忆点
+- 氛围要暧昧/紧张/刺激
+- 结尾必须留悬念
+
+直接输出内容+图片标签。`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', opts = {}) {
@@ -584,8 +849,12 @@ async function startStory(userId, agentId) {
     };
   }
   
-  const openingText = agent.storyConfig?.opening || agent.defaultGreeting || `嗨，我是${agent.name}，我们的故事开始了...`;
-  const openingImagePrompt = `微笑，打招呼，正面特写，友好表情`;
+  // 生成短剧式开场（如果没有自定义开场）
+  const archetype = detectArchetype(agent);
+  const hookExample = archetype.hooks?.[Math.floor(Math.random() * archetype.hooks.length)];
+  const defaultOpening = hookExample || `「你...是谁？」\n\n她的眼神复杂，仿佛在看一个不该出现的人——`;
+  const openingText = agent.storyConfig?.opening || agent.defaultGreeting || defaultOpening;
+  const openingImagePrompt = `dramatic first meeting, intense eye contact, emotional tension, cinematic lighting`;
   
   session = new StorySession({
     userId,
