@@ -84,6 +84,24 @@ function pickShot(paragraphIndex = 0, progress = 0) {
   return shots[idx];
 }
 
+function pickPose(paragraphIndex = 0, progress = 0) {
+  // 用“明确姿势 + 明确场景动作”打破 flux 的默认站姿
+  const poses = [
+    'full body, walking towards camera, mid-step',
+    'sitting on a sofa, legs crossed, relaxed posture',
+    'leaning against a wall, one hand on the wall, confident pose',
+    'kneeling on a bed, looking back over shoulder',
+    'turning around quickly, skirt swaying, dynamic motion blur',
+    'close-up hands: grabbing sleeve / holding collar, tension gesture',
+    'reaching out hand to viewer, inviting gesture',
+    'half body, bending forward slightly, teasing eye contact',
+    'standing near window, backlit silhouette, hair flowing',
+    'holding a door handle, opening the door, entering scene',
+  ];
+  const idx = Math.abs((paragraphIndex || 0) + Math.floor((progress || 0) / 7)) % poses.length;
+  return poses[idx];
+}
+
 function pickReferenceImage(agent) {
   const urls = Array.isArray(agent?.avatarUrls) ? agent.avatarUrls.filter(Boolean) : [];
   if (urls.length === 0) return agent?.avatarUrl || null;
@@ -107,6 +125,7 @@ function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphInd
   }
 
   const shot = pickShot(paragraphIndex, progress);
+  const pose = pickPose(paragraphIndex, progress);
   const parts = [
     `${scene}`,
     clothes ? `穿着：${clothes}` : null,
@@ -115,6 +134,7 @@ function buildHeuristicImagePrompt(content, baseState, stateUpdate, paragraphInd
     action ? `动作：${action}` : null,
     actionHints.length ? `细节：${Array.from(new Set(actionHints)).slice(0, 3).join('，')}` : null,
     `镜头：${shot}`,
+    `pose: ${pose}`,
     '画面要与本段剧情动作描写一致',
   ].filter(Boolean);
 
@@ -125,6 +145,7 @@ function enrichImagePrompt(imagePrompt, session, stateUpdate, paragraphIndex) {
   const base = String(imagePrompt || '').trim();
   const progress = session?.progress || 0;
   const shot = pickShot(paragraphIndex, progress);
+  const pose = pickPose(paragraphIndex, progress);
   const scene = stateUpdate?.scene || session?.state?.scene;
   const mood = stateUpdate?.mood || session?.state?.mood;
   const clothes = stateUpdate?.clothes || session?.state?.clothes;
@@ -139,6 +160,10 @@ function enrichImagePrompt(imagePrompt, session, stateUpdate, paragraphIndex) {
   if (action && !base.includes(action)) additions.push(`动作：${action}`);
   if (!base.includes('镜头') && !base.includes('特写') && !base.includes('全身') && !base.includes('近景')) {
     additions.push(`镜头：${shot}`);
+  }
+  // 强制加一个 pose 指令（英文更容易被模型理解）
+  if (!base.toLowerCase().includes('pose:') && !base.toLowerCase().includes('full body') && !base.toLowerCase().includes('sitting')) {
+    additions.push(`pose: ${pose}`);
   }
   additions.push('避免与上一张画面重复，换角度/构图/姿势');
 
@@ -384,19 +409,7 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   const mood = inferMood(imagePrompt, progress);
   const tags = extractTags(imagePrompt);
 
-  // 1. 尝试复用缓存的图片（降低复用概率，避免“同一动作/同一画面”）
-  // 旧版本 30% 会导致连续段落频繁复用同一张
-  if (Math.random() < 0.05) {
-    try {
-      const cached = await StoryImageCache.findReusable(agent._id, tags, mood, rating);
-      if (cached) {
-        console.log(`[StoryService] 复用缓存图片: ${cached.imageUrl.substring(0, 50)}...`);
-        return cached.imageUrl;
-      }
-    } catch (cacheErr) {
-      console.warn('[StoryService] 缓存查询失败:', cacheErr.message);
-    }
-  }
+  // 1. 禁用缓存复用：故事每段要“画面跟随剧情”，复用会导致看起来一模一样
 
   // 2. 构建高质量 prompt（包含角色外貌描述）
   const config = agent.storyConfig || {};
@@ -405,7 +418,9 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
     ? 'anime style, illustration, masterpiece, best quality, ' 
     : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, beautiful woman, ';
   
-  let fullPrompt = `${style}${appearance}, ${imagePrompt}`;
+  // 追加“强变化姿势”指令，避免 flux 默认站姿
+  const pose = pickPose(Math.floor((progress || 0) / 2), progress);
+  let fullPrompt = `${style}${appearance}, ${imagePrompt}, ${pose}`;
   
   if (isNsfw) {
     fullPrompt = `nsfw, sensual, ${fullPrompt}`;
@@ -428,8 +443,10 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
     // Fal: image_prompt_strength 越大越“锁死”参考图；这里压到 0.03
     const imagePromptStrength = 0.03;
 
-    // 每隔几段强制 text2img，彻底打破“同姿势锁死”（人物一致性略降，但变化会大幅提升）
-    const shouldForceText2Img = (Math.floor(progress || 0) % 10) >= 7; // roughly 30%
+    // 强化：大部分段落直接 text2img，彻底打破“同姿势锁死”
+    // anime 风格更容易“站姿同质化”，直接提升比例
+    const forceRate = agent.style === 'anime' ? 0.85 : 0.7;
+    const shouldForceText2Img = Math.random() < forceRate;
 
     const results = await imageGenerationService.generate(fullPrompt, {
       referenceImage: shouldForceText2Img ? null : referenceImage,
@@ -437,7 +454,7 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
       width: 768,
       height: 1024,
       // 提高变化强度，让构图/动作更跟随文案（参考图影响会按 (1 - strength) 映射）
-      strength: 0.82,
+      strength: 0.9,
       imagePromptStrength,
       style: agent.style || 'realistic'
     });
