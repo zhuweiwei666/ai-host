@@ -460,36 +460,49 @@ function buildSystemPrompt(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  return `你在写角色「${agent.name}」的剧情，${archetype.name}人设。
-性格：${config.personality || archetype.personality}
+  // 基础 prompt（不含场景数据格式，用于纯文字模式）
+  return `你是${agent.name}，${archetype.name}人设。${config.personality || archetype.personality}
+
+场景：${session.state.scene}，好感${affection.level}%
+目标：${dramaBeat.goal}
+
+规则：150-200字，角色用「${agent.name}」，用户用「你」，尺度${intimacyLevel}
+格式：「台词」+ 动作描写 +（内心）+ [好感+X][心情:X]`;
+}
+
+/**
+ * 构建带场景数据的 System Prompt（写真模式用）
+ */
+function buildSystemPromptWithScene(agent, session) {
+  const config = agent.storyConfig || {};
+  const archetype = detectArchetype(agent);
+  const dramaBeat = getDramaBeat(session.progress);
+  const affection = session.affection || { level: 0, stage: '陌生' };
+  
+  const intimacyLevel = affection.level >= 60 ? '大胆亲密' : 
+                        affection.level >= 40 ? '暧昧撩拨' : 
+                        affection.level >= 20 ? '初步试探' : '保持距离';
+
+  return `你是${agent.name}，${archetype.name}。${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || '美丽动人'}
 
-当前：${session.state.scene}，好感${affection.level}%（${affection.stage}）
-节拍：${dramaBeat.name} - ${dramaBeat.goal}
+场景：${session.state.scene}，好感${affection.level}%
+目标：${dramaBeat.goal}，尺度${intimacyLevel}
 
-规则：
-1. 开头抓人，结尾留悬念
-2. 对话有张力：「从今天起，你是我的。」
-3. 感官描写：触感、温度、呼吸
-4. 尺度：${intimacyLevel}
-5. 150-250字
-6. ⚠️ 角色动作用「${agent.name}」，禁止用"我"
-7. ⚠️ 用户用「你」，禁止用"他"（增强代入感）
+规则：150-200字，角色用「${agent.name}」，用户用「你」
 
-输出格式（严格遵守）：
+输出格式：
 ---STORY---
-「${agent.name}的台词」
-${agent.name}微微前倾，温热的呼吸拂过你的耳畔...
-（${agent.name}心想：这家伙...有点意思）
-你感觉心跳加速...
-[好感+X][表情:X][心情:X]
+「台词」
+动作描写（内心独白）
+[好感+X][心情:X]
 ---SCENE---
-clothing: 当前服装描述（如：黑色丝绒吊带裙）
-pose: 当前姿势（如：侧身倚靠落地窗）
-expression: 表情（如：嘴角带着玩味的笑）
-background: 背景场景（如：夜景都市落地窗前）
-lighting: 光线（如：暖黄室内灯光）
-mood: 氛围（如：暧昧危险）
+clothing: 服装
+pose: 姿势
+expression: 表情
+background: 背景
+lighting: 光线
+mood: 氛围
 ---END---`;
 }
 
@@ -843,14 +856,18 @@ async function continueStory(sessionId, options = {}) {
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
-  const systemPrompt = buildSystemPrompt(agent, session);
+  // 根据是否开启写真模式选择不同的 prompt 和 token 限制
+  const systemPrompt = generateImage 
+    ? buildSystemPromptWithScene(agent, session)  // 写真模式：包含场景数据格式
+    : buildSystemPrompt(agent, session);          // 纯文字：精简 prompt
   const userPrompt = buildContinuePrompt(session);
   const modelName = agent.modelName || 'grok-3-fast';
+  const maxTokens = generateImage ? 500 : 300;    // 写真模式需要更多 token
   
-  // 生成文字（增加 token 以容纳场景数据）
+  // 生成文字
   const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: 600, temperature: 0.9 });
-  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms (tokens: ${maxTokens})`);
   const parsed = parseAIResponse(rawResponse);
 
   const { content, affectionChange, stateChanges, sceneData } = parsed;
@@ -1052,13 +1069,17 @@ async function inputStory(sessionId, userInput, options = {}) {
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
-  const systemPrompt = buildSystemPrompt(agent, session);
+  // 根据是否开启写真模式选择不同的 prompt 和 token 限制
+  const systemPrompt = generateImage 
+    ? buildSystemPromptWithScene(agent, session)
+    : buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
   const modelName = agent.modelName || 'grok-3-fast';
-  
+  const maxTokens = generateImage ? 500 : 300;
+
   const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: 600, temperature: 0.9 });
-  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms (tokens: ${maxTokens})`);
   const parsed = parseAIResponse(rawResponse);
 
   const { content, affectionChange, stateChanges, sceneData } = parsed;
