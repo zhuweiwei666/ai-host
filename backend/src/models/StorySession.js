@@ -62,7 +62,15 @@ const StorySessionSchema = new mongoose.Schema({
   paragraphs: [{
     content: { type: String, required: true },
     imageUrl: { type: String },   // 每层楼的配图 URL
-    imagePrompt: { type: String }, // 图片生成使用的 prompt
+    imagePrompt: { type: String }, // 图片生成使用的 prompt（旧版兼容）
+    sceneData: {                   // 场景数据（用于 GPT Image 1.5 生成）
+      clothing: { type: String },
+      pose: { type: String },
+      expression: { type: String },
+      background: { type: String },
+      lighting: { type: String },
+      mood: { type: String },
+    },
     source: { type: String, enum: ['ai', 'user_input'], default: 'ai' }, // 段落来源
     userInput: { type: String },  // 如果是响应用户输入，记录用户说的话
     createdAt: { type: Date, default: Date.now },

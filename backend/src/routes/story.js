@@ -50,33 +50,39 @@ router.post('/start', requireAuth, async (req, res) => {
  * POST /api/story/continue
  * AI 自动推进剧情
  */
+// 消耗配置 - 带图片时额外消耗
+const COST_CONTINUE_WITH_IMAGE = 5;  // 带情境图的继续剧情消耗
+
 router.post('/continue', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId } = req.body;
+    const { sessionId, generateImage = true } = req.body; // 默认生成图片
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
     }
     
+    // 根据是否生成图片确定费用
+    const cost = generateImage ? COST_CONTINUE_WITH_IMAGE : COST_CONTINUE;
+    
     // 检查并扣费
     try {
-      await walletService.consume(userId, COST_CONTINUE, 'story_continue');
+      await walletService.consume(userId, cost, generateImage ? 'story_continue_image' : 'story_continue');
     } catch (walletErr) {
       return errors.badRequest(res, walletErr.message || '余额不足');
     }
     
-    const result = await storyService.continueStory(sessionId);
+    const result = await storyService.continueStory(sessionId, { generateImage });
     
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
     
-    console.log(`[Story API] Continue: sessionId=${sessionId}, progress=${result.progress}%`);
+    console.log(`[Story API] Continue: sessionId=${sessionId}, progress=${result.progress}%, hasImage=${!!result.imageUrl}`);
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
       balance,
-      cost: COST_CONTINUE,
+      cost,
     });
   } catch (err) {
     console.error('[Story API] Continue error:', err);
@@ -88,10 +94,13 @@ router.post('/continue', requireAuth, async (req, res) => {
  * POST /api/story/input
  * 用户输入推进剧情
  */
+// 消耗配置 - 带图片时额外消耗
+const COST_INPUT_WITH_IMAGE = 5;  // 带情境图的用户输入消耗
+
 router.post('/input', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, userInput } = req.body;
+    const { sessionId, userInput, generateImage = true } = req.body; // 默认生成图片
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
@@ -101,24 +110,27 @@ router.post('/input', requireAuth, async (req, res) => {
       return errors.badRequest(res, '请输入内容');
     }
     
+    // 根据是否生成图片确定费用
+    const cost = generateImage ? COST_INPUT_WITH_IMAGE : COST_INPUT;
+    
     // 检查并扣费
     try {
-      await walletService.consume(userId, COST_INPUT, 'story_input');
+      await walletService.consume(userId, cost, generateImage ? 'story_input_image' : 'story_input');
     } catch (walletErr) {
       return errors.badRequest(res, walletErr.message || '余额不足');
     }
     
-    const result = await storyService.inputStory(sessionId, userInput.trim());
+    const result = await storyService.inputStory(sessionId, userInput.trim(), { generateImage });
     
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
     
-    console.log(`[Story API] Input: sessionId=${sessionId}, input="${userInput.slice(0, 20)}..."`);
+    console.log(`[Story API] Input: sessionId=${sessionId}, input="${userInput.slice(0, 20)}...", hasImage=${!!result.imageUrl}`);
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
       balance,
-      cost: COST_INPUT,
+      cost,
     });
   } catch (err) {
     console.error('[Story API] Input error:', err);

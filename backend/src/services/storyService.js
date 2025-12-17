@@ -153,6 +153,7 @@ const UserGallery = require('../models/UserGallery');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
 const imageGenerationService = require('./imageGenerationService');
+const openaiImageService = require('./openaiImageService');
 
 // ===================== 短剧节拍系统 =====================
 // 每个进度区间对应不同的剧情节拍和情绪曲线
@@ -461,6 +462,7 @@ function buildSystemPrompt(agent, session) {
 
   return `你在写角色「${agent.name}」的剧情，${archetype.name}人设。
 性格：${config.personality || archetype.personality}
+外貌：${config.appearance || agent.description || '美丽动人'}
 
 当前：${session.state.scene}，好感${affection.level}%（${affection.stage}）
 节拍：${dramaBeat.name} - ${dramaBeat.goal}
@@ -474,12 +476,21 @@ function buildSystemPrompt(agent, session) {
 6. ⚠️ 角色动作用「${agent.name}」，禁止用"我"
 7. ⚠️ 用户用「你」，禁止用"他"（增强代入感）
 
-格式示例：
+输出格式（严格遵守）：
+---STORY---
 「${agent.name}的台词」
 ${agent.name}微微前倾，温热的呼吸拂过你的耳畔...
 （${agent.name}心想：这家伙...有点意思）
-你感觉心跳加速...（用"你"描述用户感受）
-[好感+X][表情:X][心情:X]`;
+你感觉心跳加速...
+[好感+X][表情:X][心情:X]
+---SCENE---
+clothing: 当前服装描述（如：黑色丝绒吊带裙）
+pose: 当前姿势（如：侧身倚靠落地窗）
+expression: 表情（如：嘴角带着玩味的笑）
+background: 背景场景（如：夜景都市落地窗前）
+lighting: 光线（如：暖黄室内灯光）
+mood: 氛围（如：暧昧危险）
+---END---`;
 }
 
 function buildContinuePrompt(session) {
@@ -509,12 +520,37 @@ async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', 
 }
 
 function parseAIResponse(response) {
-  // 提取图片描述
-  const imgMatch = response.match(/\[IMG:\s*([^\]]+)\]/i);
+  // 提取场景数据（新格式：---SCENE--- ... ---END---）
+  let sceneData = null;
+  let storyContent = response;
+  
+  const sceneMatch = response.match(/---SCENE---\s*([\s\S]*?)\s*---END---/i);
+  if (sceneMatch) {
+    const sceneText = sceneMatch[1];
+    sceneData = {};
+    
+    // 解析 key: value 格式
+    const lines = sceneText.split('\n');
+    for (const line of lines) {
+      const match = line.match(/^(\w+)\s*[:：]\s*(.+)$/);
+      if (match) {
+        sceneData[match[1].toLowerCase()] = match[2].trim();
+      }
+    }
+    
+    // 移除场景块
+    storyContent = response.replace(/---SCENE---[\s\S]*?---END---/i, '');
+  }
+  
+  // 移除 ---STORY--- 标记
+  storyContent = storyContent.replace(/---STORY---/gi, '');
+  
+  // 提取图片描述（旧格式兼容）
+  const imgMatch = storyContent.match(/\[IMG:\s*([^\]]+)\]/i);
   let imagePrompt = imgMatch ? imgMatch[1].trim() : null;
   
   // 提取好感度变化
-  const affectionMatch = response.match(/\[好感([+-])(\d+)\]/);
+  const affectionMatch = storyContent.match(/\[好感([+-])(\d+)\]/);
   let affectionChange = 0;
   if (affectionMatch) {
     affectionChange = parseInt(affectionMatch[2]) * (affectionMatch[1] === '+' ? 1 : -1);
@@ -522,16 +558,16 @@ function parseAIResponse(response) {
   
   // 提取状态变化
   const stateChanges = {};
-  const expressionMatch = response.match(/\[表情[:：]([^\]]+)\]/);
-  const actionMatch = response.match(/\[动作[:：]([^\]]+)\]/);
-  const moodMatch = response.match(/\[心情[:：]([^\]]+)\]/);
+  const expressionMatch = storyContent.match(/\[表情[:：]([^\]]+)\]/);
+  const actionMatch = storyContent.match(/\[动作[:：]([^\]]+)\]/);
+  const moodMatch = storyContent.match(/\[心情[:：]([^\]]+)\]/);
   
   if (expressionMatch) stateChanges.expression = expressionMatch[1].trim();
   if (actionMatch) stateChanges.action = actionMatch[1].trim();
   if (moodMatch) stateChanges.mood = moodMatch[1].trim();
   
   // 清理内容：移除所有标签
-  let content = response
+  let content = storyContent
     .replace(/\[IMG:\s*[^\]]+\]/gi, '')
     .replace(/\[好感[+-]\d+\]/g, '')
     .replace(/\[表情[:：][^\]]+\]/g, '')
@@ -542,7 +578,7 @@ function parseAIResponse(response) {
   // 保留格式化的换行
   content = content.replace(/\n{3,}/g, '\n\n');
   
-  return { content, imagePrompt, affectionChange, stateChanges };
+  return { content, imagePrompt, affectionChange, stateChanges, sceneData };
 }
 
 /**
@@ -790,9 +826,11 @@ async function startStory(userId, agentId) {
 }
 
 /**
- * 继续故事 - 文字先返回，图片异步生成
+ * 继续故事 - 文字 + 情境图同步生成
  */
-async function continueStory(sessionId) {
+async function continueStory(sessionId, options = {}) {
+  const { generateImage = true } = options; // 默认生成图片
+  
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
   // 故事永不结束，不检查 status
@@ -802,16 +840,15 @@ async function continueStory(sessionId) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildContinuePrompt(session);
-  const lengthSpec = getLengthSpec();
   const modelName = agent.modelName || 'grok-3-fast';
   
-  // 生成文字（移除长度修复，提升速度）
+  // 生成文字（增加 token 以容纳场景数据）
   const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: 600, temperature: 0.9 });
   console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
   const parsed = parseAIResponse(rawResponse);
 
-  const { content, affectionChange, stateChanges } = parsed;
+  const { content, affectionChange, stateChanges, sceneData } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
@@ -819,7 +856,7 @@ async function continueStory(sessionId) {
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  // 保存段落（不再生成图片，用户点击写真时单独生成）
+  // 保存段落
   const paragraphIndex = session.paragraphs.length;
   session.addParagraph(content, 'ai', null, null, null);
   session.updateState(stateUpdate);
@@ -838,19 +875,77 @@ async function continueStory(sessionId) {
   
   console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
+  // 生成情境图（使用 GPT Image 1.5）
+  let imageUrl = null;
+  if (generateImage && sceneData) {
+    try {
+      const imageStartTime = Date.now();
+      imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, session.affection?.level || 0);
+      console.log(`[StoryService] Image generated in ${Date.now() - imageStartTime}ms`);
+      
+      // 更新段落的图片 URL
+      if (imageUrl && session.paragraphs[paragraphIndex]) {
+        session.paragraphs[paragraphIndex].imageUrl = imageUrl;
+        session.paragraphs[paragraphIndex].sceneData = sceneData;
+        await session.save();
+      }
+    } catch (imageError) {
+      console.error('[StoryService] Image generation failed:', imageError.message);
+      // 图片生成失败不影响主流程
+    }
+  }
+  
   return {
     content,
     paragraphIndex,
     progress: session.progress,
     state: session.state,
     affection: session.affection,
+    imageUrl,
+    sceneData,
   };
 }
 
 /**
- * 用户输入推进故事
+ * 使用 OpenAI GPT Image 1.5 生成情境图
  */
-async function inputStory(sessionId, userInput) {
+async function generateSceneImageWithOpenAI(agent, sceneData, affectionLevel = 0) {
+  if (!sceneData) return null;
+  
+  // 构建角色视觉锚点
+  const config = agent.storyConfig || {};
+  const visualAnchor = {
+    description: config.appearance || agent.description || '',
+    signature: '',
+    style: agent.style === 'anime' ? 'anime illustration style' : 'photorealistic'
+  };
+  
+  // 根据好感度调整尺度
+  if (affectionLevel >= 60) {
+    sceneData.mood = (sceneData.mood || '') + ', sensual, intimate';
+  } else if (affectionLevel >= 40) {
+    sceneData.mood = (sceneData.mood || '') + ', flirty, alluring';
+  }
+  
+  try {
+    const imageUrl = await openaiImageService.generateSceneImage(
+      { ...agent.toObject(), visualAnchor },
+      sceneData,
+      { quality: 'medium', size: '1024x1536' }
+    );
+    return imageUrl;
+  } catch (error) {
+    console.error('[StoryService] OpenAI image generation failed:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 用户输入推进故事 - 文字 + 情境图同步生成
+ */
+async function inputStory(sessionId, userInput, options = {}) {
+  const { generateImage = true } = options; // 默认生成图片
+  
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
   // 故事永不结束，不检查 status
@@ -860,15 +955,14 @@ async function inputStory(sessionId, userInput) {
   
   const systemPrompt = buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
-  const lengthSpec = getLengthSpec();
   const modelName = agent.modelName || 'grok-3-fast';
   
   const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: lengthSpec.maxTokens, temperature: 0.9 });
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens: 600, temperature: 0.9 });
   console.log(`[StoryService] LLM took ${Date.now() - startTime}ms`);
   const parsed = parseAIResponse(rawResponse);
 
-  const { content, affectionChange, stateChanges } = parsed;
+  const { content, affectionChange, stateChanges, sceneData } = parsed;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
@@ -876,7 +970,7 @@ async function inputStory(sessionId, userInput) {
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  // 保存段落（不再自动生成图片）
+  // 保存段落
   const paragraphIndex = session.paragraphs.length;
   session.addParagraph(content, 'user_input', userInput, null, null);
   session.updateState(stateUpdate);
@@ -894,12 +988,33 @@ async function inputStory(sessionId, userInput) {
   
   console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
+  // 生成情境图（使用 GPT Image 1.5）
+  let imageUrl = null;
+  if (generateImage && sceneData) {
+    try {
+      const imageStartTime = Date.now();
+      imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, session.affection?.level || 0);
+      console.log(`[StoryService] Image generated in ${Date.now() - imageStartTime}ms`);
+      
+      // 更新段落的图片 URL
+      if (imageUrl && session.paragraphs[paragraphIndex]) {
+        session.paragraphs[paragraphIndex].imageUrl = imageUrl;
+        session.paragraphs[paragraphIndex].sceneData = sceneData;
+        await session.save();
+      }
+    } catch (imageError) {
+      console.error('[StoryService] Image generation failed:', imageError.message);
+    }
+  }
+  
   return {
     content,
     paragraphIndex,
     progress: session.progress,
     state: session.state,
     affection: session.affection,
+    imageUrl,
+    sceneData,
   };
 }
 
