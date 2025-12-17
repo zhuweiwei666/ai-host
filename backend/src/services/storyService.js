@@ -1091,7 +1091,7 @@ async function restartStory(userId, agentId) {
 }
 
 /**
- * 生成写真 - 基于当前场景生成高质量角色写真
+ * 生成写真 - 使用 GPT Image 1.5 基于当前场景生成高质量角色写真
  */
 async function generatePhoto(sessionId) {
   const session = await StorySession.findById(sessionId);
@@ -1105,64 +1105,63 @@ async function generatePhoto(sessionId) {
   const state = session.state;
   const affection = session.affection || { level: 0, stage: '陌生' };
   
-  // 根据好感度和当前状态构建写真 prompt
-  let poseDesc = '';
-  let expressionDesc = '';
-  let clothesDesc = state.clothes || '日常装扮';
+  // 根据好感度和当前状态构建场景数据
+  let pose = '';
+  let expression = '';
+  let clothing = state.clothes || '日常装扮';
+  let mood = '';
   
   // 根据好感度阶段决定写真风格
   if (affection.level >= 80) {
-    poseDesc = 'seductive pose, lying on bed, looking at viewer';
-    expressionDesc = 'loving eyes, gentle smile, intimate look';
+    pose = 'seductive pose, lying on bed, looking at viewer with love';
+    expression = 'loving eyes, gentle smile, intimate look';
+    mood = 'romantic, intimate, sensual';
   } else if (affection.level >= 60) {
-    poseDesc = 'sensual pose, leaning forward, playful';
-    expressionDesc = 'flirty smile, bedroom eyes, teasing';
+    pose = 'sensual pose, leaning forward playfully';
+    expression = 'flirty smile, bedroom eyes, teasing look';
+    mood = 'flirty, alluring, playful';
   } else if (affection.level >= 40) {
-    poseDesc = 'cute pose, tilting head, hands near face';
-    expressionDesc = 'shy smile, blushing, curious look';
+    pose = 'cute pose, tilting head, hands near face';
+    expression = 'shy smile, blushing, curious look';
+    mood = 'cute, shy, sweet';
   } else if (affection.level >= 20) {
-    poseDesc = 'casual pose, standing naturally';
-    expressionDesc = 'friendly smile, soft expression';
+    pose = 'casual relaxed pose, standing naturally';
+    expression = 'friendly warm smile, soft expression';
+    mood = 'friendly, warm, approachable';
   } else {
-    poseDesc = 'formal pose, standing straight';
-    expressionDesc = 'polite smile, reserved look';
+    pose = 'formal elegant pose, standing gracefully';
+    expression = 'polite smile, reserved but curious look';
+    mood = 'formal, elegant, reserved';
   }
   
   // 添加当前状态信息
-  if (state.expression) expressionDesc = state.expression + ', ' + expressionDesc;
-  if (state.action) poseDesc = state.action + ', ' + poseDesc;
+  if (state.expression) expression = state.expression + ', ' + expression;
+  if (state.action) pose = state.action + ', ' + pose;
+  if (state.mood) mood = state.mood + ', ' + mood;
   
-  const style = agent.style === 'anime' 
-    ? 'anime style, illustration, masterpiece, best quality, ' 
-    : 'photorealistic, 8k uhd, dslr, soft lighting, high quality, beautiful woman, ';
+  // 构建场景数据（给 GPT Image 1.5）
+  const sceneData = {
+    clothing,
+    pose,
+    expression,
+    background: state.scene || '温馨室内环境',
+    lighting: 'soft natural lighting, professional photography',
+    mood
+  };
   
   const isNsfw = affection.level >= 60;
-  let photoPrompt = `${style}${appearance}, ${poseDesc}, ${expressionDesc}, ${clothesDesc}, portrait, detailed face`;
-  
   if (isNsfw) {
-    photoPrompt = `nsfw, sensual, ${photoPrompt}`;
+    sceneData.mood += ', sensual, intimate';
   }
   
-  console.log(`[StoryService] 生成写真: ${photoPrompt.substring(0, 100)}...`);
-  
-  const referenceImage = agent.avatarUrls?.[0] || agent.avatarUrl;
-  if (!referenceImage) {
-    throw new Error('角色没有参考图片');
-  }
+  console.log(`[StoryService] 生成写真 (GPT Image 1.5):`, sceneData);
   
   try {
-    const results = await imageGenerationService.generate(photoPrompt, {
-      referenceImage,
-      count: 1,
-      width: 768,
-      height: 1024,
-      strength: 0.5, // 写真用稍低的 strength 保持更多原图特征
-      style: agent.style || 'realistic'
-    });
+    // 使用 GPT Image 1.5 生成
+    const imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, affection.level);
     
-    if (results && results.length > 0 && results[0].url) {
-      const imageUrl = results[0].url;
-      console.log('[StoryService] 写真生成成功');
+    if (imageUrl) {
+      console.log('[StoryService] 写真生成成功 (GPT Image 1.5)');
       
       // 保存到用户画廊
       try {
@@ -1173,7 +1172,7 @@ async function generatePhoto(sessionId) {
           mediaUrl: imageUrl,
           source: 'photo',
           storySessionId: session._id,
-          prompt: photoPrompt,
+          prompt: JSON.stringify(sceneData),
           context: `好感度 ${affection.level}% - ${affection.stage}`,
           isNsfw: isNsfw,
         });
@@ -1184,7 +1183,7 @@ async function generatePhoto(sessionId) {
       
       return {
         imageUrl,
-        prompt: photoPrompt,
+        sceneData,
       };
     }
     
