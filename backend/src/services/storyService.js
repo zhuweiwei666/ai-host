@@ -544,7 +544,7 @@ function buildUserInputPrompt(session, userInput) {
 用狠话回应，制造张力，结尾悬念（参考：${twist}）`;
 }
 
-async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', opts = {}) {
+async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
   try {
     const provider = ProviderFactory.getProvider(model);
     const messages = [
@@ -891,8 +891,8 @@ async function continueStory(sessionId, options = {}) {
     ? buildSystemPromptWithScene(agent, session)  // 写真模式：包含场景数据格式
     : buildSystemPrompt(agent, session);          // 纯文字：精简 prompt
   const userPrompt = buildContinuePrompt(session);
-  const modelName = agent.modelName || 'grok-3-fast';
-  const maxTokens = generateImage ? 500 : 300;    // 写真模式需要更多 token
+  const modelName = agent.modelName || 'grok-2';
+  const maxTokens = generateImage ? 250 : 150;    // 精简 token 提升速度
   
   // 生成文字
   const startTime = Date.now();
@@ -1104,8 +1104,8 @@ async function inputStory(sessionId, userInput, options = {}) {
     ? buildSystemPromptWithScene(agent, session)
     : buildSystemPrompt(agent, session);
   const userPrompt = buildUserInputPrompt(session, userInput);
-  const modelName = agent.modelName || 'grok-3-fast';
-  const maxTokens = generateImage ? 500 : 300;
+  const modelName = agent.modelName || 'grok-2';
+  const maxTokens = generateImage ? 250 : 150;
 
   const startTime = Date.now();
   const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
