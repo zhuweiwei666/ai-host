@@ -63,6 +63,8 @@ const StorySessionSchema = new mongoose.Schema({
     content: { type: String, required: true },
     imageUrl: { type: String },   // 每层楼的配图 URL
     imagePrompt: { type: String }, // 图片生成使用的 prompt（旧版兼容）
+    imageGenerating: { type: Boolean, default: false }, // 图片是否正在生成
+    imageFailed: { type: Boolean, default: false },     // 图片生成是否失败
     sceneData: {                   // 场景数据（用于 GPT Image 1.5 生成）
       clothing: { type: String },
       pose: { type: String },

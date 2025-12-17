@@ -826,10 +826,15 @@ async function startStory(userId, agentId) {
 }
 
 /**
- * 继续故事 - 文字 + 情境图同步生成
+ * 继续故事 - 文字先返回，图片异步生成
+ * 
+ * 写真模式（generateImage=true）：
+ * - 立即返回文字 + imageGenerating: true
+ * - 后台异步生成图片
+ * - 客户端轮询 /api/story/:sessionId/image/:index 获取图片
  */
 async function continueStory(sessionId, options = {}) {
-  const { generateImage = true } = options; // 默认生成图片
+  const { generateImage = false } = options; // 默认不生成图片，需要用户开启写真模式
   
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
@@ -856,9 +861,16 @@ async function continueStory(sessionId, options = {}) {
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  // 保存段落
+  // 保存段落（如果开启写真模式，标记为图片生成中）
   const paragraphIndex = session.paragraphs.length;
   session.addParagraph(content, 'ai', null, null, null);
+  
+  // 标记图片生成状态
+  if (generateImage && sceneData) {
+    session.paragraphs[paragraphIndex].imageGenerating = true;
+    session.paragraphs[paragraphIndex].sceneData = sceneData;
+  }
+  
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
@@ -875,24 +887,9 @@ async function continueStory(sessionId, options = {}) {
   
   console.log(`[StoryService] Story continued: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
-  // 生成情境图（使用 GPT Image 1.5）
-  let imageUrl = null;
+  // 如果开启写真模式，异步生成图片（不等待）
   if (generateImage && sceneData) {
-    try {
-      const imageStartTime = Date.now();
-      imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, session.affection?.level || 0);
-      console.log(`[StoryService] Image generated in ${Date.now() - imageStartTime}ms`);
-      
-      // 更新段落的图片 URL
-      if (imageUrl && session.paragraphs[paragraphIndex]) {
-        session.paragraphs[paragraphIndex].imageUrl = imageUrl;
-        session.paragraphs[paragraphIndex].sceneData = sceneData;
-        await session.save();
-      }
-    } catch (imageError) {
-      console.error('[StoryService] Image generation failed:', imageError.message);
-      // 图片生成失败不影响主流程
-    }
+    generateImageAsync(sessionId, paragraphIndex, agent, sceneData, session.affection?.level || 0);
   }
   
   return {
@@ -901,9 +898,47 @@ async function continueStory(sessionId, options = {}) {
     progress: session.progress,
     state: session.state,
     affection: session.affection,
-    imageUrl,
+    imageGenerating: generateImage && !!sceneData, // 告诉客户端是否在生成图片
     sceneData,
   };
+}
+
+/**
+ * 异步生成图片（后台运行，不阻塞主请求）
+ */
+async function generateImageAsync(sessionId, paragraphIndex, agent, sceneData, affectionLevel) {
+  try {
+    console.log(`[StoryService] Starting async image generation for session=${sessionId}, paragraph=${paragraphIndex}`);
+    const imageStartTime = Date.now();
+    
+    const imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, affectionLevel);
+    
+    console.log(`[StoryService] Async image generated in ${Date.now() - imageStartTime}ms`);
+    
+    // 更新段落的图片 URL
+    if (imageUrl) {
+      const session = await StorySession.findById(sessionId);
+      if (session && session.paragraphs[paragraphIndex]) {
+        session.paragraphs[paragraphIndex].imageUrl = imageUrl;
+        session.paragraphs[paragraphIndex].imageGenerating = false;
+        await session.save();
+        console.log(`[StoryService] Image saved to paragraph ${paragraphIndex}`);
+      }
+    }
+  } catch (error) {
+    console.error('[StoryService] Async image generation failed:', error.message);
+    // 标记图片生成失败
+    try {
+      const session = await StorySession.findById(sessionId);
+      if (session && session.paragraphs[paragraphIndex]) {
+        session.paragraphs[paragraphIndex].imageGenerating = false;
+        session.paragraphs[paragraphIndex].imageFailed = true;
+        await session.save();
+      }
+    } catch (e) {
+      console.error('[StoryService] Failed to update image status:', e.message);
+    }
+  }
 }
 
 /**
@@ -941,10 +976,10 @@ async function generateSceneImageWithOpenAI(agent, sceneData, affectionLevel = 0
 }
 
 /**
- * 用户输入推进故事 - 文字 + 情境图同步生成
+ * 用户输入推进故事 - 文字先返回，图片异步生成
  */
 async function inputStory(sessionId, userInput, options = {}) {
-  const { generateImage = true } = options; // 默认生成图片
+  const { generateImage = false } = options; // 默认不生成图片，需要用户开启写真模式
   
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
@@ -970,9 +1005,16 @@ async function inputStory(sessionId, userInput, options = {}) {
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  // 保存段落
+  // 保存段落（如果开启写真模式，标记为图片生成中）
   const paragraphIndex = session.paragraphs.length;
   session.addParagraph(content, 'user_input', userInput, null, null);
+  
+  // 标记图片生成状态
+  if (generateImage && sceneData) {
+    session.paragraphs[paragraphIndex].imageGenerating = true;
+    session.paragraphs[paragraphIndex].sceneData = sceneData;
+  }
+  
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
@@ -988,23 +1030,9 @@ async function inputStory(sessionId, userInput, options = {}) {
   
   console.log(`[StoryService] Story input: sessionId=${sessionId}, progress=${session.progress}%, affection=${session.affection.level}%`);
   
-  // 生成情境图（使用 GPT Image 1.5）
-  let imageUrl = null;
+  // 如果开启写真模式，异步生成图片（不等待）
   if (generateImage && sceneData) {
-    try {
-      const imageStartTime = Date.now();
-      imageUrl = await generateSceneImageWithOpenAI(agent, sceneData, session.affection?.level || 0);
-      console.log(`[StoryService] Image generated in ${Date.now() - imageStartTime}ms`);
-      
-      // 更新段落的图片 URL
-      if (imageUrl && session.paragraphs[paragraphIndex]) {
-        session.paragraphs[paragraphIndex].imageUrl = imageUrl;
-        session.paragraphs[paragraphIndex].sceneData = sceneData;
-        await session.save();
-      }
-    } catch (imageError) {
-      console.error('[StoryService] Image generation failed:', imageError.message);
-    }
+    generateImageAsync(sessionId, paragraphIndex, agent, sceneData, session.affection?.level || 0);
   }
   
   return {
@@ -1013,7 +1041,7 @@ async function inputStory(sessionId, userInput, options = {}) {
     progress: session.progress,
     state: session.state,
     affection: session.affection,
-    imageUrl,
+    imageGenerating: generateImage && !!sceneData,
     sceneData,
   };
 }

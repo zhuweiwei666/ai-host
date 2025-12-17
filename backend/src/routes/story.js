@@ -56,7 +56,7 @@ const COST_CONTINUE_WITH_IMAGE = 5;  // 带情境图的继续剧情消耗
 router.post('/continue', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, generateImage = true } = req.body; // 默认生成图片
+    const { sessionId, generateImage = false } = req.body; // 默认不生成图片（写真按钮未激活）
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
@@ -77,7 +77,7 @@ router.post('/continue', requireAuth, async (req, res) => {
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
     
-    console.log(`[Story API] Continue: sessionId=${sessionId}, progress=${result.progress}%, hasImage=${!!result.imageUrl}`);
+    console.log(`[Story API] Continue: sessionId=${sessionId}, progress=${result.progress}%, imageGenerating=${result.imageGenerating}`);
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
@@ -100,7 +100,7 @@ const COST_INPUT_WITH_IMAGE = 5;  // 带情境图的用户输入消耗
 router.post('/input', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, userInput, generateImage = true } = req.body; // 默认生成图片
+    const { sessionId, userInput, generateImage = false } = req.body; // 默认不生成图片（写真按钮未激活）
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
@@ -125,7 +125,7 @@ router.post('/input', requireAuth, async (req, res) => {
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
     
-    console.log(`[Story API] Input: sessionId=${sessionId}, input="${userInput.slice(0, 20)}...", hasImage=${!!result.imageUrl}`);
+    console.log(`[Story API] Input: sessionId=${sessionId}, input="${userInput.slice(0, 20)}...", imageGenerating=${result.imageGenerating}`);
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
