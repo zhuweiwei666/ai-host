@@ -10,7 +10,6 @@ import {
   restartStory,
   getAgent,
   getParagraphImage,
-  generateStoryPhoto,
   Agent,
 } from '../api';
 
@@ -55,7 +54,6 @@ export default function StoryPage() {
   
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [generatingPhoto, setGeneratingPhoto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [userInput, setUserInput] = useState('');
@@ -317,27 +315,6 @@ export default function StoryPage() {
     }
   };
 
-  // 生成写真
-  const handleGeneratePhoto = async () => {
-    if (!sessionId || generatingPhoto) return;
-    
-    try {
-      setGeneratingPhoto(true);
-      setError(null);
-      
-      const res = await generateStoryPhoto(sessionId);
-      setPhotoUrl(res.data.imageUrl);
-      if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : '生成写真失败';
-      setError(errorMessage);
-    } finally {
-      setGeneratingPhoto(false);
-    }
-  };
-
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -587,7 +564,7 @@ export default function StoryPage() {
               {/* 继续故事按钮 */}
               <button
                 onClick={handleContinue}
-                disabled={generating || generatingPhoto}
+                disabled={generating}
                 className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-medium rounded-xl hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {generating ? (
