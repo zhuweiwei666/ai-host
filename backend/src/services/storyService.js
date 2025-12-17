@@ -531,17 +531,35 @@ const PLOT_DIRECTIONS = [
   '第三者出现',
 ];
 
+function getRecentStoryContext(session, count = 2, maxChars = 520) {
+  const paras = Array.isArray(session?.paragraphs) ? session.paragraphs : [];
+  const recent = paras.slice(-count).map((p) => (p?.content || '').trim()).filter(Boolean);
+  const joined = recent.join('\n\n---\n\n');
+  if (!joined) return '';
+  // 截断到最大长度，保留尾部更有用
+  return joined.length > maxChars ? joined.slice(-maxChars) : joined;
+}
+
 function buildContinuePrompt(session) {
   const direction = PLOT_DIRECTIONS[Math.floor(Math.random() * PLOT_DIRECTIONS.length)];
   const progress = session.progress || 0;
-  if (progress < 20) return `开场吸引注意力`;
-  if (progress < 50) return `升级冲突，方向：${direction}`;
-  if (progress < 80) return `高潮反转，方向：${direction}`;
-  return `推向结局`;
+  const context = getRecentStoryContext(session, 2, 520);
+  const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
+  const lastStart = last.trim().slice(0, 24);
+
+  let stageGuide = '推向结局';
+  if (progress < 20) stageGuide = '开场吸引注意力（立刻给冲突/利益/危险）';
+  else if (progress < 50) stageGuide = `升级冲突（方向：${direction}）`;
+  else if (progress < 80) stageGuide = `高潮反转（方向：${direction}）`;
+
+  return `【已发生（最近）】\n${context || '(无)'}\n\n【任务】续写下一段：${stageGuide}\n- 必须推进事件，禁止原地暧昧拉扯\n- 开头必须完全换句式（禁止与上一段开头相似）：「${lastStart}」\n- 必须出现一个新信息/新动作/新人物/新证据（四选一）\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”（用角色名+动作来写）\n输出正文 + [好感+X][心情:X]`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  return `玩家："${userInput}" — 回应他，推进剧情`;
+  const context = getRecentStoryContext(session, 2, 520);
+  const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
+  const lastStart = last.trim().slice(0, 24);
+  return `【已发生（最近）】\n${context || '(无)'}\n\n【玩家输入】${userInput}\n\n【任务】回应并续写：\n- 必须推进事件（给出明确行动/决定/代价）\n- 开头必须换句式（禁止与上一段开头相似）：「${lastStart}」\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”\n输出正文 + [好感+X][心情:X]`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
