@@ -72,26 +72,30 @@ class OpenAIImageService {
       const imageData = response.data.data[0];
       let imageUrl;
 
-      if (imageData.url) {
-        imageUrl = imageData.url;
-      } else if (imageData.b64_json) {
-        // 如果返回 base64，需要上传到 OSS
+      if (imageData.b64_json) {
+        // 如果返回 base64，直接上传到 OSS
+        console.log('[OpenAI Image] 收到 base64 图片，上传到 OSS...');
         imageUrl = await this.uploadBase64ToOSS(imageData.b64_json);
-      }
-
-      // 上传到 R2/OSS 持久化
-      try {
-        const storageUrl = await downloadAndUploadToOSS(
-          imageUrl,
-          `story-${crypto.randomUUID()}.png`,
-          'image/png'
-        );
-        console.log(`[OpenAI Image] 已上传到 OSS`);
-        return storageUrl;
-      } catch (uploadErr) {
-        console.error('[OpenAI Image] OSS 上传失败，使用原始 URL:', uploadErr.message);
+        console.log(`[OpenAI Image] Base64 上传成功: ${imageUrl}`);
         return imageUrl;
+      } else if (imageData.url) {
+        imageUrl = imageData.url;
+        // 上传到 R2/OSS 持久化
+        try {
+          const storageUrl = await downloadAndUploadToOSS(
+            imageUrl,
+            `story-${crypto.randomUUID()}.png`,
+            'image/png'
+          );
+          console.log(`[OpenAI Image] 已上传到 OSS`);
+          return storageUrl;
+        } catch (uploadErr) {
+          console.error('[OpenAI Image] OSS 上传失败，使用原始 URL:', uploadErr.message);
+          return imageUrl;
+        }
       }
+      
+      throw new Error('API 返回格式异常：没有 url 或 b64_json');
 
     } catch (error) {
       console.error('[OpenAI Image] 生成失败:', error.response?.data || error.message);
@@ -150,26 +154,21 @@ CRITICAL: The character's face, body type, and distinctive features MUST remain 
   }
 
   /**
-   * 上传 base64 图片到 OSS
+   * 上传 base64 图片到 R2/OSS
    */
   async uploadBase64ToOSS(base64Data) {
     const buffer = Buffer.from(base64Data, 'base64');
-    const filename = `story-${crypto.randomUUID()}.png`;
-    
-    // 使用临时文件方式上传
-    const fs = require('fs');
-    const path = require('path');
-    const tempPath = path.join('/tmp', filename);
-    
-    fs.writeFileSync(tempPath, buffer);
+    const filename = `story/${new Date().toISOString().slice(0,10)}/${crypto.randomUUID()}.png`;
     
     try {
-      const { downloadAndUploadToOSS } = require('../utils/ossUpload');
-      const url = await downloadAndUploadToOSS(`file://${tempPath}`, filename, 'image/png');
-      return url;
-    } finally {
-      // 清理临时文件
-      try { fs.unlinkSync(tempPath); } catch (e) {}
+      // 直接使用 R2 客户端上传 buffer
+      const { uploadBufferToR2 } = require('./r2Client');
+      const result = await uploadBufferToR2(buffer, filename, 'image/png');
+      console.log('[OpenAI Image] R2 上传成功:', result.url);
+      return result.url;
+    } catch (r2Err) {
+      console.error('[OpenAI Image] R2 上传失败:', r2Err.message);
+      throw new Error('图片上传失败: ' + r2Err.message);
     }
   }
 

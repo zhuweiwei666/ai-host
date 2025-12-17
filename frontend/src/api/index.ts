@@ -971,12 +971,12 @@ export const startStory = (agentId: string) =>
   http.post<StoryStartResponse>('/story/start', { agentId });
 
 // AI 自动推进剧情
-export const continueStory = (sessionId: string) =>
-  http.post<StoryContinueResponse>('/story/continue', { sessionId });
+export const continueStory = (sessionId: string, generateImage: boolean = false) =>
+  http.post<StoryContinueResponse>('/story/continue', { sessionId, generateImage });
 
 // 用户输入推进剧情
-export const inputStory = (sessionId: string, userInput: string) =>
-  http.post<StoryContinueResponse>('/story/input', { sessionId, userInput });
+export const inputStory = (sessionId: string, userInput: string, generateImage: boolean = false) =>
+  http.post<StoryContinueResponse>('/story/input', { sessionId, userInput, generateImage });
 
 // 获取故事状态
 export const getStoryState = (sessionId: string) =>
