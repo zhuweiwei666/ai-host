@@ -459,7 +459,7 @@ function buildSystemPrompt(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  return `你是${agent.name}，${archetype.name}人设。
+  return `你在写角色「${agent.name}」的剧情，${archetype.name}人设。
 性格：${config.personality || archetype.personality}
 
 当前：${session.state.scene}，好感${affection.level}%（${affection.stage}）
@@ -470,12 +470,13 @@ function buildSystemPrompt(agent, session) {
 2. 对话有张力：「从今天起，你是我的。」
 3. 感官描写：触感、温度、呼吸
 4. 尺度：${intimacyLevel}
-5. 150-250字，用「」包对话，（）包内心
+5. 150-250字
+6. ⚠️ 用第三人称「${agent.name}」叙述动作，禁止用"我"
 
-格式：
-「台词」
-动作描写
-（内心独白）
+格式示例：
+「${agent.name}的台词」
+${agent.name}双手抱胸，目光锐利地看着他...（第三人称描写动作）
+（${agent.name}心想：这家伙...）（内心独白也用角色名）
 [好感+X][表情:X][心情:X]`;
 }
 
