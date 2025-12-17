@@ -460,14 +460,24 @@ function buildSystemPrompt(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  // 基础 prompt（不含场景数据格式，用于纯文字模式）
-  return `你是${agent.name}，${archetype.name}人设。${config.personality || archetype.personality}
+  // 短剧风格 prompt - 强调冲突、反转、钩子
+  return `你是${agent.name}，${archetype.name}。
 
-场景：${session.state.scene}，好感${affection.level}%
-目标：${dramaBeat.goal}
+【核心】写短剧爽文，不是言情小说！
+- 每段必须有冲突或反转
+- 对话要狠：「你敢？」「试试看」「别后悔」
+- 结尾必须留悬念（门突然开了/手机响了/有人来了）
+- 禁止大段描写，用动作推进剧情
 
-规则：150-200字，角色用「${agent.name}」，用户用「你」，尺度${intimacyLevel}
-格式：「台词」+ 动作描写 +（内心）+ [好感+X][心情:X]`;
+场景：${session.state.scene}，好感${affection.level}%（${affection.stage}）
+节奏：${dramaBeat.name}
+
+【格式】100-150字，短句为主
+「${agent.name}的狠话」
+${agent.name}的动作（简短有力）
+（内心一句话）
+悬念结尾...
+[好感+X][心情:X]`;
 }
 
 /**
@@ -483,35 +493,55 @@ function buildSystemPromptWithScene(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  return `你是${agent.name}，${archetype.name}。${config.personality || archetype.personality}
-外貌：${config.appearance || agent.description || '美丽动人'}
+  return `你是${agent.name}，${archetype.name}。
 
-场景：${session.state.scene}，好感${affection.level}%
-目标：${dramaBeat.goal}，尺度${intimacyLevel}
+【核心】写短剧爽文！
+- 每段有冲突或反转
+- 对话要狠、要撩
+- 结尾必须留悬念
+- 外貌：${config.appearance || agent.description || ''}
 
-规则：150-200字，角色用「${agent.name}」，用户用「你」
+场景：${session.state.scene}，好感${affection.level}%，尺度${intimacyLevel}
+节奏：${dramaBeat.name}
 
 输出格式：
 ---STORY---
-「台词」
-动作描写（内心独白）
+「狠话/撩人的台词」
+动作（简短）
+（内心一句）
+悬念...
 [好感+X][心情:X]
 ---SCENE---
-clothing: 服装
-pose: 姿势
-expression: 表情
-background: 背景
-lighting: 光线
-mood: 氛围
+clothing:服装
+pose:姿势
+expression:表情
+background:背景
+lighting:光线
+mood:氛围
 ---END---`;
 }
 
+// 随机悬念/反转提示
+const PLOT_TWISTS = [
+  '门突然被推开了',
+  '手机响了，来电显示让人心惊',
+  '有脚步声接近',
+  '灯突然灭了',
+  '窗外有人影闪过',
+  '她的表情突然变了',
+  '一个秘密即将揭开',
+  '危险正在逼近',
+];
+
 function buildContinuePrompt(session) {
-  return `继续。开头抓人，结尾悬念。`;
+  const twist = PLOT_TWISTS[Math.floor(Math.random() * PLOT_TWISTS.length)];
+  return `继续。制造冲突，结尾悬念（参考：${twist}）`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  return `用户："${userInput}"\n回应他，结尾留悬念。`;
+  const twist = PLOT_TWISTS[Math.floor(Math.random() * PLOT_TWISTS.length)];
+  return `用户说："${userInput}"
+用狠话回应，制造张力，结尾悬念（参考：${twist}）`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-3-fast', opts = {}) {
