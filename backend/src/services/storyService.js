@@ -460,23 +460,25 @@ function buildSystemPrompt(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  // 短剧风格 prompt - 强调冲突、反转、钩子
-  return `你是${agent.name}，${archetype.name}。
+  // 获取上一段内容，避免重复
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
+  
+  // 短剧风格 prompt - 强调变化和张力
+  return `你是${agent.name}，${config.personality || archetype.personality}
 
-【核心】写短剧爽文，不是言情小说！
-- 每段必须有冲突或反转
-- 对话要狠：「你敢？」「试试看」「别后悔」
-- 结尾必须留悬念（门突然开了/手机响了/有人来了）
-- 禁止大段描写，用动作推进剧情
+【规则】
+1. 推进剧情，不要重复上一段
+2. 制造意外：有人闯入/秘密暴露/身份反转/危机出现
+3. 对话有张力，动作简短
+4. 结尾必须断在关键时刻
 
-场景：${session.state.scene}，好感${affection.level}%（${affection.stage}）
-节奏：${dramaBeat.name}
+上一段开头：「${lastParagraph}」（禁止相似开头！）
 
-【格式】100-150字，短句为主
-「${agent.name}的狠话」
-${agent.name}的动作（简短有力）
-（内心一句话）
-悬念结尾...
+场景：${session.state.scene}，好感${affection.level}%
+目标：${dramaBeat.goal}
+
+【输出】80-120字
+台词+动作+悬念
 [好感+X][心情:X]`;
 }
 
@@ -493,55 +495,53 @@ function buildSystemPromptWithScene(agent, session) {
                         affection.level >= 40 ? '暧昧撩拨' : 
                         affection.level >= 20 ? '初步试探' : '保持距离';
 
-  return `你是${agent.name}，${archetype.name}。
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
+  
+  return `你是${agent.name}，${config.personality || archetype.personality}
+外貌：${config.appearance || agent.description || ''}
 
-【核心】写短剧爽文！
-- 每段有冲突或反转
-- 对话要狠、要撩
-- 结尾必须留悬念
-- 外貌：${config.appearance || agent.description || ''}
+【规则】推进剧情，制造意外，结尾断在关键时刻
+上一段：「${lastParagraph}」（换个开头！）
 
 场景：${session.state.scene}，好感${affection.level}%，尺度${intimacyLevel}
-节奏：${dramaBeat.name}
+目标：${dramaBeat.goal}
 
-输出格式：
+输出：
 ---STORY---
-「狠话/撩人的台词」
-动作（简短）
-（内心一句）
-悬念...
+台词+动作（80-120字）
 [好感+X][心情:X]
 ---SCENE---
 clothing:服装
 pose:姿势
 expression:表情
 background:背景
-lighting:光线
 mood:氛围
 ---END---`;
 }
 
-// 随机悬念/反转提示
-const PLOT_TWISTS = [
-  '门突然被推开了',
-  '手机响了，来电显示让人心惊',
-  '有脚步声接近',
-  '灯突然灭了',
-  '窗外有人影闪过',
-  '她的表情突然变了',
-  '一个秘密即将揭开',
-  '危险正在逼近',
+// 随机剧情方向
+const PLOT_DIRECTIONS = [
+  '有人突然闯入',
+  '她的手机响了',
+  '一个秘密被发现',
+  '气氛突然变了',
+  '危险逼近',
+  '误会产生',
+  '身份暴露',
+  '第三者出现',
 ];
 
 function buildContinuePrompt(session) {
-  const twist = PLOT_TWISTS[Math.floor(Math.random() * PLOT_TWISTS.length)];
-  return `继续。制造冲突，结尾悬念（参考：${twist}）`;
+  const direction = PLOT_DIRECTIONS[Math.floor(Math.random() * PLOT_DIRECTIONS.length)];
+  const progress = session.progress || 0;
+  if (progress < 20) return `开场吸引注意力`;
+  if (progress < 50) return `升级冲突，方向：${direction}`;
+  if (progress < 80) return `高潮反转，方向：${direction}`;
+  return `推向结局`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  const twist = PLOT_TWISTS[Math.floor(Math.random() * PLOT_TWISTS.length)];
-  return `用户说："${userInput}"
-用狠话回应，制造张力，结尾悬念（参考：${twist}）`;
+  return `玩家："${userInput}" — 回应他，推进剧情`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
