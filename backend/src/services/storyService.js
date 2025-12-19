@@ -157,19 +157,19 @@ const imageGenerationService = require('./imageGenerationService');
 const openaiImageService = require('./openaiImageService');
 const walletService = require('./walletService');
 
-// ===================== 短剧节拍系统 =====================
-// 每个进度区间对应不同的剧情节拍和情绪曲线
+// ===================== 短剧节拍系统（R18_soft：强撩可，不露骨）=====================
+// 前期就要有足够的性张力和暧昧钩子
 const DRAMA_BEATS = [
-  { range: [0, 5], beat: 'hook', name: '钩子', goal: '开场即冲突！3秒内抓住注意力。制造悬念或反差。' },
-  { range: [5, 15], beat: 'tension', name: '升温', goal: '制造张力和暧昧。距离拉近又推开。欲拒还迎。' },
-  { range: [15, 25], beat: 'revelation', name: '揭示', goal: '揭露秘密或身份。制造震惊和意外。留下更大悬念。' },
-  { range: [25, 35], beat: 'conflict', name: '冲突', goal: '矛盾激化。误会、争吵或危机。情绪到达第一个峰值。' },
-  { range: [35, 45], beat: 'intimacy', name: '亲密', goal: '和解或更进一步。肢体接触升级。暧昧到极致。' },
-  { range: [45, 55], beat: 'crisis', name: '危机', goal: '第二次危机。更大的障碍出现。可能被发现/分离/背叛。' },
-  { range: [55, 65], beat: 'confession', name: '告白', goal: '情感爆发。表白或坦诚。解开心结。' },
-  { range: [65, 75], beat: 'passion', name: '热恋', goal: '感情升温到极致。大胆亲密的互动。尺度升级。' },
-  { range: [75, 85], beat: 'test', name: '考验', goal: '最终考验。外部阻力或内心挣扎。虐心但虐中带甜。' },
-  { range: [85, 100], beat: 'climax', name: '高潮', goal: 'HE/BE结局走向。极致的情感释放。' },
+  { range: [0, 5], beat: 'hook', name: '钩子', goal: '开场就要有身体接触或暧昧场景！她贴上来/你们靠得很近/意外触碰。制造心跳加速的瞬间。' },
+  { range: [5, 15], beat: 'tension', name: '撩拨', goal: '她主动撩你：靠近、低语、若有若无的触碰。你的视线不由自主地落在她身上。欲拒还迎。' },
+  { range: [15, 25], beat: 'escalate', name: '升级', goal: '更大胆的试探：她的手/唇/身体更接近。危险的距离。呼吸交缠。随时可能越界。' },
+  { range: [25, 35], beat: 'tension_break', name: '中断', goal: '关键时刻被打断！有人来了/电话响了/她突然推开。留下巨大的遗憾和渴望。' },
+  { range: [35, 45], beat: 'chase', name: '追逐', goal: '她若即若离地撩拨。你追她跑，或者她追你跑。猫鼠游戏。每次接近都心跳加速。' },
+  { range: [45, 55], beat: 'intimacy', name: '亲密', goal: '终于独处！暧昧升级到极致。肢体接触更大胆。她的反应让你想要更多……' },
+  { range: [55, 65], beat: 'confession', name: '表白', goal: '情感爆发。直接表白或用行动表达。关系确定。但新的考验即将来临。' },
+  { range: [65, 75], beat: 'passion', name: '热恋', goal: '大胆的亲密互动。她变得更主动。暗示更多可能发生的事……尺度拉满但不越界。' },
+  { range: [75, 85], beat: 'test', name: '考验', goal: '外部阻力或误会。虐心但虐中带甜。分开又重逢。渴望更加强烈。' },
+  { range: [85, 100], beat: 'climax', name: '高潮', goal: '极致的情感释放。暗示一切水到渠成……留给想象的空间。' },
 ];
 
 // 付费点触发位置（让用户在这些关键节点想要解锁）
@@ -457,30 +457,36 @@ function buildSystemPrompt(agent, session) {
   const dramaBeat = getDramaBeat(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
   
-  // 简化的尺度描述
-  const intimacyLevel = affection.level >= 60 ? '大胆亲密' : 
-                        affection.level >= 40 ? '暧昧撩拨' : 
-                        affection.level >= 20 ? '初步试探' : '保持距离';
+  // R18_soft 尺度：根据好感度递进
+  const intimacyGuide = affection.level >= 60 
+    ? '大胆亲密：可以有亲吻、拥抱、贴身、暗示更多；她变得主动；呼吸加重、脸红、轻咬嘴唇' 
+    : affection.level >= 40 
+    ? '暧昧撩拨：身体贴近、若有若无的触碰、低声说话、眼神勾人、欲拒还迎' 
+    : affection.level >= 20 
+    ? '初步试探：不经意的肢体接触、靠近、目光交汇、心跳加速、脸红' 
+    : '挑逗开场：她主动靠近/意外触碰/暧昧场景/心跳瞬间——从第一秒就要有吸引力';
 
   // 获取上一段内容，避免重复
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
   
-  // 短剧风格 prompt - 强调变化和张力
+  // 短剧风格 prompt - 强调性张力和暧昧
   return `你是${agent.name}，${config.personality || archetype.personality}
 
-【规则】
-1. 推进剧情，不要重复上一段
-2. 制造意外：有人闯入/秘密暴露/身份反转/危机出现
-3. 对话有张力，动作简短
-4. 结尾必须断在关键时刻
+【核心】写让人脸红心跳的短剧！每段都要有暧昧/撩拨/心动瞬间！
+- 肢体接触：靠近、触碰、贴身、拉扯
+- 暧昧对话：低语、调戏、欲拒还迎
+- 感官细节：呼吸、心跳、温度、气息
+- 结尾钩子：关键时刻被打断/她突然靠近/危险的距离
 
-上一段开头：「${lastParagraph}」（禁止相似开头！）
+【尺度】${intimacyGuide}
+
+上一段：「${lastParagraph}」（换个开头！）
 
 场景：${session.state.scene}，好感${affection.level}%
 目标：${dramaBeat.goal}
 
-【输出】80-120字
-台词+动作+悬念
+【输出】80-120字，让人脸红心跳
+「撩人的台词」+暧昧动作+悬念
 [好感+X][心情:X]`;
 }
 
@@ -493,44 +499,53 @@ function buildSystemPromptWithScene(agent, session) {
   const dramaBeat = getDramaBeat(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
   
-  const intimacyLevel = affection.level >= 60 ? '大胆亲密' : 
-                        affection.level >= 40 ? '暧昧撩拨' : 
-                        affection.level >= 20 ? '初步试探' : '保持距离';
+  // R18_soft 尺度递进
+  const intimacyGuide = affection.level >= 60 
+    ? '大胆亲密：亲吻、拥抱、贴身暧昧；她主动；暗示更多' 
+    : affection.level >= 40 
+    ? '暧昧撩拨：身体贴近、触碰、低语、眼神勾人' 
+    : affection.level >= 20 
+    ? '初步试探：肢体接触、靠近、心跳加速' 
+    : '挑逗开场：她靠近/触碰/暧昧场景';
 
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
   
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
 
-【规则】推进剧情，制造意外，结尾断在关键时刻
+【核心】写让人脸红心跳的短剧！肢体接触+暧昧对话+感官细节
+【尺度】${intimacyGuide}
+
 上一段：「${lastParagraph}」（换个开头！）
 
-场景：${session.state.scene}，好感${affection.level}%，尺度${intimacyLevel}
+场景：${session.state.scene}，好感${affection.level}%
 目标：${dramaBeat.goal}
 
 输出：
 ---STORY---
-台词+动作（80-120字）
+「撩人台词」+暧昧动作（80-120字）
 [好感+X][心情:X]
 ---SCENE---
-clothing:服装
-pose:姿势
-expression:表情
-background:背景
-mood:氛围
+clothing:性感服装描述
+pose:暧昧姿势
+expression:撩人表情
+background:场景
+mood:暧昧氛围
 ---END---`;
 }
 
-// 随机剧情方向
+// 随机剧情方向（R18_soft：制造暧昧紧张感）
 const PLOT_DIRECTIONS = [
-  '有人突然闯入',
-  '她的手机响了',
-  '一个秘密被发现',
-  '气氛突然变了',
-  '危险逼近',
-  '误会产生',
-  '身份暴露',
-  '第三者出现',
+  '她突然靠近，距离危险地接近',
+  '你们意外独处，气氛暧昧',
+  '她的手"不小心"碰到你',
+  '关键时刻有人敲门',
+  '她低声说了一句让你心跳加速的话',
+  '灯突然灭了，只剩下彼此的呼吸声',
+  '她的衣带/纽扣"意外"松开',
+  '你们被困在狭小的空间里',
+  '她喝了点酒，变得大胆起来',
+  '她说"今晚...就我们两个"',
 ];
 
 function getRecentStoryContext(session, count = 2, maxChars = 520) {
@@ -707,12 +722,22 @@ function safeJsonParseFromText(text) {
 function buildDirectorSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const persona = config.personality || '';
-  return `你是短剧导演，负责给编剧一份“下一段的导演指令”。\n` +
-    `要求：只输出 JSON（不要解释、不要换行外内容）。\n` +
-    `目标：更爽、更短、更易读；每段必须推进事件并以悬念收尾。\n` +
+  const progress = session?.progress || 0;
+  
+  // 根据进度调整暧昧强度
+  let intensityGuide = '极致暧昧，暗示水到渠成';
+  if (progress < 15) intensityGuide = '制造心动：她靠近/触碰/暧昧对话';
+  else if (progress < 30) intensityGuide = '升级撩拨：肢体接触、低语、眼神';
+  else if (progress < 50) intensityGuide = '更大胆试探：危险的距离、呼吸交缠';
+  else if (progress < 70) intensityGuide = '亲密升级：暧昧到极致';
+  
+  return `你是短剧导演，规划下一段的暧昧走向。\n` +
+    `要求：只输出 JSON。\n` +
+    `目标：让人脸红心跳！每段必须有暧昧/撩拨/心动瞬间！\n` +
+    `暧昧强度：${intensityGuide}\n` +
     `角色：${agent.name}。人设：${persona}\n` +
-    `边界：R18_soft（强撩可，避免露骨细节/明显违规词）。\n` +
-    `JSON 字段：beat(one of opening/escalation/reveal/crisis/payoff), newInfoType(信息/动作/人物/证据), twist, hook, conflict, stakes, openLoop, canonFactAdd(optional), choices(array 2-3 strings).`;
+    `边界：R18_soft（强撩暗示可，不露骨）。\n` +
+    `JSON 字段：beat(opening/escalation/intimacy/crisis/climax), intimacyAction(触碰/靠近/低语/拉扯/拥抱), twist, hook, tension, stakes, openLoop, choices(array 2-3 撩人选项).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -729,12 +754,16 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const persona = config.personality || '';
   const appearance = config.appearance || agent.description || '';
   const beat = directorPlan?.beat || session?.state?.beat || '';
+  const intimacyAction = directorPlan?.intimacyAction || '';
 
   const base =
-    `你是短剧编剧。\n` +
-    `角色必须用「${agent.name}」的名字表达（不要用“我”）。用户一律用“你”。\n` +
-    `写作要求：台词驱动+动作推进；每段必须有新信息点；结尾必须悬念断在关键时刻。\n` +
-    `长度：80-120字（中文短句）。边界：R18_soft（强撩暗示可，避免露骨）。\n` +
+    `你是短剧编剧，写让人脸红心跳的暧昧短剧。\n` +
+    `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
+    `写作要求：\n` +
+    `- 每段必须有暧昧/撩拨元素：${intimacyAction || '触碰、低语、眼神、呼吸交缠'}\n` +
+    `- 感官细节：心跳、温度、气息、脸红\n` +
+    `- 结尾断在心跳加速的瞬间\n` +
+    `长度：80-120字。边界：R18_soft（强撩暗示可，不露骨）。\n` +
     `人设：${persona}\n` +
     `节拍：${beat}\n`;
 
@@ -742,8 +771,8 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
 
   return base +
     `外貌：${appearance}\n` +
-    `另外，末尾必须附加场景块：\n` +
-    `---SCENE---\nclothing:服装\npose:姿势\nexpression:表情\nbackground:背景\nmood:氛围\n---END---`;
+    `附加场景块（暧昧性感风格）：\n` +
+    `---SCENE---\nclothing:性感服装\npose:暧昧姿势\nexpression:撩人表情\nbackground:私密场景\nmood:暧昧氛围\n---END---`;
 }
 
 function buildWriterUserPrompt(session, directorPlan, userInput) {
@@ -821,19 +850,22 @@ function buildContinuePrompt(session) {
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
 
-  let stageGuide = '推向结局';
-  if (progress < 20) stageGuide = '开场吸引注意力（立刻给冲突/利益/危险）';
-  else if (progress < 50) stageGuide = `升级冲突（方向：${direction}）`;
-  else if (progress < 80) stageGuide = `高潮反转（方向：${direction}）`;
+  // R18_soft 分阶段引导：前期就要有性张力
+  let stageGuide = '极致暧昧，暗示水到渠成';
+  if (progress < 15) stageGuide = '制造心动瞬间！她靠近/触碰/暧昧对话';
+  else if (progress < 30) stageGuide = `升级撩拨！${direction}`;
+  else if (progress < 50) stageGuide = `更大胆试探！${direction}`;
+  else if (progress < 70) stageGuide = `亲密升级！${direction}`;
+  else if (progress < 85) stageGuide = `情感爆发！${direction}`;
 
-  return `${bundle.packed}\n【任务】续写下一段：${stageGuide}\n- 必须推进事件，禁止原地暧昧拉扯\n- 开头必须完全换句式（禁止与上一段开头相似）：「${lastStart}」\n- 必须出现一个新信息/新动作/新人物/新证据（四选一）\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”（用角色名+动作来写）\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【任务】续写：${stageGuide}\n- 必须有暧昧/撩拨元素（触碰、低语、眼神、呼吸交缠）\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾断在心跳加速的瞬间\n- 80-120字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 function buildUserInputPrompt(session, userInput) {
   const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
-  return `${bundle.packed}\n【玩家输入】${userInput}\n\n【任务】回应并续写：\n- 必须推进事件（给出明确行动/决定/代价）\n- 开头必须换句式（禁止与上一段开头相似）：「${lastStart}」\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】撩人地回应他！\n- 用暧昧的方式回应（靠近、触碰、低语、眼神勾人）\n- 制造心动瞬间\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾断在暧昧的关键时刻\n- 80-120字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
@@ -1056,12 +1088,19 @@ async function startStory(userId, agentId) {
     };
   }
   
-  // 生成短剧式开场（如果没有自定义开场）
+  // 生成暧昧开场（从第一秒就抓住注意力）
   const archetype = detectArchetype(agent);
   const hookExample = archetype.hooks?.[Math.floor(Math.random() * archetype.hooks.length)];
-  const defaultOpening = hookExample || `「你...是谁？」\n\n她的眼神复杂，仿佛在看一个不该出现的人——`;
+  const sexyOpenings = [
+    `她靠近你，呼吸喷洒在你耳边：「你...来得好慢。」\n\n她的手指滑过你的衣领——`,
+    `「别动。」她按住你的肩膀，眼神危险地扫过你的脸，「让我好好看看...」`,
+    `她的身体贴上来，柔软的触感让你僵住。「怎么，害怕了？」她轻笑——`,
+    `灯光昏暗，她的脸凑近，唇几乎贴上你的：「我等你...很久了。」`,
+    `「你来了。」她转身，睡袍滑落一边肩膀，「正好...帮我拉一下拉链？」`,
+  ];
+  const defaultOpening = hookExample || sexyOpenings[Math.floor(Math.random() * sexyOpenings.length)];
   const openingText = agent.storyConfig?.opening || agent.defaultGreeting || defaultOpening;
-  const openingImagePrompt = `dramatic first meeting, intense eye contact, emotional tension, cinematic lighting`;
+  const openingImagePrompt = `seductive first meeting, intimate distance, bedroom eyes, soft lighting, romantic tension`;
   
   session = new StorySession({
     userId,
