@@ -51,6 +51,35 @@ const StorySessionSchema = new mongoose.Schema({
     clothes: { type: String, default: '' },           // 角色当前穿着
     expression: { type: String, default: '' },        // 角色表情
     lastAction: { type: String, default: '' },        // 上一段结尾（用于承接）
+
+    // ===== v2: 结构化剧情状态（上下文工程） =====
+    workflow: { type: String, default: 'v1' },        // v1/v2
+    beat: {
+      type: String,
+      enum: ['opening', 'escalation', 'reveal', 'crisis', 'payoff'],
+      default: 'opening'
+    },
+    conflict: { type: String, default: '' },          // 当前冲突焦点
+    stakes: { type: String, default: '' },            // 当前代价/风险
+    secrets: [{ type: String }],                      // 已知秘密/线索（可增长）
+    openLoops: [{ type: String }],                    // 未收束伏笔（3-7条）
+    canonFacts: [{ type: String }],                   // 不可违背事实（简短）
+    summary: { type: String, default: '' },           // 滚动摘要（短）
+
+    // 章节与付费触发（混合变现）
+    chapter: {
+      index: { type: Number, default: 0 },            // 当前章编号（从0开始）
+      size: { type: Number, default: 5 },             // 每章段落数（默认5）
+    },
+    pay: {
+      pending: {
+        type: { type: String },                       // chapter_unlock/photo
+        chapterIndex: { type: Number },
+        reason: { type: String },                     // 付费点文案（短）
+        createdAt: { type: Date },
+      },
+      unlockedChapterIndex: { type: Number, default: 0 }, // 已解锁到的章节（包含）
+    },
   },
   
   // 已发生的关键事件（用于一致性）
@@ -63,6 +92,8 @@ const StorySessionSchema = new mongoose.Schema({
     content: { type: String, required: true },
     imageUrl: { type: String },   // 每层楼的配图 URL
     imagePrompt: { type: String }, // 图片生成使用的 prompt（旧版兼容）
+    imageCharge: { type: Number, default: 0 },        // 写真模式额外扣费（用于失败补偿）
+    imageChargeRefunded: { type: Boolean, default: false },
     imageGenerating: { type: Boolean, default: false }, // 图片是否正在生成
     imageFailed: { type: Boolean, default: false },     // 图片生成是否失败
     sceneData: {                   // 场景数据（用于 GPT Image 1.5 生成）
@@ -73,8 +104,26 @@ const StorySessionSchema = new mongoose.Schema({
       lighting: { type: String },
       mood: { type: String },
     },
+    // v2: 低阅读门槛的按钮式分支（可选）
+    choices: [{
+      text: { type: String },
+      value: { type: String },
+      kind: { type: String, enum: ['choice', 'cta'], default: 'choice' },
+    }],
     source: { type: String, enum: ['ai', 'user_input'], default: 'ai' }, // 段落来源
     userInput: { type: String },  // 如果是响应用户输入，记录用户说的话
+    createdAt: { type: Date, default: Date.now },
+  }],
+
+  // v2: 结构化记忆事件（轻量检索用）
+  memoryEvents: [{
+    tags: [{ type: String }],
+    people: [{ type: String }],
+    place: { type: String },
+    stakes: { type: String },
+    secret: { type: String },
+    intensity: { type: Number, min: 0, max: 10, default: 0 },
+    paragraphIndex: { type: Number },
     createdAt: { type: Date, default: Date.now },
   }],
   
@@ -101,12 +150,20 @@ const StorySessionSchema = new mongoose.Schema({
 // 复合唯一索引：每个用户对每个角色只有一个活跃的故事
 StorySessionSchema.index({ userId: 1, agentId: 1, status: 1 });
 
-// 添加段落的方法
-StorySessionSchema.methods.addParagraph = function(content, source = 'ai', userInput = null, imageUrl = null, imagePrompt = null) {
+// 添加段落的方法（v2 支持 meta，如 choices/sceneData）
+StorySessionSchema.methods.addParagraph = function(
+  content,
+  source = 'ai',
+  userInput = null,
+  imageUrl = null,
+  imagePrompt = null,
+  meta = null
+) {
   this.paragraphs.push({
     content,
     imageUrl,
     imagePrompt,
+    ...(meta && typeof meta === 'object' ? meta : {}),
     source,
     userInput,
     createdAt: new Date(),
@@ -137,6 +194,18 @@ StorySessionSchema.methods.updateState = function(newState) {
   if (newState.mood) this.state.mood = newState.mood;
   if (newState.clothes) this.state.clothes = newState.clothes;
   if (newState.lastAction) this.state.lastAction = newState.lastAction;
+  if (newState.action) this.state.action = newState.action;
+  if (newState.expression) this.state.expression = newState.expression;
+
+  // v2 fields (optional)
+  if (newState.workflow) this.state.workflow = newState.workflow;
+  if (newState.beat) this.state.beat = newState.beat;
+  if (newState.conflict) this.state.conflict = newState.conflict;
+  if (newState.stakes) this.state.stakes = newState.stakes;
+  if (newState.summary) this.state.summary = newState.summary;
+  if (Array.isArray(newState.secrets)) this.state.secrets = newState.secrets;
+  if (Array.isArray(newState.openLoops)) this.state.openLoops = newState.openLoops;
+  if (Array.isArray(newState.canonFacts)) this.state.canonFacts = newState.canonFacts;
   return this;
 };
 

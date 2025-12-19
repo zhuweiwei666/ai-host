@@ -17,10 +17,42 @@ const { requireAuth } = require('../middleware/auth');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 const storyService = require('../services/storyService');
 const walletService = require('../services/walletService');
+const StorySession = require('../models/StorySession');
+const Subscription = require('../models/Subscription');
 
 // 消耗配置
 const COST_CONTINUE = 2;  // 继续剧情消耗
 const COST_INPUT = 2;     // 用户输入消耗
+const COST_CHAPTER_UNLOCK = 20; // 章解锁（一次性）
+
+async function getActiveSubscription(userId) {
+  const now = new Date();
+  return Subscription.findOne({
+    userId: String(userId),
+    status: { $in: ['active', 'trialing'] },
+    $or: [{ currentPeriodEnd: { $exists: false } }, { currentPeriodEnd: null }, { currentPeriodEnd: { $gt: now } }],
+  }).lean();
+}
+
+async function isSubscribed(userId) {
+  const sub = await getActiveSubscription(userId);
+  return !!sub;
+}
+
+async function loadAndAuthorizeSession(userId, sessionId) {
+  const session = await StorySession.findById(sessionId);
+  if (!session) return { session: null, forbidden: false };
+  if (String(session.userId) !== String(userId)) return { session: null, forbidden: true };
+  return { session, forbidden: false };
+}
+
+function isChapterLocked(session) {
+  const pending = session?.state?.pay?.pending;
+  if (!pending || pending.type !== 'chapter_unlock') return null;
+  const unlocked = Number(session?.state?.pay?.unlockedChapterIndex || 0);
+  if (Number(pending.chapterIndex || 0) > unlocked) return pending;
+  return null;
+}
 
 /**
  * POST /api/story/start
@@ -56,23 +88,42 @@ const COST_CONTINUE_WITH_IMAGE = 5;  // 带情境图的继续剧情消耗
 router.post('/continue', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, generateImage = false } = req.body; // 默认不生成图片（写真按钮未激活）
+    const { sessionId, generateImage = false, clientRequestId } = req.body; // 默认不生成图片（写真按钮未激活）
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
     }
     
-    // 根据是否生成图片确定费用
-    const cost = generateImage ? COST_CONTINUE_WITH_IMAGE : COST_CONTINUE;
+    const subscribed = await isSubscribed(userId);
+
+    // 鉴权 + 章解锁拦截（订阅用户跳过）
+    const { session: ownedSession, forbidden } = await loadAndAuthorizeSession(userId, sessionId);
+    if (forbidden) return errors.forbidden(res, '无权访问该故事');
+    if (!ownedSession) return errors.notFound(res, '故事不存在');
+    if (!subscribed) {
+      const locked = isChapterLocked(ownedSession);
+      if (locked) {
+        console.log(`[Story API] Chapter locked: sessionId=${sessionId}, needUnlock=${locked.chapterIndex}`);
+        return errors.insufficientFunds(res, 'CHAPTER_LOCKED', { paywall: locked, cost: COST_CHAPTER_UNLOCK });
+      }
+    }
+
+    // 根据是否生成图片确定费用（订阅折扣）
+    const baseCost = subscribed ? 1 : COST_CONTINUE;
+    const cost = subscribed
+      ? (generateImage ? 2 : baseCost)
+      : (generateImage ? COST_CONTINUE_WITH_IMAGE : baseCost);
+    const imageCharge = generateImage ? Math.max(0, cost - baseCost) : 0;
     
     // 检查并扣费
     try {
-      await walletService.consume(userId, cost, generateImage ? 'story_continue_image' : 'story_continue');
+      const idem = clientRequestId ? `story:continue:${sessionId}:${clientRequestId}` : null;
+      await walletService.consume(userId, cost, generateImage ? 'story_continue_image' : 'story_continue', sessionId, idem);
     } catch (walletErr) {
       return errors.badRequest(res, walletErr.message || '余额不足');
     }
     
-    const result = await storyService.continueStory(sessionId, { generateImage });
+    const result = await storyService.continueStory(sessionId, { generateImage, imageCharge });
     
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
@@ -83,6 +134,7 @@ router.post('/continue', requireAuth, async (req, res) => {
       ...result,
       balance,
       cost,
+      subscribed,
     });
   } catch (err) {
     console.error('[Story API] Continue error:', err);
@@ -100,7 +152,7 @@ const COST_INPUT_WITH_IMAGE = 5;  // 带情境图的用户输入消耗
 router.post('/input', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, userInput, generateImage = false } = req.body; // 默认不生成图片（写真按钮未激活）
+    const { sessionId, userInput, generateImage = false, clientRequestId } = req.body; // 默认不生成图片（写真按钮未激活）
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
@@ -110,17 +162,36 @@ router.post('/input', requireAuth, async (req, res) => {
       return errors.badRequest(res, '请输入内容');
     }
     
-    // 根据是否生成图片确定费用
-    const cost = generateImage ? COST_INPUT_WITH_IMAGE : COST_INPUT;
+    const subscribed = await isSubscribed(userId);
+
+    // 鉴权 + 章解锁拦截（订阅用户跳过）
+    const { session: ownedSession, forbidden } = await loadAndAuthorizeSession(userId, sessionId);
+    if (forbidden) return errors.forbidden(res, '无权访问该故事');
+    if (!ownedSession) return errors.notFound(res, '故事不存在');
+    if (!subscribed) {
+      const locked = isChapterLocked(ownedSession);
+      if (locked) {
+        console.log(`[Story API] Chapter locked: sessionId=${sessionId}, needUnlock=${locked.chapterIndex}`);
+        return errors.insufficientFunds(res, 'CHAPTER_LOCKED', { paywall: locked, cost: COST_CHAPTER_UNLOCK });
+      }
+    }
+
+    // 根据是否生成图片确定费用（订阅折扣）
+    const baseCost = subscribed ? 1 : COST_INPUT;
+    const cost = subscribed
+      ? (generateImage ? 2 : baseCost)
+      : (generateImage ? COST_INPUT_WITH_IMAGE : baseCost);
+    const imageCharge = generateImage ? Math.max(0, cost - baseCost) : 0;
     
     // 检查并扣费
     try {
-      await walletService.consume(userId, cost, generateImage ? 'story_input_image' : 'story_input');
+      const idem = clientRequestId ? `story:input:${sessionId}:${clientRequestId}` : null;
+      await walletService.consume(userId, cost, generateImage ? 'story_input_image' : 'story_input', sessionId, idem);
     } catch (walletErr) {
       return errors.badRequest(res, walletErr.message || '余额不足');
     }
     
-    const result = await storyService.inputStory(sessionId, userInput.trim(), { generateImage });
+    const result = await storyService.inputStory(sessionId, userInput.trim(), { generateImage, imageCharge });
     
     // 获取当前余额
     const balance = await walletService.getBalance(userId);
@@ -131,6 +202,7 @@ router.post('/input', requireAuth, async (req, res) => {
       ...result,
       balance,
       cost,
+      subscribed,
     });
   } catch (err) {
     console.error('[Story API] Input error:', err);
@@ -192,15 +264,18 @@ const COST_PHOTO = 5;  // 生成写真消耗
 router.post('/photo', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId } = req.body;
+    const { sessionId, clientRequestId } = req.body;
     
     if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
       return errors.badRequest(res, '无效的故事 ID');
     }
     
     // 检查并扣费
+    const subscribed = await isSubscribed(userId);
+    const cost = subscribed ? 2 : COST_PHOTO;
     try {
-      await walletService.consume(userId, COST_PHOTO, 'story_photo');
+      const idem = clientRequestId ? `story:photo:${sessionId}:${clientRequestId}` : null;
+      await walletService.consume(userId, cost, 'story_photo', sessionId, idem);
     } catch (walletErr) {
       return errors.badRequest(res, walletErr.message || '余额不足');
     }
@@ -215,11 +290,65 @@ router.post('/photo', requireAuth, async (req, res) => {
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
       balance,
-      cost: COST_PHOTO,
+      cost,
+      subscribed,
     });
   } catch (err) {
     console.error('[Story API] Photo error:', err);
     errors.badRequest(res, err.message || '生成写真失败');
+  }
+});
+
+/**
+ * POST /api/story/unlock-chapter
+ * 解锁下一章（混合变现：章末强钩子）
+ */
+router.post('/unlock-chapter', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId, chapterIndex, clientRequestId } = req.body;
+
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+      return errors.badRequest(res, '无效的故事 ID');
+    }
+    const { session: owned, forbidden } = await loadAndAuthorizeSession(userId, sessionId);
+    if (forbidden) return errors.forbidden(res, '无权访问该故事');
+    if (!owned) return errors.notFound(res, '故事不存在');
+
+    const subscribed = await isSubscribed(userId);
+    if (subscribed) {
+      // 订阅用户视为已解锁
+      owned.state.pay = owned.state.pay || {};
+      owned.state.pay.unlockedChapterIndex = Math.max(Number(owned.state.pay.unlockedChapterIndex || 0), Number(chapterIndex || 0));
+      // 清理 pending
+      if (owned.state.pay.pending?.type === 'chapter_unlock') owned.state.pay.pending = undefined;
+      await owned.save();
+      const balance = await walletService.getBalance(userId);
+      return sendSuccess(res, HTTP_STATUS.OK, { sessionId, chapterIndex, balance, cost: 0, subscribed: true });
+    }
+
+    const cost = COST_CHAPTER_UNLOCK;
+    try {
+      const idem = clientRequestId ? `story:unlock:${sessionId}:${clientRequestId}` : null;
+      await walletService.consume(userId, cost, 'story_unlock_chapter', `${sessionId}:${chapterIndex}`, idem);
+    } catch (walletErr) {
+      return errors.badRequest(res, walletErr.message || '余额不足');
+    }
+
+    owned.state.pay = owned.state.pay || {};
+    owned.state.pay.unlockedChapterIndex = Math.max(Number(owned.state.pay.unlockedChapterIndex || 0), Number(chapterIndex || 0));
+    // 清理 pending（如果刚好解锁的是 pending 的那一章）
+    if (owned.state.pay.pending?.type === 'chapter_unlock' && Number(owned.state.pay.pending.chapterIndex || 0) <= Number(chapterIndex || 0)) {
+      owned.state.pay.pending = undefined;
+    }
+    await owned.save();
+
+    const balance = await walletService.getBalance(userId);
+    console.log(`[Story API] Chapter unlocked: sessionId=${sessionId}, chapterIndex=${chapterIndex}, cost=${cost}`);
+    return sendSuccess(res, HTTP_STATUS.OK, { sessionId, chapterIndex, balance, cost, subscribed: false });
+  } catch (err) {
+    console.error('[Story API] Unlock chapter error:', err);
+    errors.badRequest(res, err.message || '解锁失败');
   }
 });
 

@@ -849,8 +849,8 @@ const EditAgent: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">开场白（opening）</label>
-                <textarea
-                  rows={3}
+            <textarea
+              rows={3}
                   value={formData.storyConfig?.opening || ''}
                   onChange={(e) => handleStoryConfigChange('opening', e.target.value)}
                   placeholder="故事第一段（用户进入剧情时看到的开场）"

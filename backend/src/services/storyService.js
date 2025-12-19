@@ -152,8 +152,10 @@ const StoryImageCache = require('../models/StoryImageCache');
 const UserGallery = require('../models/UserGallery');
 const Agent = require('../models/Agent');
 const ProviderFactory = require('../providers/providerFactory');
+const crypto = require('crypto');
 const imageGenerationService = require('./imageGenerationService');
 const openaiImageService = require('./openaiImageService');
+const walletService = require('./walletService');
 
 // ===================== 短剧节拍系统 =====================
 // 每个进度区间对应不同的剧情节拍和情绪曲线
@@ -540,10 +542,282 @@ function getRecentStoryContext(session, count = 2, maxChars = 520) {
   return joined.length > maxChars ? joined.slice(-maxChars) : joined;
 }
 
+function buildContextBundle(session, opts = {}) {
+  const count = Number.isFinite(opts.count) ? opts.count : 2;
+  const maxChars = Number.isFinite(opts.maxChars) ? opts.maxChars : 900;
+  const memoryK = Number.isFinite(opts.memoryK) ? opts.memoryK : 4;
+
+  const recentText = getRecentStoryContext(session, count, Math.min(700, maxChars));
+  const summary = (session?.state?.summary || '').trim();
+  const canonFacts = Array.isArray(session?.state?.canonFacts) ? session.state.canonFacts.slice(-6) : [];
+  const openLoops = Array.isArray(session?.state?.openLoops) ? session.state.openLoops.slice(-6) : [];
+  const memoryEvents = Array.isArray(session?.memoryEvents) ? session.memoryEvents.slice(-memoryK) : [];
+
+  // 轻量裁剪：让整体上下文不超过 maxChars
+  let packed =
+    `【摘要】${summary || '(无)'}\n` +
+    `【事实】${canonFacts.length ? canonFacts.join('；') : '(无)'}\n` +
+    `【伏笔】${openLoops.length ? openLoops.join('；') : '(无)'}\n` +
+    `【最近】\n${recentText || '(无)'}\n` +
+    `【记忆】\n${memoryEvents.length ? memoryEvents.map((m) => `- ${[m.place, m.stakes, m.secret].filter(Boolean).join(' / ')}`).join('\n') : '(无)'}\n`;
+
+  if (packed.length > maxChars) packed = packed.slice(-maxChars);
+  return { packed, recentText, summary, canonFacts, openLoops, memoryEvents };
+}
+
+function addUniqueLimited(arr, item, max = 7) {
+  if (!item) return arr;
+  const v = String(item).trim();
+  if (!v) return arr;
+  const exists = arr.some((x) => String(x).trim() === v);
+  if (!exists) arr.push(v);
+  while (arr.length > max) arr.shift();
+  return arr;
+}
+
+function updateRollingSummary(prev, newContent, maxLen = 420) {
+  const clean = String(newContent || '').replace(/\[[^\]]+\]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return (prev || '').slice(-maxLen);
+  const merged = `${(prev || '').trim()} ${clean}`.trim();
+  return merged.length > maxLen ? merged.slice(-maxLen) : merged;
+}
+
+function guessOpenLoop(content) {
+  const t = String(content || '').trim();
+  if (!t) return null;
+  // 取结尾的悬念句/半句
+  const m =
+    t.match(/(门.*?被.*?打开.*?$)/) ||
+    t.match(/(手机.*?响.*?$)/) ||
+    t.match(/(脚步声.*?$)/) ||
+    t.match(/(你.*?[？\?].*$)/) ||
+    t.match(/(——.*?$)/) ||
+    t.match(/(\.\.\..*$)/);
+  const s = (m ? m[1] : t.slice(-24)).replace(/\s+/g, ' ').trim();
+  return s.length > 36 ? s.slice(-36) : s;
+}
+
+function extractPlaceFromText(content) {
+  const patterns = [
+    /在(.{2,8})(里|中|上)/,
+    /走进了?(.{2,10})/,
+    /来到了?(.{2,10})/,
+    /进入了?(.{2,10})/,
+  ];
+  for (const p of patterns) {
+    const m = String(content || '').match(p);
+    if (m) return m[1];
+  }
+  return '';
+}
+
+function buildMemoryEventFromParagraph(content) {
+  const text = String(content || '');
+  const tags = [];
+  const addTag = (k, tag) => { if (text.includes(k)) tags.push(tag); };
+  addTag('电话', 'call');
+  addTag('手机', 'call');
+  addTag('门', 'intrusion');
+  addTag('未婚', 'identity');
+  addTag('秘密', 'secret');
+  addTag('证据', 'evidence');
+  addTag('交易', 'deal');
+  addTag('钱', 'deal');
+  addTag('警', 'risk');
+  addTag('危险', 'risk');
+
+  const place = extractPlaceFromText(text);
+  const stakes =
+    (text.includes('否则') || text.includes('不然') || text.includes('代价') || text.includes('威胁'))
+      ? '有代价/风险'
+      : '';
+  const secret =
+    (text.includes('其实') || text.includes('原来') || text.includes('我知道') || text.includes('真相'))
+      ? '出现新线索'
+      : '';
+
+  let intensity = 0;
+  if (/(掐|摁|压|逼近|咬|吻|贴近)/.test(text)) intensity = 6;
+  if (/(威胁|报警|死|完了|崩|危险)/.test(text)) intensity = Math.max(intensity, 7);
+
+  return {
+    tags: Array.from(new Set(tags)).slice(0, 6),
+    people: [],
+    place,
+    stakes,
+    secret,
+    intensity,
+  };
+}
+
+function applyV2LightStateUpdates(session, paragraphIndex, content) {
+  if (!session?.state) return;
+  // 滚动摘要
+  session.state.summary = updateRollingSummary(session.state.summary, content, 420);
+
+  // 伏笔（取悬念尾句）
+  if (!Array.isArray(session.state.openLoops)) session.state.openLoops = [];
+  addUniqueLimited(session.state.openLoops, guessOpenLoop(content), 7);
+
+  // 记忆事件（轻量）
+  if (!Array.isArray(session.memoryEvents)) session.memoryEvents = [];
+  const mem = buildMemoryEventFromParagraph(content);
+  session.memoryEvents.push({ ...mem, paragraphIndex, createdAt: new Date() });
+  while (session.memoryEvents.length > 50) session.memoryEvents.shift();
+}
+
+function pickWorkflowVersion(session, options = {}) {
+  const forced = options.workflowVersion || options.workflow;
+  if (forced === 'v1' || forced === 'v2') return forced;
+
+  const fromState = session?.state?.workflow;
+  if (fromState === 'v1' || fromState === 'v2') return fromState;
+
+  // Switch: STORY_WORKFLOW=v1|v2 (v2 默认灰度 10%)
+  const mode = (process.env.STORY_WORKFLOW || 'v2').toLowerCase();
+  if (mode === 'v1') return 'v1';
+
+  const percent = Number.isFinite(Number(process.env.STORY_WORKFLOW_V2_PERCENT))
+    ? Math.max(0, Math.min(100, Number(process.env.STORY_WORKFLOW_V2_PERCENT)))
+    : 10;
+
+  const id = String(session?._id || '');
+  const h = crypto.createHash('md5').update(id).digest('hex');
+  const bucket = parseInt(h.slice(0, 2), 16); // 0-255
+  const threshold = Math.floor((percent / 100) * 256);
+  return bucket < threshold ? 'v2' : 'v1';
+}
+
+function safeJsonParseFromText(text) {
+  const s = String(text || '').trim();
+  if (!s) return null;
+  // 先找 ```json ``` 块
+  const fenced = s.match(/```json\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced ? fenced[1] : s;
+  // 再找第一个 { ... } 大括号块
+  const brace = candidate.match(/\{[\s\S]*\}/);
+  if (!brace) return null;
+  try {
+    return JSON.parse(brace[0]);
+  } catch {
+    return null;
+  }
+}
+
+function buildDirectorSystemPrompt(agent, session) {
+  const config = agent.storyConfig || {};
+  const persona = config.personality || '';
+  return `你是短剧导演，负责给编剧一份“下一段的导演指令”。\n` +
+    `要求：只输出 JSON（不要解释、不要换行外内容）。\n` +
+    `目标：更爽、更短、更易读；每段必须推进事件并以悬念收尾。\n` +
+    `角色：${agent.name}。人设：${persona}\n` +
+    `边界：R18_soft（强撩可，避免露骨细节/明显违规词）。\n` +
+    `JSON 字段：beat(one of opening/escalation/reveal/crisis/payoff), newInfoType(信息/动作/人物/证据), twist, hook, conflict, stakes, openLoop, canonFactAdd(optional), choices(array 2-3 strings).`;
+}
+
+function buildDirectorUserPrompt(session, intent) {
+  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
+  const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
+  const lastStart = last.trim().slice(0, 24);
+  return `${bundle.packed}\n【意图】${intent}\n` +
+    `要求：开头禁止与上一段开头相似：「${lastStart}」。\n` +
+    `输出 JSON。`;
+}
+
+function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
+  const config = agent.storyConfig || {};
+  const persona = config.personality || '';
+  const appearance = config.appearance || agent.description || '';
+  const beat = directorPlan?.beat || session?.state?.beat || '';
+
+  const base =
+    `你是短剧编剧。\n` +
+    `角色必须用「${agent.name}」的名字表达（不要用“我”）。用户一律用“你”。\n` +
+    `写作要求：台词驱动+动作推进；每段必须有新信息点；结尾必须悬念断在关键时刻。\n` +
+    `长度：80-120字（中文短句）。边界：R18_soft（强撩暗示可，避免露骨）。\n` +
+    `人设：${persona}\n` +
+    `节拍：${beat}\n`;
+
+  if (!generateImage) return base;
+
+  return base +
+    `外貌：${appearance}\n` +
+    `另外，末尾必须附加场景块：\n` +
+    `---SCENE---\nclothing:服装\npose:姿势\nexpression:表情\nbackground:背景\nmood:氛围\n---END---`;
+}
+
+function buildWriterUserPrompt(session, directorPlan, userInput) {
+  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
+  const intent = userInput ? `回应玩家输入：「${userInput}」并推进剧情` : '续写推进剧情';
+  return `${bundle.packed}\n【导演指令(JSON)】\n${JSON.stringify(directorPlan || {}, null, 0)}\n` +
+    `【任务】${intent}\n` +
+    `输出正文 + [好感+X][心情:X]（可不写表情/动作标签）。`;
+}
+
+function normalizeFirstLine(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  const first = t.split('\n').find(Boolean) || t;
+  return first.replace(/[「」"“”]/g, '').slice(0, 24);
+}
+
+function ensureShortDramaFormat(content, lastParagraph) {
+  let out = String(content || '').trim();
+  if (!out) return out;
+  // 过长则截断（尽量保留结尾悬念）
+  if (out.length > 180) out = out.slice(0, 160).trim();
+
+  // 如果开头与上一段过像，强制换一个更直接的开头（本地兜底）
+  const lastStart = normalizeFirstLine(lastParagraph);
+  const curStart = normalizeFirstLine(out);
+  if (lastStart && curStart && lastStart === curStart) {
+    out = `「别装。」\n` + out;
+  }
+  return out;
+}
+
+function pickChapterPayReason(session) {
+  // 简短但强钩子，驱动“解锁下一章”
+  const reasons = [
+    '下一章将揭露关键身份',
+    '下一章出现决定性证据',
+    '下一章关系将越过临界点',
+    '下一章危机爆发，必须做选择',
+  ];
+  // 根据节拍/好感做轻微偏置
+  const beat = session?.state?.beat || '';
+  if (beat === 'reveal') return '下一章揭露真相';
+  if (beat === 'crisis') return '下一章危机爆发';
+  return reasons[Math.floor(Math.random() * reasons.length)];
+}
+
+function updateChapterPaywall(session) {
+  const size = session?.state?.chapter?.size || 5;
+  const total = session?.totalParagraphs || session?.paragraphs?.length || 0;
+  const currentChapterIndex = Math.max(0, Math.floor(Math.max(0, total - 1) / size));
+  session.state.chapter = session.state.chapter || { index: 0, size };
+  session.state.chapter.index = currentChapterIndex;
+  session.state.chapter.size = size;
+
+  // 在章末设置“下一章解锁”付费点（pending），下一次继续时会被 routes 侧拦截
+  if (total > 0 && total % size === 0) {
+    const nextChapterIndex = currentChapterIndex + 1;
+    session.state.pay = session.state.pay || { unlockedChapterIndex: 0 };
+    session.state.pay.pending = {
+      type: 'chapter_unlock',
+      chapterIndex: nextChapterIndex,
+      reason: pickChapterPayReason(session),
+      createdAt: new Date(),
+    };
+    return { ...session.state.pay.pending };
+  }
+  return null;
+}
+
 function buildContinuePrompt(session) {
   const direction = PLOT_DIRECTIONS[Math.floor(Math.random() * PLOT_DIRECTIONS.length)];
   const progress = session.progress || 0;
-  const context = getRecentStoryContext(session, 2, 520);
+  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
 
@@ -552,14 +826,14 @@ function buildContinuePrompt(session) {
   else if (progress < 50) stageGuide = `升级冲突（方向：${direction}）`;
   else if (progress < 80) stageGuide = `高潮反转（方向：${direction}）`;
 
-  return `【已发生（最近）】\n${context || '(无)'}\n\n【任务】续写下一段：${stageGuide}\n- 必须推进事件，禁止原地暧昧拉扯\n- 开头必须完全换句式（禁止与上一段开头相似）：「${lastStart}」\n- 必须出现一个新信息/新动作/新人物/新证据（四选一）\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”（用角色名+动作来写）\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n【任务】续写下一段：${stageGuide}\n- 必须推进事件，禁止原地暧昧拉扯\n- 开头必须完全换句式（禁止与上一段开头相似）：「${lastStart}」\n- 必须出现一个新信息/新动作/新人物/新证据（四选一）\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”（用角色名+动作来写）\n输出正文 + [好感+X][心情:X]`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  const context = getRecentStoryContext(session, 2, 520);
+  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
-  return `【已发生（最近）】\n${context || '(无)'}\n\n【玩家输入】${userInput}\n\n【任务】回应并续写：\n- 必须推进事件（给出明确行动/决定/代价）\n- 开头必须换句式（禁止与上一段开头相似）：「${lastStart}」\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n【玩家输入】${userInput}\n\n【任务】回应并续写：\n- 必须推进事件（给出明确行动/决定/代价）\n- 开头必须换句式（禁止与上一段开头相似）：「${lastStart}」\n- 结尾断在关键时刻（悬念）\n- 只写80-120字\n- 用户一律用“你”，角色不要用“我”\n输出正文 + [好感+X][心情:X]`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
@@ -732,57 +1006,6 @@ async function generateImageWithConsistency(imagePrompt, agent, progress) {
   return imageUrl;
 }
 
-/**
- * 异步生成图片并更新段落
- */
-async function generateImageAsync(sessionId, paragraphIndex, imagePrompt, agentId) {
-  try {
-    const agent = await Agent.findById(agentId);
-    if (!agent) return;
-
-    const session = await StorySession.findById(sessionId);
-    if (!session) return;
-
-    const progress = session.progress;
-    // 用段落内容 + 当前状态补充图片 prompt，确保与文案情景一致且不重复
-    const paragraph = session.paragraphs?.[paragraphIndex];
-    const stateUpdate = session.state || {};
-    const enrichedPrompt = buildHeuristicImagePrompt(paragraph?.content, session.state, stateUpdate, paragraphIndex, progress);
-    const finalPrompt = imagePrompt ? `${imagePrompt}，${enrichedPrompt}` : enrichedPrompt;
-
-    const imageUrl = await generateImageWithConsistency(finalPrompt, agent, progress);
-    
-    if (imageUrl && session.paragraphs[paragraphIndex]) {
-      session.paragraphs[paragraphIndex].imageUrl = imageUrl;
-      // 保存实际用于生图的 prompt（便于后续避免重复）
-      session.paragraphs[paragraphIndex].imagePrompt = finalPrompt;
-      await session.save();
-      console.log(`[StoryService] 异步图片已更新: sessionId=${sessionId}, index=${paragraphIndex}`);
-      
-      // 保存到用户画廊
-      try {
-        const paragraph = session.paragraphs[paragraphIndex];
-        await UserGallery.addToGallery({
-          userId: session.userId,
-          agentId: session.agentId,
-          mediaType: 'image',
-          mediaUrl: imageUrl,
-          source: 'story',
-          storySessionId: session._id,
-          prompt: imagePrompt,
-          context: paragraph.content?.slice(0, 200) || '',
-          isNsfw: progress >= 60,
-        });
-        console.log(`[StoryService] 图片已保存到用户画廊`);
-      } catch (galleryErr) {
-        console.warn('[StoryService] 保存到画廊失败:', galleryErr.message);
-      }
-    }
-  } catch (err) {
-    console.error('[StoryService] 异步图片生成失败:', err.message);
-  }
-}
-
 function extractStateUpdate(content) {
   const lastAction = content.slice(-50);
   
@@ -895,7 +1118,8 @@ async function startStory(userId, agentId) {
  * - 客户端轮询 /api/story/:sessionId/image/:index 获取图片
  */
 async function continueStory(sessionId, options = {}) {
-  const { generateImage = false } = options; // 默认不生成图片，需要用户开启写真模式
+  const { generateImage = false, imageCharge = 0 } = options; // 默认不生成图片，需要用户开启写真模式
+  const t0 = Date.now();
   
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
@@ -904,31 +1128,87 @@ async function continueStory(sessionId, options = {}) {
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
-  // 根据是否开启写真模式选择不同的 prompt 和 token 限制
-  const systemPrompt = generateImage 
-    ? buildSystemPromptWithScene(agent, session)  // 写真模式：包含场景数据格式
-    : buildSystemPrompt(agent, session);          // 纯文字：精简 prompt
-  const userPrompt = buildContinuePrompt(session);
+  const workflowVersion = pickWorkflowVersion(session, options);
+  session.state.workflow = workflowVersion;
+
   const modelName = agent.modelName || 'grok-2';
-  const maxTokens = generateImage ? 250 : 150;    // 精简 token 提升速度
-  
-  // 生成文字
-  const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms (tokens: ${maxTokens})`);
+
+  let rawResponse;
+  let directorPlan = null;
+  let llmMs = 0;
+
+  if (workflowVersion === 'v2') {
+    // Director step (short JSON)
+    const directorSystem = buildDirectorSystemPrompt(agent, session);
+    const directorUser = buildDirectorUserPrompt(session, '继续推进下一段（短剧节奏）');
+    const directorStart = Date.now();
+    const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 160, temperature: 0.4 });
+    directorPlan = safeJsonParseFromText(directorRaw) || {};
+    const directorMs = Date.now() - directorStart;
+    llmMs += directorMs;
+    console.log(`[StoryService] Director took ${directorMs}ms`);
+
+    // Writer step
+    const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+    const writerUser = buildWriterUserPrompt(session, directorPlan, null);
+    const writerStart = Date.now();
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 260 : 190, temperature: 0.9 });
+    const writerMs = Date.now() - writerStart;
+    llmMs += writerMs;
+    console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
+  } else {
+    // v1: 单次续写
+    const systemPrompt = generateImage
+      ? buildSystemPromptWithScene(agent, session)
+      : buildSystemPrompt(agent, session);
+    const userPrompt = buildContinuePrompt(session);
+    const maxTokens = generateImage ? 250 : 150;
+    const startTime = Date.now();
+    rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+    const oneMs = Date.now() - startTime;
+    llmMs += oneMs;
+    console.log(`[StoryService] LLM took ${oneMs}ms (tokens: ${maxTokens})`);
+  }
+
   const parsed = parseAIResponse(rawResponse);
 
-  const { content, affectionChange, stateChanges, sceneData } = parsed;
+  const { affectionChange, stateChanges, sceneData } = parsed;
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
+  const content = ensureShortDramaFormat(parsed.content, lastParagraph);
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
+
+  // v2 director state merge
+  if (workflowVersion === 'v2' && directorPlan) {
+    if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
+    if (directorPlan.conflict) stateUpdate.conflict = directorPlan.conflict;
+    if (directorPlan.stakes) stateUpdate.stakes = directorPlan.stakes;
+    if (directorPlan.openLoop) {
+      if (!Array.isArray(session.state.openLoops)) session.state.openLoops = [];
+      addUniqueLimited(session.state.openLoops, directorPlan.openLoop, 7);
+    }
+    if (directorPlan.canonFactAdd) {
+      if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
+      addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
+    }
+  }
   
   // 保存段落（如果开启写真模式，标记为图片生成中）
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'ai', null, null, null);
+  const meta = {};
+  if (workflowVersion === 'v2' && Array.isArray(directorPlan?.choices)) {
+    meta.choices = directorPlan.choices
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((t) => ({ text: String(t).slice(0, 24), value: String(t).slice(0, 60), kind: 'choice' }));
+  }
+  if (generateImage && imageCharge) meta.imageCharge = Number(imageCharge) || 0;
+  session.addParagraph(content, 'ai', null, null, null, meta);
+  applyV2LightStateUpdates(session, paragraphIndex, content);
   
   // 标记图片生成状态
   if (generateImage && sceneData) {
@@ -945,6 +1225,7 @@ async function continueStory(sessionId, options = {}) {
     session.updateAffection(affectionChange);
   }
   
+  const payTrigger = updateChapterPaywall(session);
   await session.save();
   
   // 更新角色累计互动次数
@@ -956,6 +1237,13 @@ async function continueStory(sessionId, options = {}) {
   if (generateImage && sceneData) {
     generateImageAsync(sessionId, paragraphIndex, agent, sceneData, session.affection?.level || 0);
   }
+
+  // Metrics (logs)
+  const totalMs = Date.now() - t0;
+  const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
+  console.log(
+    `[StoryMetrics] action=continue session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'}`
+  );
   
   return {
     content,
@@ -965,6 +1253,10 @@ async function continueStory(sessionId, options = {}) {
     affection: session.affection,
     imageGenerating: generateImage && !!sceneData, // 告诉客户端是否在生成图片
     sceneData,
+    workflowVersion,
+    directorPlan,
+    choices: session.paragraphs?.[paragraphIndex]?.choices || [],
+    payTrigger,
   };
 }
 
@@ -986,6 +1278,7 @@ async function generateImageAsync(sessionId, paragraphIndex, agent, sceneData, a
       if (session && session.paragraphs[paragraphIndex]) {
         session.paragraphs[paragraphIndex].imageUrl = imageUrl;
         session.paragraphs[paragraphIndex].imageGenerating = false;
+        session.paragraphs[paragraphIndex].imageFailed = false;
         await session.save();
         console.log(`[StoryService] Image saved to paragraph ${paragraphIndex}`);
       }
@@ -998,6 +1291,27 @@ async function generateImageAsync(sessionId, paragraphIndex, agent, sceneData, a
       if (session && session.paragraphs[paragraphIndex]) {
         session.paragraphs[paragraphIndex].imageGenerating = false;
         session.paragraphs[paragraphIndex].imageFailed = true;
+
+        // 失败补偿：退还写真额外扣费（如果有记录）
+        const charge = Number(session.paragraphs[paragraphIndex].imageCharge || 0);
+        const refunded = !!session.paragraphs[paragraphIndex].imageChargeRefunded;
+        if (charge > 0 && !refunded) {
+          try {
+            await walletService.reward(
+              String(session.userId),
+              charge,
+              'story_image_refund',
+              `${sessionId}:${paragraphIndex}`,
+              null,
+              `refund:story_image:${sessionId}:${paragraphIndex}`
+            );
+            session.paragraphs[paragraphIndex].imageChargeRefunded = true;
+            console.log(`[StoryService] Refunded image charge: +${charge} for session=${sessionId} paragraph=${paragraphIndex}`);
+          } catch (refundErr) {
+            console.warn('[StoryService] Refund failed:', refundErr.message);
+          }
+        }
+
         await session.save();
       }
     } catch (e) {
@@ -1108,7 +1422,8 @@ async function generateSceneImageWithFal(agent, sceneData, affectionLevel = 0) {
  * 用户输入推进故事 - 文字先返回，图片异步生成
  */
 async function inputStory(sessionId, userInput, options = {}) {
-  const { generateImage = false } = options; // 默认不生成图片，需要用户开启写真模式
+  const { generateImage = false, imageCharge = 0 } = options; // 默认不生成图片，需要用户开启写真模式
+  const t0 = Date.now();
   
   const session = await StorySession.findById(sessionId);
   if (!session) throw new Error('故事不存在');
@@ -1117,30 +1432,82 @@ async function inputStory(sessionId, userInput, options = {}) {
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
   
-  // 根据是否开启写真模式选择不同的 prompt 和 token 限制
-  const systemPrompt = generateImage 
-    ? buildSystemPromptWithScene(agent, session)
-    : buildSystemPrompt(agent, session);
-  const userPrompt = buildUserInputPrompt(session, userInput);
   const modelName = agent.modelName || 'grok-2';
-  const maxTokens = generateImage ? 250 : 150;
+  const workflowVersion = pickWorkflowVersion(session, options);
+  session.state.workflow = workflowVersion;
 
-  const startTime = Date.now();
-  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-  console.log(`[StoryService] LLM took ${Date.now() - startTime}ms (tokens: ${maxTokens})`);
+  let rawResponse;
+  let directorPlan = null;
+  let llmMs = 0;
+
+  if (workflowVersion === 'v2') {
+    const directorSystem = buildDirectorSystemPrompt(agent, session);
+    const directorUser = buildDirectorUserPrompt(session, `回应玩家输入并推进：${userInput}`);
+    const directorStart = Date.now();
+    const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 160, temperature: 0.4 });
+    directorPlan = safeJsonParseFromText(directorRaw) || {};
+    const directorMs = Date.now() - directorStart;
+    llmMs += directorMs;
+    console.log(`[StoryService] Director took ${directorMs}ms`);
+
+    const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+    const writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
+    const writerStart = Date.now();
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 260 : 190, temperature: 0.9 });
+    const writerMs = Date.now() - writerStart;
+    llmMs += writerMs;
+    console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
+  } else {
+    const systemPrompt = generateImage
+      ? buildSystemPromptWithScene(agent, session)
+      : buildSystemPrompt(agent, session);
+    const userPrompt = buildUserInputPrompt(session, userInput);
+    const maxTokens = generateImage ? 250 : 150;
+    const startTime = Date.now();
+    rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+    const oneMs = Date.now() - startTime;
+    llmMs += oneMs;
+    console.log(`[StoryService] LLM took ${oneMs}ms (tokens: ${maxTokens})`);
+  }
+
   const parsed = parseAIResponse(rawResponse);
 
-  const { content, affectionChange, stateChanges, sceneData } = parsed;
+  const { affectionChange, stateChanges, sceneData } = parsed;
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
+  const content = ensureShortDramaFormat(parsed.content, lastParagraph);
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
+
+  if (workflowVersion === 'v2' && directorPlan) {
+    if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
+    if (directorPlan.conflict) stateUpdate.conflict = directorPlan.conflict;
+    if (directorPlan.stakes) stateUpdate.stakes = directorPlan.stakes;
+    if (directorPlan.openLoop) {
+      if (!Array.isArray(session.state.openLoops)) session.state.openLoops = [];
+      addUniqueLimited(session.state.openLoops, directorPlan.openLoop, 7);
+    }
+    if (directorPlan.canonFactAdd) {
+      if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
+      addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
+    }
+  }
   
   // 保存段落（如果开启写真模式，标记为图片生成中）
   const paragraphIndex = session.paragraphs.length;
-  session.addParagraph(content, 'user_input', userInput, null, null);
+  const meta = {};
+  if (workflowVersion === 'v2' && Array.isArray(directorPlan?.choices)) {
+    meta.choices = directorPlan.choices
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((t) => ({ text: String(t).slice(0, 24), value: String(t).slice(0, 60), kind: 'choice' }));
+  }
+  if (generateImage && imageCharge) meta.imageCharge = Number(imageCharge) || 0;
+  session.addParagraph(content, 'user_input', userInput, null, null, meta);
+  applyV2LightStateUpdates(session, paragraphIndex, content);
   
   // 标记图片生成状态
   if (generateImage && sceneData) {
@@ -1156,6 +1523,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   const actualChange = affectionChange || 2;
   session.updateAffection(actualChange);
   
+  const payTrigger = updateChapterPaywall(session);
   await session.save();
   
   // 更新角色累计互动次数
@@ -1167,6 +1535,12 @@ async function inputStory(sessionId, userInput, options = {}) {
   if (generateImage && sceneData) {
     generateImageAsync(sessionId, paragraphIndex, agent, sceneData, session.affection?.level || 0);
   }
+
+  const totalMs = Date.now() - t0;
+  const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
+  console.log(
+    `[StoryMetrics] action=input session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'}`
+  );
   
   return {
     content,
@@ -1176,6 +1550,10 @@ async function inputStory(sessionId, userInput, options = {}) {
     affection: session.affection,
     imageGenerating: generateImage && !!sceneData,
     sceneData,
+    workflowVersion,
+    directorPlan,
+    choices: session.paragraphs?.[paragraphIndex]?.choices || [],
+    payTrigger,
   };
 }
 

@@ -67,10 +67,10 @@ class ImageGenerationService {
 
     const imageUrls = useReference
       ? await this.generateWithImg2Img(finalPrompt, {
-          imageUrl: referenceImage,
-          count,
-          width,
-          height,
+      imageUrl: referenceImage,
+      count,
+      width,
+      height,
           strength,
           // Fal 参数：image_prompt_strength 越大，越“贴近参考图”（构图/动作更像）
           // 我们的 strength 越大，表示越“变化”。默认用 (1 - strength) 映射。
@@ -82,7 +82,7 @@ class ImageGenerationService {
           count,
           width,
           height
-        });
+    });
 
     // 上传到 R2
     const results = await Promise.all(imageUrls.map(async (remoteUrl) => {

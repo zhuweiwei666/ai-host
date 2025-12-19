@@ -898,6 +898,19 @@ export interface StoryState {
   clothes: string;
   expression?: string;
   lastAction: string;
+  // v2 optional fields
+  workflow?: 'v1' | 'v2';
+  beat?: 'opening' | 'escalation' | 'reveal' | 'crisis' | 'payoff';
+  conflict?: string;
+  stakes?: string;
+  summary?: string;
+  openLoops?: string[];
+  canonFacts?: string[];
+  chapter?: { index: number; size: number };
+  pay?: {
+    pending?: { type: string; chapterIndex?: number; reason?: string; createdAt?: string };
+    unlockedChapterIndex?: number;
+  };
 }
 
 export interface StoryAffection {
@@ -910,6 +923,10 @@ export interface StoryParagraph {
   content: string;
   imageUrl?: string;      // 每层楼的配图
   imagePrompt?: string;   // 图片生成使用的 prompt
+  imageGenerating?: boolean;
+  imageFailed?: boolean;
+  sceneData?: Record<string, string>;
+  choices?: Array<{ text: string; value: string; kind?: 'choice' | 'cta' }>;
   source: 'ai' | 'user_input';
   userInput?: string;
   createdAt: string;
@@ -952,6 +969,9 @@ export interface StoryContinueResponse {
   balance?: number;
   cost?: number;
   imageGenerating?: boolean; // 是否有图片正在生成
+  choices?: Array<{ text: string; value: string; kind?: 'choice' | 'cta' }>;
+  payTrigger?: { type: string; chapterIndex?: number; reason?: string; createdAt?: string } | null;
+  subscribed?: boolean;
 }
 
 export interface StoryPhotoResponse {
@@ -971,12 +991,19 @@ export const startStory = (agentId: string) =>
   http.post<StoryStartResponse>('/story/start', { agentId });
 
 // AI 自动推进剧情
-export const continueStory = (sessionId: string, generateImage: boolean = false) =>
-  http.post<StoryContinueResponse>('/story/continue', { sessionId, generateImage });
+export const continueStory = (sessionId: string, generateImage: boolean = false, clientRequestId?: string) =>
+  http.post<StoryContinueResponse>('/story/continue', { sessionId, generateImage, clientRequestId });
 
 // 用户输入推进剧情
-export const inputStory = (sessionId: string, userInput: string, generateImage: boolean = false) =>
-  http.post<StoryContinueResponse>('/story/input', { sessionId, userInput, generateImage });
+export const inputStory = (sessionId: string, userInput: string, generateImage: boolean = false, clientRequestId?: string) =>
+  http.post<StoryContinueResponse>('/story/input', { sessionId, userInput, generateImage, clientRequestId });
+
+// 解锁章节
+export const unlockStoryChapter = (sessionId: string, chapterIndex: number, clientRequestId?: string) =>
+  http.post<{ sessionId: string; chapterIndex: number; balance: number; cost: number; subscribed: boolean }>(
+    '/story/unlock-chapter',
+    { sessionId, chapterIndex, clientRequestId }
+  );
 
 // 获取故事状态
 export const getStoryState = (sessionId: string) =>

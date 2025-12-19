@@ -7,6 +7,7 @@ import {
   startStory,
   continueStory,
   inputStory,
+  unlockStoryChapter,
   restartStory,
   getAgent,
   getParagraphImage,
@@ -64,6 +65,7 @@ export default function StoryPage() {
   // 正在加载图片的段落索引集合
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
   const pollingRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
+  const [paywall, setPaywall] = useState<{ chapterIndex: number; reason?: string } | null>(null);
   
   // 轮询图片状态
   const pollImage = useCallback(async (sid: string, index: number) => {
@@ -154,7 +156,7 @@ export default function StoryPage() {
         
         // 检查是否有图片需要轮询
         storyRes.data.paragraphs.forEach((p, idx) => {
-          if (!p.imageUrl && p.imagePrompt) {
+          if (!p.imageUrl && (p.imageGenerating || p.imagePrompt)) {
             startPolling(storyRes.data.sessionId, idx);
           }
         });
@@ -180,31 +182,32 @@ export default function StoryPage() {
   // 继续剧情
   const handleContinue = async () => {
     if (!sessionId || generating) return;
-
+    
     try {
       setGenerating(true);
       setError(null);
-
-      const res = await continueStory(sessionId, photoModeEnabled);
-
-      const paragraphIndex = res.data.paragraphIndex ?? paragraphs.length;
+      setPaywall(null);
+      
+      const reqId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      const res = await continueStory(sessionId, photoModeEnabled, reqId);
+      
       const newParagraph: StoryParagraph = {
         content: res.data.content,
         imageUrl: res.data.imageUrl || undefined,
         imagePrompt: res.data.imagePrompt,
+        imageGenerating: res.data.imageGenerating,
+        choices: res.data.choices,
         source: 'ai',
         createdAt: new Date().toISOString(),
       };
-
+      
       setParagraphs(prev => [...prev, newParagraph]);
       setProgress(res.data.progress);
       setStoryState(res.data.state);
       
-      // 如果写真模式开启且图片正在生成，开始轮询
-      if (photoModeEnabled && res.data.imageGenerating && sessionId) {
-        setLoadingImages(prev => new Set(prev).add(paragraphIndex));
-        const timer = setInterval(() => pollImage(sessionId, paragraphIndex), 2000);
-        pollingRef.current.set(paragraphIndex, timer);
+      // 图片生成中：开始轮询（避免重复 setInterval，统一走 startPolling）
+      if (res.data.imageGenerating && res.data.paragraphIndex !== undefined) {
+        startPolling(sessionId, res.data.paragraphIndex);
       }
       
       if (res.data.affection) {
@@ -214,37 +217,48 @@ export default function StoryPage() {
         setBalance(res.data.balance);
       }
       
-      // 如果图片正在生成，开始轮询
-      if (res.data.imageGenerating && res.data.paragraphIndex !== undefined) {
-        startPolling(sessionId, res.data.paragraphIndex);
-      }
+      // (已在上方处理)
       
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : '推进失败';
-      setError(errorMessage);
+      // 章锁：后端返回 402 + message=CHAPTER_LOCKED
+      const anyErr = err as any;
+      const statusCode = anyErr?.response?.status;
+      const msg = anyErr?.response?.data?.message || anyErr?.message;
+      const details = anyErr?.response?.data?.details;
+      if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
+        setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+      } else {
+        const errorMessage = err instanceof Error ? err.message : '推进失败';
+        setError(errorMessage);
+      }
     } finally {
       setGenerating(false);
     }
   };
   
   // 用户输入
-  const handleInput = async () => {
-    if (!sessionId || generating || !userInput.trim()) return;
+  const handleInput = async (override?: string) => {
+    if (!sessionId || generating) return;
+    const raw = (override ?? userInput).trim();
+    if (!raw) return;
     
     try {
       setGenerating(true);
       setError(null);
+      setPaywall(null);
       
-      const input = userInput.trim();
-      setUserInput('');
+      const input = raw;
+      if (!override) setUserInput('');
       
-      const res = await inputStory(sessionId, input, photoModeEnabled);
+      const reqId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      const res = await inputStory(sessionId, input, photoModeEnabled, reqId);
       
-      const paragraphIndex = res.data.paragraphIndex ?? paragraphs.length;
       const newParagraph: StoryParagraph = {
         content: res.data.content,
         imageUrl: res.data.imageUrl || undefined,
         imagePrompt: res.data.imagePrompt,
+        imageGenerating: res.data.imageGenerating,
+        choices: res.data.choices,
         source: 'user_input',
         userInput: input,
         createdAt: new Date().toISOString(),
@@ -260,15 +274,38 @@ export default function StoryPage() {
         setBalance(res.data.balance);
       }
       
-      // 如果写真模式开启且图片正在生成，开始轮询
-      if (photoModeEnabled && res.data.imageGenerating && sessionId) {
-        setLoadingImages(prev => new Set(prev).add(paragraphIndex));
-        const timer = setInterval(() => pollImage(sessionId, paragraphIndex), 2000);
-        pollingRef.current.set(paragraphIndex, timer);
+      // 图片生成中：开始轮询
+      if (res.data.imageGenerating && res.data.paragraphIndex !== undefined) {
+        startPolling(sessionId, res.data.paragraphIndex);
       }
       
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : '处理失败';
+      const anyErr = err as any;
+      const statusCode = anyErr?.response?.status;
+      const msg = anyErr?.response?.data?.message || anyErr?.message;
+      const details = anyErr?.response?.data?.details;
+      if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
+        setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+      } else {
+        const errorMessage = err instanceof Error ? err.message : '处理失败';
+        setError(errorMessage);
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleUnlockChapter = async () => {
+    if (!sessionId || !paywall || generating) return;
+    try {
+      setGenerating(true);
+      setError(null);
+      const reqId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      const res = await unlockStoryChapter(sessionId, paywall.chapterIndex, reqId);
+      setBalance(res.data.balance);
+      setPaywall(null);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '解锁失败';
       setError(errorMessage);
     } finally {
       setGenerating(false);
@@ -471,7 +508,7 @@ export default function StoryPage() {
                         className="w-full max-w-sm rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => setExpandedImage(p.imageUrl || null)}
                       />
-                    ) : loadingImages.has(idx) || (!p.imageUrl && p.imagePrompt) ? (
+                    ) : loadingImages.has(idx) || p.imageGenerating || (!p.imageUrl && p.imagePrompt) ? (
                       <ImageLoadingPlaceholder />
                     ) : null}
                   </div>
@@ -517,6 +554,39 @@ export default function StoryPage() {
       {/* 底部操作栏 */}
       <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
           <div className="p-3">
+            {/* 快捷选项（低阅读门槛） */}
+            {paragraphs.length > 0 && (paragraphs[paragraphs.length - 1].choices?.length || 0) > 0 && !paywall && (
+              <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
+                {paragraphs[paragraphs.length - 1].choices!.slice(0, 3).map((c, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleInput(c.value)}
+                    disabled={generating}
+                    className="shrink-0 px-3 py-2 rounded-full bg-gray-800 border border-gray-700 text-gray-100 text-sm hover:border-pink-500/60 disabled:opacity-50"
+                  >
+                    {c.text}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 章解锁弹条 */}
+            {paywall && (
+              <div className="mb-3 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm text-yellow-200 font-medium">需要解锁下一章</div>
+                  <div className="text-xs text-yellow-200/80 truncate">{paywall.reason || '下一章包含关键揭露与强钩子'}</div>
+                </div>
+                <button
+                  onClick={handleUnlockChapter}
+                  disabled={generating}
+                  className="px-3 py-2 rounded-lg bg-yellow-500 text-black text-sm font-semibold hover:bg-yellow-400 disabled:opacity-50"
+                >
+                  解锁
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 mb-3">
               <input
                 type="text"
@@ -529,7 +599,7 @@ export default function StoryPage() {
               />
               {userInput.trim() && (
                 <button
-                  onClick={handleInput}
+                  onClick={() => handleInput()}
                   disabled={generating}
                   className="px-4 py-2.5 bg-pink-500 text-white text-sm font-medium rounded-full hover:bg-pink-600 disabled:opacity-50 transition-colors"
                 >
