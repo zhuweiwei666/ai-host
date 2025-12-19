@@ -469,14 +469,14 @@ function buildSystemPrompt(agent, session) {
   // 获取上一段内容，避免重复
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
   
-  // 短剧风格 prompt - 强调性张力和暧昧
+  // 沉浸版 prompt - 感官化场景 + 心理独白
   return `你是${agent.name}，${config.personality || archetype.personality}
 
-【核心】写让人脸红心跳的短剧！每段都要有暧昧/撩拨/心动瞬间！
-- 肢体接触：靠近、触碰、贴身、拉扯
-- 暧昧对话：低语、调戏、欲拒还迎
-- 感官细节：呼吸、心跳、温度、气息
-- 结尾钩子：关键时刻被打断/她突然靠近/危险的距离
+【写作风格】沉浸式短剧，让读者身临其境
+1. 感官化场景：不说"房间很暗"，而说"只剩下两人的呼吸，她的气息热得让人窒息"
+2. 心理暗示：不说"她心想不应该"，而说"她咬了咬嘴唇，手却没有推开"
+3. 暧昧张力：肢体接触、低语、眼神交缠、危险的距离
+4. 感官细节：温度、气息、心跳、触感、声音
 
 【尺度】${intimacyGuide}
 
@@ -485,8 +485,11 @@ function buildSystemPrompt(agent, session) {
 场景：${session.state.scene}，好感${affection.level}%
 目标：${dramaBeat.goal}
 
-【输出】80-120字，让人脸红心跳
-「撩人的台词」+暧昧动作+悬念
+【输出格式】120-180字
+- 1句感官化场景（氛围/环境通过感受传达）
+- 暧昧对话+肢体动作
+- 1句心理暗示（用动作/微表情代替直接心理描写）
+- 悬念结尾
 [好感+X][心情:X]`;
 }
 
@@ -513,7 +516,11 @@ function buildSystemPromptWithScene(agent, session) {
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
 
-【核心】写让人脸红心跳的短剧！肢体接触+暧昧对话+感官细节
+【写作风格】沉浸式短剧
+1. 感官化场景：通过角色感受传达环境（"她的气息近在咫尺，热得让人无法思考"）
+2. 心理暗示：用动作/微表情代替心理描写（"她垂下眼睫，却没有后退"）
+3. 暧昧张力+感官细节
+
 【尺度】${intimacyGuide}
 
 上一段：「${lastParagraph}」（换个开头！）
@@ -523,13 +530,13 @@ function buildSystemPromptWithScene(agent, session) {
 
 输出：
 ---STORY---
-「撩人台词」+暧昧动作（80-120字）
+感官场景+暧昧对话+心理暗示+悬念（120-180字）
 [好感+X][心情:X]
 ---SCENE---
-clothing:性感服装描述
+clothing:性感服装
 pose:暧昧姿势
 expression:撩人表情
-background:场景
+background:私密场景
 mood:暧昧氛围
 ---END---`;
 }
@@ -757,13 +764,14 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const intimacyAction = directorPlan?.intimacyAction || '';
 
   const base =
-    `你是短剧编剧，写让人脸红心跳的暧昧短剧。\n` +
+    `你是短剧编剧，写沉浸式暧昧短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
-    `写作要求：\n` +
-    `- 每段必须有暧昧/撩拨元素：${intimacyAction || '触碰、低语、眼神、呼吸交缠'}\n` +
-    `- 感官细节：心跳、温度、气息、脸红\n` +
-    `- 结尾断在心跳加速的瞬间\n` +
-    `长度：80-120字。边界：R18_soft（强撩暗示可，不露骨）。\n` +
+    `【沉浸式写法】\n` +
+    `1. 感官化场景：不说"房间很暗"，说"只剩下两人的呼吸，她的气息热得让人窒息"\n` +
+    `2. 心理暗示：不说"她心想"，说"她咬了咬嘴唇，手却没有推开"\n` +
+    `3. 暧昧动作：${intimacyAction || '触碰、低语、眼神、呼吸交缠'}\n` +
+    `4. 感官细节：温度、气息、心跳、触感\n` +
+    `长度：120-180字。边界：R18_soft（强撩暗示可，不露骨）。\n` +
     `人设：${persona}\n` +
     `节拍：${beat}\n`;
 
@@ -771,7 +779,7 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
 
   return base +
     `外貌：${appearance}\n` +
-    `附加场景块（暧昧性感风格）：\n` +
+    `附加场景块：\n` +
     `---SCENE---\nclothing:性感服装\npose:暧昧姿势\nexpression:撩人表情\nbackground:私密场景\nmood:暧昧氛围\n---END---`;
 }
 
@@ -858,14 +866,14 @@ function buildContinuePrompt(session) {
   else if (progress < 70) stageGuide = `亲密升级！${direction}`;
   else if (progress < 85) stageGuide = `情感爆发！${direction}`;
 
-  return `${bundle.packed}\n\n【任务】续写：${stageGuide}\n- 必须有暧昧/撩拨元素（触碰、低语、眼神、呼吸交缠）\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾断在心跳加速的瞬间\n- 80-120字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【任务】续写：${stageGuide}\n【风格】沉浸式写法\n- 1句感官化场景（通过感受传达氛围）\n- 暧昧对话+肢体动作\n- 1句心理暗示（用动作代替心理描写）\n- 换个开头（禁止与「${lastStart}」相似）\n- 悬念结尾\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 function buildUserInputPrompt(session, userInput) {
   const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
-  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】撩人地回应他！\n- 用暧昧的方式回应（靠近、触碰、低语、眼神勾人）\n- 制造心动瞬间\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾断在暧昧的关键时刻\n- 80-120字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】撩人地回应他！\n【风格】沉浸式写法\n- 1句感官化场景（她感受到的氛围/温度/距离）\n- 暧昧回应+肢体动作\n- 1句心理暗示（用微表情/小动作代替心理描写）\n- 换个开头（禁止与「${lastStart}」相似）\n- 悬念结尾\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
@@ -1191,7 +1199,7 @@ async function continueStory(sessionId, options = {}) {
     const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
     const writerUser = buildWriterUserPrompt(session, directorPlan, null);
     const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 260 : 190, temperature: 0.9 });
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 380 : 300, temperature: 0.9 });
     const writerMs = Date.now() - writerStart;
     llmMs += writerMs;
     console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
@@ -1201,7 +1209,7 @@ async function continueStory(sessionId, options = {}) {
       ? buildSystemPromptWithScene(agent, session)
       : buildSystemPrompt(agent, session);
     const userPrompt = buildContinuePrompt(session);
-    const maxTokens = generateImage ? 250 : 150;
+    const maxTokens = generateImage ? 350 : 280;
     const startTime = Date.now();
     rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
     const oneMs = Date.now() - startTime;
@@ -1492,7 +1500,7 @@ async function inputStory(sessionId, userInput, options = {}) {
     const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
     const writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
     const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 260 : 190, temperature: 0.9 });
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 380 : 300, temperature: 0.9 });
     const writerMs = Date.now() - writerStart;
     llmMs += writerMs;
     console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
@@ -1501,7 +1509,7 @@ async function inputStory(sessionId, userInput, options = {}) {
       ? buildSystemPromptWithScene(agent, session)
       : buildSystemPrompt(agent, session);
     const userPrompt = buildUserInputPrompt(session, userInput);
-    const maxTokens = generateImage ? 250 : 150;
+    const maxTokens = generateImage ? 350 : 280;
     const startTime = Date.now();
     rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
     const oneMs = Date.now() - startTime;
