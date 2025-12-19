@@ -23,7 +23,7 @@ const Subscription = require('../models/Subscription');
 // 消耗配置
 const COST_CONTINUE = 2;  // 继续剧情消耗
 const COST_INPUT = 2;     // 用户输入消耗
-const COST_CHAPTER_UNLOCK = 20; // 章解锁（一次性）
+const COST_CHAPTER_UNLOCK = 10; // 章解锁（一次性），每20段触发一次
 
 async function getActiveSubscription(userId) {
   const now = new Date();

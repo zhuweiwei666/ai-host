@@ -856,7 +856,8 @@ function pickChapterPayReason(session) {
 }
 
 function updateChapterPaywall(session) {
-  const size = session?.state?.chapter?.size || 5;
+  // 章节大小：20段一章（约15-20分钟阅读量），比5段更合理
+  const size = session?.state?.chapter?.size || 20;
   const total = session?.totalParagraphs || session?.paragraphs?.length || 0;
   const currentChapterIndex = Math.max(0, Math.floor(Math.max(0, total - 1) / size));
   session.state.chapter = session.state.chapter || { index: 0, size };
