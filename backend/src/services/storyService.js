@@ -469,27 +469,34 @@ function buildSystemPrompt(agent, session) {
   // 获取上一段内容，避免重复
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
   
-  // 沉浸版 prompt - 感官化场景 + 心理独白
+  // 沉浸版 prompt - 剧情推进 + 感官化场景
   return `你是${agent.name}，${config.personality || archetype.personality}
 
-【写作风格】沉浸式短剧，让读者身临其境
-1. 感官化场景：不说"房间很暗"，而说"只剩下两人的呼吸，她的气息热得让人窒息"
-2. 心理暗示：不说"她心想不应该"，而说"她咬了咬嘴唇，手却没有推开"
-3. 暧昧张力：肢体接触、低语、眼神交缠、危险的距离
-4. 感官细节：温度、气息、心跳、触感、声音
+【最重要】每段必须推进剧情！不能原地打转！
+必须包含以下至少1项：
+- 新事件：有人敲门/电话响/意外发生/被发现
+- 新信息：揭示秘密/说出真相/暴露身份
+- 新行动：关系升级/做出决定/跨越界限
+- 新冲突：阻碍出现/误会产生/第三者介入
+
+【写作风格】沉浸式，但事件驱动
+1. 先写发生了什么事（新事件/新行动）
+2. 再用感官细节渲染（气息、心跳、温度）
+3. 用动作暗示心理（咬唇、垂眼、手指收紧）
+4. 结尾必须是悬念/转折（不是单纯的暧昧停留）
+
+【禁止】
+- 禁止重复上一段的场景和动作
+- 禁止原地暧昧拉扯不推进
+- 禁止用相似的开头
+
+上一段：「${lastParagraph}」
 
 【尺度】${intimacyGuide}
-
-上一段：「${lastParagraph}」（换个开头！）
-
 场景：${session.state.scene}，好感${affection.level}%
-目标：${dramaBeat.goal}
 
-【输出格式】120-180字
-- 1句感官化场景（氛围/环境通过感受传达）
-- 暧昧对话+肢体动作
-- 1句心理暗示（用动作/微表情代替直接心理描写）
-- 悬念结尾
+【输出】120-180字
+新事件 + 感官渲染 + 悬念结尾
 [好感+X][心情:X]`;
 }
 
@@ -516,28 +523,31 @@ function buildSystemPromptWithScene(agent, session) {
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
 
-【写作风格】沉浸式短剧
-1. 感官化场景：通过角色感受传达环境（"她的气息近在咫尺，热得让人无法思考"）
-2. 心理暗示：用动作/微表情代替心理描写（"她垂下眼睫，却没有后退"）
-3. 暧昧张力+感官细节
+【最重要】每段必须推进剧情！
+必须有：新事件/新信息/新行动/新冲突（四选一）
+禁止：原地暧昧打转、重复上一段内容
+
+【写作风格】事件驱动 + 感官渲染
+1. 先写新事件（发生了什么）
+2. 用感官细节渲染（气息、心跳、温度）
+3. 结尾必须是转折/悬念
 
 【尺度】${intimacyGuide}
 
-上一段：「${lastParagraph}」（换个开头！）
+上一段：「${lastParagraph}」（禁止相似！）
 
 场景：${session.state.scene}，好感${affection.level}%
-目标：${dramaBeat.goal}
 
 输出：
 ---STORY---
-感官场景+暧昧对话+心理暗示+悬念（120-180字）
+新事件 + 感官渲染 + 悬念（120-180字）
 [好感+X][心情:X]
 ---SCENE---
-clothing:性感服装
-pose:暧昧姿势
-expression:撩人表情
-background:私密场景
-mood:暧昧氛围
+clothing:服装
+pose:姿势
+expression:表情
+background:场景
+mood:氛围
 ---END---`;
 }
 
@@ -738,13 +748,13 @@ function buildDirectorSystemPrompt(agent, session) {
   else if (progress < 50) intensityGuide = '更大胆试探：危险的距离、呼吸交缠';
   else if (progress < 70) intensityGuide = '亲密升级：暧昧到极致';
   
-  return `你是短剧导演，规划下一段的暧昧走向。\n` +
+  return `你是短剧导演，规划下一段要发生什么事件。\n` +
     `要求：只输出 JSON。\n` +
-    `目标：让人脸红心跳！每段必须有暧昧/撩拨/心动瞬间！\n` +
-    `暧昧强度：${intensityGuide}\n` +
+    `【最重要】每段必须有新事件！不能原地打转！\n` +
+    `事件类型：有人闯入/被发现/秘密暴露/意外发生/关系升级/危机出现\n` +
     `角色：${agent.name}。人设：${persona}\n` +
-    `边界：R18_soft（强撩暗示可，不露骨）。\n` +
-    `JSON 字段：beat(opening/escalation/intimacy/crisis/climax), intimacyAction(触碰/靠近/低语/拉扯/拥抱), twist, hook, tension, stakes, openLoop, choices(array 2-3 撩人选项).`;
+    `边界：R18_soft。进度暗示：${intensityGuide}\n` +
+    `JSON 字段：event(必填:这段要发生什么事), beat(opening/escalation/crisis/climax), twist(转折), hook(悬念), stakes(紧张点), choices(array 2-3 选项).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -764,14 +774,14 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const intimacyAction = directorPlan?.intimacyAction || '';
 
   const base =
-    `你是短剧编剧，写沉浸式暧昧短剧。\n` +
+    `你是短剧编剧，写事件驱动的沉浸式短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
-    `【沉浸式写法】\n` +
-    `1. 感官化场景：不说"房间很暗"，说"只剩下两人的呼吸，她的气息热得让人窒息"\n` +
-    `2. 心理暗示：不说"她心想"，说"她咬了咬嘴唇，手却没有推开"\n` +
-    `3. 暧昧动作：${intimacyAction || '触碰、低语、眼神、呼吸交缠'}\n` +
-    `4. 感官细节：温度、气息、心跳、触感\n` +
-    `长度：120-180字。边界：R18_soft（强撩暗示可，不露骨）。\n` +
+    `【最重要】每段必须有新事件！不能原地打转！\n` +
+    `- 新事件：门被推开/有人来了/被发现/秘密暴露/意外发生\n` +
+    `- 先写事件，再用感官细节渲染\n` +
+    `- 结尾必须是悬念/转折\n` +
+    `【写法】事件+感官渲染：${intimacyAction || '触碰、低语、眼神'}\n` +
+    `长度：120-180字。边界：R18_soft。\n` +
     `人设：${persona}\n` +
     `节拍：${beat}\n`;
 
@@ -859,21 +869,22 @@ function buildContinuePrompt(session) {
   const lastStart = last.trim().slice(0, 24);
 
   // R18_soft 分阶段引导：前期就要有性张力
-  let stageGuide = '极致暧昧，暗示水到渠成';
-  if (progress < 15) stageGuide = '制造心动瞬间！她靠近/触碰/暧昧对话';
-  else if (progress < 30) stageGuide = `升级撩拨！${direction}`;
-  else if (progress < 50) stageGuide = `更大胆试探！${direction}`;
-  else if (progress < 70) stageGuide = `亲密升级！${direction}`;
-  else if (progress < 85) stageGuide = `情感爆发！${direction}`;
+  // 分阶段引导：强调事件推进
+  let stageGuide = '极致亲密：关系确定/重大决定/结局走向';
+  if (progress < 15) stageGuide = '开场事件：意外相遇/身份揭示/危险靠近';
+  else if (progress < 30) stageGuide = `升级事件：${direction}`;
+  else if (progress < 50) stageGuide = `冲突爆发：${direction}`;
+  else if (progress < 70) stageGuide = `关系转折：${direction}`;
+  else if (progress < 85) stageGuide = `高潮事件：${direction}`;
 
-  return `${bundle.packed}\n\n【任务】续写：${stageGuide}\n【风格】沉浸式写法\n- 1句感官化场景（通过感受传达氛围）\n- 暧昧对话+肢体动作\n- 1句心理暗示（用动作代替心理描写）\n- 换个开头（禁止与「${lastStart}」相似）\n- 悬念结尾\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【任务】${stageGuide}\n\n【必须】这一段要发生新事件！\n- 新事件：门被推开/有人来了/电话响了/秘密暴露/意外发生\n- 不能只是暧昧描写，必须有事情发生\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾是悬念/转折\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 function buildUserInputPrompt(session, userInput) {
   const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
-  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】撩人地回应他！\n【风格】沉浸式写法\n- 1句感官化场景（她感受到的氛围/温度/距离）\n- 暧昧回应+肢体动作\n- 1句心理暗示（用微表情/小动作代替心理描写）\n- 换个开头（禁止与「${lastStart}」相似）\n- 悬念结尾\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】回应他，并推进剧情！\n- 必须发生新事件：有人闯入/被发现/意外转折/秘密揭露\n- 不能只是暧昧回应，要有事情发生\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾是悬念/转折\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
