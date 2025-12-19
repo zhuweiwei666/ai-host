@@ -811,8 +811,25 @@ function normalizeFirstLine(text) {
 function ensureShortDramaFormat(content, lastParagraph) {
   let out = String(content || '').trim();
   if (!out) return out;
-  // 过长则截断（尽量保留结尾悬念）
-  if (out.length > 180) out = out.slice(0, 160).trim();
+  
+  // 如果过长，智能截断到最后一个完整句子（不要粗暴截断）
+  if (out.length > 280) {
+    // 找最后一个句号/感叹号/问号/破折号的位置
+    const lastPunct = Math.max(
+      out.lastIndexOf('。', 250),
+      out.lastIndexOf('！', 250),
+      out.lastIndexOf('？', 250),
+      out.lastIndexOf('——', 250),
+      out.lastIndexOf('"', 250),
+      out.lastIndexOf('」', 250)
+    );
+    if (lastPunct > 100) {
+      out = out.slice(0, lastPunct + 1).trim();
+    } else {
+      // 实在找不到就截断，但保留更多
+      out = out.slice(0, 250).trim() + '——';
+    }
+  }
 
   // 如果开头与上一段过像，强制换一个更直接的开头（本地兜底）
   const lastStart = normalizeFirstLine(lastParagraph);
@@ -1210,7 +1227,7 @@ async function continueStory(sessionId, options = {}) {
     const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
     const writerUser = buildWriterUserPrompt(session, directorPlan, null);
     const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 380 : 300, temperature: 0.9 });
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
     const writerMs = Date.now() - writerStart;
     llmMs += writerMs;
     console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
@@ -1220,7 +1237,7 @@ async function continueStory(sessionId, options = {}) {
       ? buildSystemPromptWithScene(agent, session)
       : buildSystemPrompt(agent, session);
     const userPrompt = buildContinuePrompt(session);
-    const maxTokens = generateImage ? 350 : 280;
+    const maxTokens = generateImage ? 450 : 380;
     const startTime = Date.now();
     rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
     const oneMs = Date.now() - startTime;
@@ -1511,7 +1528,7 @@ async function inputStory(sessionId, userInput, options = {}) {
     const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
     const writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
     const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 380 : 300, temperature: 0.9 });
+    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
     const writerMs = Date.now() - writerStart;
     llmMs += writerMs;
     console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
@@ -1520,7 +1537,7 @@ async function inputStory(sessionId, userInput, options = {}) {
       ? buildSystemPromptWithScene(agent, session)
       : buildSystemPrompt(agent, session);
     const userPrompt = buildUserInputPrompt(session, userInput);
-    const maxTokens = generateImage ? 350 : 280;
+    const maxTokens = generateImage ? 450 : 380;
     const startTime = Date.now();
     rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
     const oneMs = Date.now() - startTime;
