@@ -228,8 +228,8 @@ export default function StoryPage() {
       if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
         setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
       } else {
-        const errorMessage = err instanceof Error ? err.message : '推进失败';
-        setError(errorMessage);
+      const errorMessage = err instanceof Error ? err.message : '推进失败';
+      setError(errorMessage);
       }
     } finally {
       setGenerating(false);
@@ -287,7 +287,7 @@ export default function StoryPage() {
       if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
         setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
       } else {
-        const errorMessage = err instanceof Error ? err.message : '处理失败';
+      const errorMessage = err instanceof Error ? err.message : '处理失败';
         setError(errorMessage);
       }
     } finally {

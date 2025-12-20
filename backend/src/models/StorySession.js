@@ -66,10 +66,21 @@ const StorySessionSchema = new mongoose.Schema({
     canonFacts: [{ type: String }],                   // 不可违背事实（简短）
     summary: { type: String, default: '' },           // 滚动摘要（短）
 
+    // v3: 主线推进器（轻量）
+    objective: {
+      title: { type: String, default: '' },            // 本章目标（短）
+      detail: { type: String, default: '' },           // 目标补充（短）
+      updatedAt: { type: Date },                       // 目标更新时间
+    },
+    locationHistory: [{
+      scene: { type: String },                          // 最近场景（短）
+      at: { type: Date, default: Date.now },
+    }],
+
     // 章节与付费触发（混合变现）
     chapter: {
       index: { type: Number, default: 0 },            // 当前章编号（从0开始）
-      size: { type: Number, default: 5 },             // 每章段落数（默认5）
+      size: { type: Number, default: 20 },            // 每章段落数（默认20）
     },
     pay: {
       pending: {
@@ -206,6 +217,14 @@ StorySessionSchema.methods.updateState = function(newState) {
   if (Array.isArray(newState.secrets)) this.state.secrets = newState.secrets;
   if (Array.isArray(newState.openLoops)) this.state.openLoops = newState.openLoops;
   if (Array.isArray(newState.canonFacts)) this.state.canonFacts = newState.canonFacts;
+
+  // v3 fields (optional)
+  if (newState.objective && typeof newState.objective === 'object') {
+    this.state.objective = this.state.objective || {};
+    if (typeof newState.objective.title === 'string') this.state.objective.title = newState.objective.title;
+    if (typeof newState.objective.detail === 'string') this.state.objective.detail = newState.objective.detail;
+    this.state.objective.updatedAt = new Date();
+  }
   return this;
 };
 

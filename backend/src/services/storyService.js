@@ -736,6 +736,21 @@ function safeJsonParseFromText(text) {
   }
 }
 
+function validateDirectorPlan(plan) {
+  const p = plan && typeof plan === 'object' ? plan : {};
+  const event = typeof p.event === 'string' ? p.event.trim() : '';
+  const hook = typeof p.hook === 'string' ? p.hook.trim() : '';
+  const stakes = typeof p.stakes === 'string' ? p.stakes.trim() : '';
+  const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
+  const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
+  const ok = !!event;
+  return {
+    ok,
+    plan: { event, hook, stakes, twist, choices, beat: p.beat },
+    reasons: ok ? [] : ['missing_event'],
+  };
+}
+
 function buildDirectorSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const persona = config.personality || '';
@@ -750,11 +765,11 @@ function buildDirectorSystemPrompt(agent, session) {
   
   return `你是短剧导演，规划下一段要发生什么事件。\n` +
     `要求：只输出 JSON。\n` +
-    `【最重要】每段必须有新事件！不能原地打转！\n` +
-    `事件类型：有人闯入/被发现/秘密暴露/意外发生/关系升级/危机出现\n` +
+    `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
+    `事件类型：有人闯入/被发现/秘密暴露/意外发生/关系升级/危机出现/换地点\n` +
     `角色：${agent.name}。人设：${persona}\n` +
     `边界：R18_soft。进度暗示：${intensityGuide}\n` +
-    `JSON 字段：event(必填:这段要发生什么事), beat(opening/escalation/crisis/climax), twist(转折), hook(悬念), stakes(紧张点), choices(array 2-3 选项).`;
+    `JSON 字段：event(必填), twist, hook, stakes, choices(array 2-3 strings).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -771,16 +786,15 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const persona = config.personality || '';
   const appearance = config.appearance || agent.description || '';
   const beat = directorPlan?.beat || session?.state?.beat || '';
-  const intimacyAction = directorPlan?.intimacyAction || '';
+  const event = directorPlan?.event || '';
 
   const base =
     `你是短剧编剧，写事件驱动的沉浸式短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
-    `【最重要】每段必须有新事件！不能原地打转！\n` +
-    `- 新事件：门被推开/有人来了/被发现/秘密暴露/意外发生\n` +
-    `- 先写事件，再用感官细节渲染\n` +
-    `- 结尾必须是悬念/转折\n` +
-    `【写法】事件+感官渲染：${intimacyAction || '触碰、低语、眼神'}\n` +
+    `【合同】第一句必须写出这个 event（照抄或同义改写，但要能看出发生了同一件事）：${event}\n` +
+    `【最重要】每段必须有新事件，不能原地打转。\n` +
+    `结构：事件(第一句) → 反应(感官/动作) → 推进(决定/代价) → 悬念(最后一句)\n` +
+    `【写法】用感官细节渲染（气息/心跳/温度/触感），用动作暗示心理。\n` +
     `长度：120-180字。边界：R18_soft。\n` +
     `人设：${persona}\n` +
     `节拍：${beat}\n`;
@@ -798,6 +812,7 @@ function buildWriterUserPrompt(session, directorPlan, userInput) {
   const intent = userInput ? `回应玩家输入：「${userInput}」并推进剧情` : '续写推进剧情';
   return `${bundle.packed}\n【导演指令(JSON)】\n${JSON.stringify(directorPlan || {}, null, 0)}\n` +
     `【任务】${intent}\n` +
+    `再次强调：第一句必须落实 event；最后一句必须落实 hook（悬念）。\n` +
     `输出正文 + [好感+X][心情:X]（可不写表情/动作标签）。`;
 }
 
@@ -806,6 +821,98 @@ function normalizeFirstLine(text) {
   if (!t) return '';
   const first = t.split('\n').find(Boolean) || t;
   return first.replace(/[「」"“”]/g, '').slice(0, 24);
+}
+
+function charNgrams(text, n = 3) {
+  const s = String(text || '').replace(/\s+/g, '');
+  if (s.length < n) return [];
+  const out = [];
+  for (let i = 0; i <= s.length - n; i += 1) out.push(s.slice(i, i + n));
+  return out;
+}
+
+function overlapRatio(aNgrams, bNgrams) {
+  if (!aNgrams.length || !bNgrams.length) return 0;
+  const a = new Set(aNgrams);
+  const b = new Set(bNgrams);
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter += 1;
+  return inter / Math.max(1, Math.min(a.size, b.size));
+}
+
+const EVENT_TRIGGERS = [
+  '门', '敲门', '推开', '脚步', '来人', '电话', '响起', '短信', '监控',
+  '被发现', '撞见', '露馅', '秘密', '证据', '录音', '照片', '账本',
+  '决定', '答应', '拒绝', '分手', '同意', '条件', '交易', '威胁', '报警',
+  '老师', '校长', '保安', '同学', '家长', '第三者', '前任',
+];
+
+const SCENE_ACTION_TOKENS = [
+  '教室', '走廊', '办公室', '宿舍', '酒店', '电梯', '车里', '门口',
+  '壁咚', '贴近', '低语', '耳边', '呼吸', '心跳', '拉住', '按住', '拥抱', '亲吻',
+];
+
+function extractEventKeywords(eventText) {
+  const s = String(eventText || '').trim();
+  if (!s) return [];
+  // 粗分割：空格/标点；保留长度>=2的片段做弱匹配
+  return s
+    .split(/[\s，。！？、:：；;,.!?()\[\]{}"“”'‘’\-—]+/g)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2)
+    .slice(0, 6);
+}
+
+function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
+  const out = String(text || '').trim();
+  const recent = Array.isArray(recentParas) ? recentParas.filter(Boolean) : [];
+  const last = recent.length ? String(recent[recent.length - 1]) : '';
+
+  // 1) 开头重复（强失败）
+  const curStart = normalizeFirstLine(out);
+  const lastStart = normalizeFirstLine(last);
+  if (curStart && lastStart && curStart === lastStart) {
+    return { ok: false, reasons: ['opening_repeat'], metrics: { openingRepeat: true } };
+  }
+
+  // 2) n-gram 去重复（近2-3段）
+  const cur3 = charNgrams(out, 3);
+  let maxOverlap = 0;
+  for (const r of recent.slice(-3)) {
+    maxOverlap = Math.max(maxOverlap, overlapRatio(cur3, charNgrams(String(r), 3)));
+  }
+  if (maxOverlap >= 0.38) {
+    return { ok: false, reasons: ['high_ngram_overlap'], metrics: { maxOverlap } };
+  }
+
+  // 3) 场景/动作模板词重复（软失败）
+  const tokensHit = SCENE_ACTION_TOKENS.filter((t) => out.includes(t));
+  const lastTokensHit = SCENE_ACTION_TOKENS.filter((t) => last.includes(t));
+  const tokenOverlap = tokensHit.filter((t) => lastTokensHit.includes(t)).length;
+  if (tokenOverlap >= 5) {
+    return { ok: false, reasons: ['scene_action_template_repeat'], metrics: { tokenOverlap } };
+  }
+
+  // 4) 事件推进：必须至少命中一个事件触发词
+  const hasEventTrigger = EVENT_TRIGGERS.some((w) => out.includes(w));
+  if (!hasEventTrigger) {
+    return { ok: false, reasons: ['no_event_trigger'], metrics: { hasEventTrigger: false } };
+  }
+
+  // 5) Director 合同：如果给了 event，正文必须弱匹配到关键词
+  const event = directorPlan?.event;
+  if (event) {
+    const kws = extractEventKeywords(event);
+    const match = kws.length ? kws.some((k) => out.includes(k)) : true;
+    if (!match) {
+      return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords: kws } };
+    }
+  }
+
+  // 6) 主线推进：避免长期停留同一场景（轻量提示：不算失败，仅打分）
+  const scene = sessionState?.scene || '';
+  const stuck = scene && recent.length >= 3 && recent.slice(-3).every((p) => String(p).includes(scene));
+  return { ok: true, reasons: [], metrics: { maxOverlap, tokenOverlap, stuck } };
 }
 
 function ensureShortDramaFormat(content, lastParagraph) {
@@ -1212,52 +1319,83 @@ async function continueStory(sessionId, options = {}) {
   let rawResponse;
   let directorPlan = null;
   let llmMs = 0;
+  let validateInfo = null;
 
-  if (workflowVersion === 'v2') {
-    // Director step (short JSON)
-    const directorSystem = buildDirectorSystemPrompt(agent, session);
-    const directorUser = buildDirectorUserPrompt(session, '继续推进下一段（短剧节奏）');
-    const directorStart = Date.now();
-    const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 160, temperature: 0.4 });
-    directorPlan = safeJsonParseFromText(directorRaw) || {};
-    const directorMs = Date.now() - directorStart;
-    llmMs += directorMs;
-    console.log(`[StoryService] Director took ${directorMs}ms`);
-
-    // Writer step
-    const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
-    const writerUser = buildWriterUserPrompt(session, directorPlan, null);
-    const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
-    const writerMs = Date.now() - writerStart;
-    llmMs += writerMs;
-    console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
-  } else {
-    // v1: 单次续写
-    const systemPrompt = generateImage
-      ? buildSystemPromptWithScene(agent, session)
-      : buildSystemPrompt(agent, session);
-    const userPrompt = buildContinuePrompt(session);
-    const maxTokens = generateImage ? 450 : 380;
-    const startTime = Date.now();
-    rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-    const oneMs = Date.now() - startTime;
-    llmMs += oneMs;
-    console.log(`[StoryService] LLM took ${oneMs}ms (tokens: ${maxTokens})`);
-  }
-
-  const parsed = parseAIResponse(rawResponse);
-
-  const { affectionChange, stateChanges, sceneData } = parsed;
+  // 最多 2 次重试：第1次追加“你刚才重复/无推进，必须改写”；第2次强制模板
+  const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
-  const content = ensureShortDramaFormat(parsed.content, lastParagraph);
+  let parsed = null;
+  let content = '';
+  let affectionChange = 0;
+  let stateChanges = {};
+  let sceneData = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (workflowVersion === 'v2') {
+      // Director step (short JSON) - 缺字段最多重跑 1 次
+      const directorSystem = buildDirectorSystemPrompt(agent, session);
+      const directorUser = buildDirectorUserPrompt(session, '继续推进下一段（短剧节奏）');
+      const directorStart = Date.now();
+      const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
+      const directorMs = Date.now() - directorStart;
+      llmMs += directorMs;
+
+      const parsedDirector = safeJsonParseFromText(directorRaw) || {};
+      const checked1 = validateDirectorPlan(parsedDirector);
+      if (!checked1.ok) {
+        const directorRaw2 = await generateContent(directorSystem, directorUser + '\n【修正】event 必填，给出更具体可执行的事件。', modelName, { maxTokens: 200, temperature: 0.4 });
+        directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
+      } else {
+        directorPlan = checked1.plan;
+      }
+
+      // Writer step
+      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+      let writerUser = buildWriterUserPrompt(session, directorPlan, null);
+      if (attempt === 1) {
+        writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
+      } else if (attempt >= 2) {
+        writerUser += '\n【强制模板】第一句=事件；第二句=你和她的反应；第三句=做出决定/代价；最后一句=悬念(有人来/被发现/证据出现)。';
+      }
+      const writerStart = Date.now();
+      rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
+      const writerMs = Date.now() - writerStart;
+      llmMs += writerMs;
+    } else {
+      // v1: 单次续写（追加约束重试）
+      const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
+      let userPrompt = buildContinuePrompt(session);
+      if (attempt === 1) {
+        userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
+      } else if (attempt >= 2) {
+        userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
+      }
+      const maxTokens = generateImage ? 450 : 380;
+      const startTime = Date.now();
+      rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+      const oneMs = Date.now() - startTime;
+      llmMs += oneMs;
+    }
+
+    parsed = parseAIResponse(rawResponse);
+    ({ affectionChange, stateChanges, sceneData } = parsed);
+    content = ensureShortDramaFormat(parsed.content, lastParagraph);
+
+    validateInfo = validateParagraph({
+      text: content,
+      recentParas,
+      directorPlan,
+      sessionState: session.state,
+    });
+    if (validateInfo.ok) break;
+  }
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
-
+  
   // v2 director state merge
   if (workflowVersion === 'v2' && directorPlan) {
     if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
@@ -1295,6 +1433,14 @@ async function continueStory(sessionId, options = {}) {
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(3 + Math.random() * 2);
+
+  // 更新 locationHistory（轻量防打转）
+  if (!Array.isArray(session.state.locationHistory)) session.state.locationHistory = [];
+  const currentScene = String(stateUpdate.scene || session.state.scene || '').trim();
+  if (currentScene) {
+    session.state.locationHistory.push({ scene: currentScene, at: new Date() });
+    while (session.state.locationHistory.length > 12) session.state.locationHistory.shift();
+  }
   
   // 更新好感度
   if (affectionChange) {
@@ -1318,7 +1464,7 @@ async function continueStory(sessionId, options = {}) {
   const totalMs = Date.now() - t0;
   const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
   console.log(
-    `[StoryMetrics] action=continue session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'}`
+    `[StoryMetrics] action=continue session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'} valid=${validateInfo?.ok ? 1 : 0} reasons=${(validateInfo?.reasons || []).join(',')}`
   );
   
   return {
@@ -1515,49 +1661,79 @@ async function inputStory(sessionId, userInput, options = {}) {
   let rawResponse;
   let directorPlan = null;
   let llmMs = 0;
+  let validateInfo = null;
 
-  if (workflowVersion === 'v2') {
-    const directorSystem = buildDirectorSystemPrompt(agent, session);
-    const directorUser = buildDirectorUserPrompt(session, `回应玩家输入并推进：${userInput}`);
-    const directorStart = Date.now();
-    const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 160, temperature: 0.4 });
-    directorPlan = safeJsonParseFromText(directorRaw) || {};
-    const directorMs = Date.now() - directorStart;
-    llmMs += directorMs;
-    console.log(`[StoryService] Director took ${directorMs}ms`);
-
-    const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
-    const writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
-    const writerStart = Date.now();
-    rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
-    const writerMs = Date.now() - writerStart;
-    llmMs += writerMs;
-    console.log(`[StoryService] Writer took ${writerMs}ms (tokens: ${generateImage ? 260 : 190})`);
-  } else {
-    const systemPrompt = generateImage
-      ? buildSystemPromptWithScene(agent, session)
-      : buildSystemPrompt(agent, session);
-    const userPrompt = buildUserInputPrompt(session, userInput);
-    const maxTokens = generateImage ? 450 : 380;
-    const startTime = Date.now();
-    rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-    const oneMs = Date.now() - startTime;
-    llmMs += oneMs;
-    console.log(`[StoryService] LLM took ${oneMs}ms (tokens: ${maxTokens})`);
-  }
-
-  const parsed = parseAIResponse(rawResponse);
-
-  const { affectionChange, stateChanges, sceneData } = parsed;
+  const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
-  const content = ensureShortDramaFormat(parsed.content, lastParagraph);
+  let parsed = null;
+  let content = '';
+  let affectionChange = 0;
+  let stateChanges = {};
+  let sceneData = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (workflowVersion === 'v2') {
+      const directorSystem = buildDirectorSystemPrompt(agent, session);
+      const directorUser = buildDirectorUserPrompt(session, `回应玩家输入并推进：${userInput}`);
+      const directorStart = Date.now();
+      const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
+      const directorMs = Date.now() - directorStart;
+      llmMs += directorMs;
+
+      const parsedDirector = safeJsonParseFromText(directorRaw) || {};
+      const checked1 = validateDirectorPlan(parsedDirector);
+      if (!checked1.ok) {
+        const directorRaw2 = await generateContent(directorSystem, directorUser + '\n【修正】event 必填，给出更具体可执行的事件。', modelName, { maxTokens: 200, temperature: 0.4 });
+        directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
+      } else {
+        directorPlan = checked1.plan;
+      }
+
+      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+      let writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
+      if (attempt === 1) {
+        writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
+      } else if (attempt >= 2) {
+        writerUser += '\n【强制模板】第一句=事件；第二句=反应；第三句=推进(决定/代价)；最后一句=悬念(被发现/证据出现)。';
+      }
+      const writerStart = Date.now();
+      rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
+      const writerMs = Date.now() - writerStart;
+      llmMs += writerMs;
+    } else {
+      const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
+      let userPrompt = buildUserInputPrompt(session, userInput);
+      if (attempt === 1) {
+        userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
+      } else if (attempt >= 2) {
+        userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
+      }
+      const maxTokens = generateImage ? 450 : 380;
+      const startTime = Date.now();
+      rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+      const oneMs = Date.now() - startTime;
+      llmMs += oneMs;
+    }
+
+    parsed = parseAIResponse(rawResponse);
+    ({ affectionChange, stateChanges, sceneData } = parsed);
+    content = ensureShortDramaFormat(parsed.content, lastParagraph);
+
+    validateInfo = validateParagraph({
+      text: content,
+      recentParas,
+      directorPlan,
+      sessionState: session.state,
+    });
+    if (validateInfo.ok) break;
+  }
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
-
+  
   if (workflowVersion === 'v2' && directorPlan) {
     if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
     if (directorPlan.conflict) stateUpdate.conflict = directorPlan.conflict;
@@ -1594,6 +1770,14 @@ async function inputStory(sessionId, userInput, options = {}) {
   session.updateState(stateUpdate);
   if (stateUpdate.newEvent) session.addEvent(stateUpdate.newEvent);
   session.advanceProgress(2 + Math.random() * 3);
+
+  // 更新 locationHistory（轻量防打转）
+  if (!Array.isArray(session.state.locationHistory)) session.state.locationHistory = [];
+  const currentScene = String(stateUpdate.scene || session.state.scene || '').trim();
+  if (currentScene) {
+    session.state.locationHistory.push({ scene: currentScene, at: new Date() });
+    while (session.state.locationHistory.length > 12) session.state.locationHistory.shift();
+  }
   
   // 用户输入通常会增加好感度（如果 AI 没返回变化则默认+2）
   const actualChange = affectionChange || 2;
@@ -1615,7 +1799,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   const totalMs = Date.now() - t0;
   const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
   console.log(
-    `[StoryMetrics] action=input session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'}`
+    `[StoryMetrics] action=input session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'} valid=${validateInfo?.ok ? 1 : 0} reasons=${(validateInfo?.reasons || []).join(',')}`
   );
   
   return {
