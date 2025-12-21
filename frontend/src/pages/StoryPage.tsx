@@ -8,9 +8,11 @@ import {
   continueStory,
   inputStory,
   unlockStoryChapter,
+  unlockStoryMilestone,
   restartStory,
   getAgent,
   getParagraphImage,
+  sendStoryFeedback,
   Agent,
 } from '../api';
 
@@ -65,7 +67,14 @@ export default function StoryPage() {
   // 正在加载图片的段落索引集合
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
   const pollingRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
-  const [paywall, setPaywall] = useState<{ chapterIndex: number; reason?: string } | null>(null);
+  const [paywall, setPaywall] = useState<{
+    type: 'chapter_unlock' | 'milestone_unlock';
+    chapterIndex?: number;
+    arcId?: string;
+    milestoneId?: string;
+    cost?: number;
+    reason?: string;
+  } | null>(null);
   
   // 轮询图片状态
   const pollImage = useCallback(async (sid: string, index: number) => {
@@ -226,7 +235,15 @@ export default function StoryPage() {
       const msg = anyErr?.response?.data?.message || anyErr?.message;
       const details = anyErr?.response?.data?.details;
       if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
-        setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+        setPaywall({ type: 'chapter_unlock', chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+      } else if (statusCode === 402 && msg === 'MILESTONE_LOCKED' && details?.paywall?.milestoneId) {
+        setPaywall({
+          type: 'milestone_unlock',
+          arcId: details.paywall.arcId,
+          milestoneId: details.paywall.milestoneId,
+          cost: details.cost,
+          reason: details.paywall.reason,
+        });
       } else {
       const errorMessage = err instanceof Error ? err.message : '推进失败';
       setError(errorMessage);
@@ -285,7 +302,15 @@ export default function StoryPage() {
       const msg = anyErr?.response?.data?.message || anyErr?.message;
       const details = anyErr?.response?.data?.details;
       if (statusCode === 402 && msg === 'CHAPTER_LOCKED' && details?.paywall?.chapterIndex) {
-        setPaywall({ chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+        setPaywall({ type: 'chapter_unlock', chapterIndex: details.paywall.chapterIndex, reason: details.paywall.reason });
+      } else if (statusCode === 402 && msg === 'MILESTONE_LOCKED' && details?.paywall?.milestoneId) {
+        setPaywall({
+          type: 'milestone_unlock',
+          arcId: details.paywall.arcId,
+          milestoneId: details.paywall.milestoneId,
+          cost: details.cost,
+          reason: details.paywall.reason,
+        });
       } else {
       const errorMessage = err instanceof Error ? err.message : '处理失败';
         setError(errorMessage);
@@ -295,20 +320,34 @@ export default function StoryPage() {
     }
   };
 
-  const handleUnlockChapter = async () => {
+  const handleUnlockPaywall = async () => {
     if (!sessionId || !paywall || generating) return;
     try {
       setGenerating(true);
       setError(null);
       const reqId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-      const res = await unlockStoryChapter(sessionId, paywall.chapterIndex, reqId);
-      setBalance(res.data.balance);
+      if (paywall.type === 'chapter_unlock' && paywall.chapterIndex !== undefined) {
+        const res = await unlockStoryChapter(sessionId, paywall.chapterIndex, reqId);
+        setBalance(res.data.balance);
+      } else if (paywall.type === 'milestone_unlock' && paywall.arcId && paywall.milestoneId) {
+        const res = await unlockStoryMilestone(sessionId, paywall.arcId, paywall.milestoneId, reqId);
+        setBalance(res.data.balance);
+      }
       setPaywall(null);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '解锁失败';
       setError(errorMessage);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleThumb = async (idx: number, thumb: 'up' | 'down') => {
+    if (!sessionId) return;
+    try {
+      await sendStoryFeedback(sessionId, idx, thumb);
+    } catch {
+      // ignore
     }
   };
   
@@ -519,11 +558,23 @@ export default function StoryPage() {
                   />
                   
                   <div className="flex items-center gap-6 mt-3 text-gray-500">
-                    <button className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors">
+                    <button
+                      onClick={() => handleThumb(index, 'up')}
+                      className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors"
+                    >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                       </svg>
                       <span>喜欢</span>
+                    </button>
+                    <button
+                      onClick={() => handleThumb(index, 'down')}
+                      className="flex items-center gap-1.5 text-xs hover:text-gray-300 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.528-7.057A2 2 0 018.764 3H19a2 2 0 012 2v7a2 2 0 01-2 2h-5l.5 6H12l-2-8z" />
+                      </svg>
+                      <span>不喜欢</span>
                     </button>
                     <button className="flex items-center gap-1.5 text-xs hover:text-blue-400 transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -570,15 +621,20 @@ export default function StoryPage() {
               </div>
             )}
 
-            {/* 章解锁弹条 */}
+            {/* 付费弹条（章/里程碑） */}
             {paywall && (
               <div className="mb-3 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm text-yellow-200 font-medium">需要解锁下一章</div>
-                  <div className="text-xs text-yellow-200/80 truncate">{paywall.reason || '下一章包含关键揭露与强钩子'}</div>
+                  <div className="text-sm text-yellow-200 font-medium">
+                    {paywall.type === 'milestone_unlock' ? '需要解锁关键情节' : '需要解锁下一章'}
+                  </div>
+                  <div className="text-xs text-yellow-200/80 truncate">
+                    {paywall.reason || (paywall.type === 'milestone_unlock' ? '解锁后继续关键情节' : '下一章包含关键揭露与强钩子')}
+                    {paywall.cost ? `（${paywall.cost}币）` : ''}
+                  </div>
                 </div>
                 <button
-                  onClick={handleUnlockChapter}
+                  onClick={handleUnlockPaywall}
                   disabled={generating}
                   className="px-3 py-2 rounded-lg bg-yellow-500 text-black text-sm font-semibold hover:bg-yellow-400 disabled:opacity-50"
                 >

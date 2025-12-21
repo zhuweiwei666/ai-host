@@ -71,12 +71,20 @@ const StorySessionSchema = new mongoose.Schema({
       title: { type: String, default: '' },            // 本章目标（短）
       detail: { type: String, default: '' },           // 目标补充（短）
       updatedAt: { type: Date },                       // 目标更新时间
+      progress: { type: Number, default: 0, min: 0, max: 100 }, // 目标推进百分比（轻量）
+      lastAdvancedAt: { type: Date },                  // 最近一次推进时间
     },
     locationHistory: [{
       scene: { type: String },                          // 最近场景（短）
       at: { type: Date, default: Date.now },
     }],
     eventTypeHistory: [{ type: String }],               // 最近事件类型（用于防模板化）
+
+    // 骨架定位
+    arcId: { type: String, default: '' },
+    beatIndex: { type: Number, default: 0, min: 0 },
+    skeletonVersion: { type: String, default: '' },
+    milestonesHit: [{ type: String }],
 
     // 章节与付费触发（混合变现）
     chapter: {
@@ -89,8 +97,16 @@ const StorySessionSchema = new mongoose.Schema({
         chapterIndex: { type: Number },
         reason: { type: String },                     // 付费点文案（短）
         createdAt: { type: Date },
+        arcId: { type: String },
+        milestoneId: { type: String },
+        cost: { type: Number },
       },
       unlockedChapterIndex: { type: Number, default: 0 }, // 已解锁到的章节（包含）
+      unlockedMilestones: [{
+        arcId: { type: String },
+        milestoneId: { type: String },
+        at: { type: Date, default: Date.now },
+      }],
     },
   },
   
@@ -224,8 +240,13 @@ StorySessionSchema.methods.updateState = function(newState) {
     this.state.objective = this.state.objective || {};
     if (typeof newState.objective.title === 'string') this.state.objective.title = newState.objective.title;
     if (typeof newState.objective.detail === 'string') this.state.objective.detail = newState.objective.detail;
+    if (typeof newState.objective.progress === 'number') this.state.objective.progress = Math.max(0, Math.min(100, newState.objective.progress));
     this.state.objective.updatedAt = new Date();
   }
+  if (typeof newState.arcId === 'string') this.state.arcId = newState.arcId;
+  if (typeof newState.beatIndex === 'number') this.state.beatIndex = Math.max(0, Math.floor(newState.beatIndex));
+  if (typeof newState.skeletonVersion === 'string') this.state.skeletonVersion = newState.skeletonVersion;
+  if (Array.isArray(newState.milestonesHit)) this.state.milestonesHit = newState.milestonesHit;
   return this;
 };
 

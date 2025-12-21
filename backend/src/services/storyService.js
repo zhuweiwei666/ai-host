@@ -151,11 +151,19 @@ const StorySession = require('../models/StorySession');
 const StoryImageCache = require('../models/StoryImageCache');
 const UserGallery = require('../models/UserGallery');
 const Agent = require('../models/Agent');
+const PromptExperiment = require('../models/PromptExperiment');
 const ProviderFactory = require('../providers/providerFactory');
 const crypto = require('crypto');
 const imageGenerationService = require('./imageGenerationService');
 const openaiImageService = require('./openaiImageService');
 const walletService = require('./walletService');
+let StoryAttribution;
+
+try {
+  StoryAttribution = require('../models/StoryAttribution');
+} catch {
+  StoryAttribution = null;
+}
 
 // ===================== 短剧节拍系统（R18_soft：强撩可，不露骨）=====================
 // 前期就要有足够的性张力和暧昧钩子
@@ -584,6 +592,9 @@ function buildContextBundle(session, opts = {}) {
   const recentText = getRecentStoryContext(session, count, Math.min(700, maxChars));
   const summary = (session?.state?.summary || '').trim();
   const objectiveTitle = (session?.state?.objective?.title || '').trim();
+  const arcId = (session?.state?.arcId || '').trim();
+  const beatIndex = Number.isFinite(Number(session?.state?.beatIndex)) ? Number(session.state.beatIndex) : 0;
+  const skeletonVersion = (session?.state?.skeletonVersion || '').trim();
   const canonFacts = Array.isArray(session?.state?.canonFacts) ? session.state.canonFacts.slice(-6) : [];
   const openLoops = Array.isArray(session?.state?.openLoops) ? session.state.openLoops.slice(-6) : [];
   const memoryEvents = Array.isArray(session?.memoryEvents) ? session.memoryEvents.slice(-memoryK) : [];
@@ -592,13 +603,51 @@ function buildContextBundle(session, opts = {}) {
   let packed =
     `【摘要】${summary || '(无)'}\n` +
     `【目标】${objectiveTitle || '(无)'}\n` +
+    `【骨架】arcId=${arcId || '(无)'} beatIndex=${beatIndex} skeleton=${skeletonVersion || '(无)'}\n` +
     `【事实】${canonFacts.length ? canonFacts.join('；') : '(无)'}\n` +
     `【伏笔】${openLoops.length ? openLoops.join('；') : '(无)'}\n` +
     `【最近】\n${recentText || '(无)'}\n` +
     `【记忆】\n${memoryEvents.length ? memoryEvents.map((m) => `- ${[m.place, m.stakes, m.secret].filter(Boolean).join(' / ')}`).join('\n') : '(无)'}\n`;
 
   if (packed.length > maxChars) packed = packed.slice(-maxChars);
-  return { packed, recentText, summary, objectiveTitle, canonFacts, openLoops, memoryEvents };
+  return { packed, recentText, summary, objectiveTitle, arcId, beatIndex, skeletonVersion, canonFacts, openLoops, memoryEvents };
+}
+
+function getAgentSkeleton(agent) {
+  const sk = agent?.storyConfig?.skeleton;
+  if (!sk || typeof sk !== 'object') return null;
+  if (!Array.isArray(sk.arcs) || !sk.arcs.length) return null;
+  return sk;
+}
+
+function getSkeletonArc(skeleton, arcId) {
+  if (!skeleton) return null;
+  const arcs = Array.isArray(skeleton.arcs) ? skeleton.arcs : [];
+  if (!arcs.length) return null;
+  const byId = arcId ? arcs.find((a) => String(a.arcId) === String(arcId)) : null;
+  return byId || arcs[0];
+}
+
+function getBeatName(arc, beatIndex) {
+  const beats = Array.isArray(arc?.beats) ? arc.beats : [];
+  if (!beats.length) return '';
+  const idx = Math.max(0, Math.min(beats.length - 1, Number(beatIndex) || 0));
+  return String(beats[idx] || '');
+}
+
+function getNextMilestone(arc, milestonesHit = []) {
+  const ms = Array.isArray(arc?.milestones) ? arc.milestones : [];
+  const hit = new Set((Array.isArray(milestonesHit) ? milestonesHit : []).map(String));
+  return ms.find((m) => m?.id && !hit.has(String(m.id))) || null;
+}
+
+async function pickPromptVariant(agentId, userId) {
+  if (!agentId || !userId) return null;
+  const exp = await PromptExperiment.getActiveExperiment(agentId);
+  if (!exp) return null;
+  const v = exp.assignVariant(String(userId));
+  await exp.save(); // persist assignment
+  return { experimentId: exp._id, variantId: v?.id, prompt: v?.prompt || '' };
 }
 
 function addUniqueLimited(arr, item, max = 7) {
@@ -748,12 +797,17 @@ function validateDirectorPlan(plan) {
   const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
   const eventType = typeof p.eventType === 'string' ? p.eventType.trim() : '';
   const objective = typeof p.objective === 'string' ? p.objective.trim() : '';
+  const objectiveAdvance = typeof p.objectiveAdvance === 'string' ? p.objectiveAdvance.trim() : '';
+  const arcId = typeof p.arcId === 'string' ? p.arcId.trim() : '';
+  const beat = typeof p.beat === 'string' ? p.beat.trim() : '';
+  const milestoneTarget = typeof p.milestoneTarget === 'string' ? p.milestoneTarget.trim() : '';
+  const milestoneHit = typeof p.milestoneHit === 'string' ? p.milestoneHit.trim() : '';
   const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
-  const ok = !!event && !!eventType;
+  const ok = !!event && !!eventType && !!objectiveAdvance;
   return {
     ok,
-    plan: { event, hook, stakes, twist, eventType, objective, choices, beat: p.beat },
-    reasons: ok ? [] : ['missing_event_or_eventType'],
+    plan: { event, hook, stakes, twist, eventType, objective, objectiveAdvance, arcId, beat, milestoneTarget, milestoneHit, choices },
+    reasons: ok ? [] : ['missing_required_fields'],
   };
 }
 
@@ -774,9 +828,10 @@ function buildDirectorSystemPrompt(agent, session) {
     `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
     `eventType 必填，只能从：intrusion(闯入/敲门/被发现)/evidence(证据)/reveal(揭示)/decision(决定/交易)/relocate(换地点)/conflict(冲突/对峙)/escape(逃离)\n` +
     `objective 可选：如果当前【目标】为空或已明显跑偏，给一个新的“本章目标”(<=12字)。\n` +
+    `objectiveAdvance 必填：advance(推进)/blocked(受阻)/cost(付出代价)。\n` +
     `角色：${agent.name}。人设：${persona}\n` +
     `边界：R18_soft。进度暗示：${intensityGuide}\n` +
-    `JSON 字段：eventType(必填), event(必填, 1句短句, 含2-4个关键词), objective(optional), twist, hook, stakes, choices(array 2-3 strings).`;
+    `JSON 字段：arcId(optional), beat(optional), milestoneTarget(optional), milestoneHit(optional), eventType(必填), objectiveAdvance(必填), event(必填, 1句短句, 含2-4个关键词), objective(optional), twist, hook, stakes, choices(array 2-3 strings).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -1069,6 +1124,37 @@ function updateChapterPaywall(session) {
   return null;
 }
 
+function isMilestoneUnlocked(session, arcId, milestoneId) {
+  const unlocked = Array.isArray(session?.state?.pay?.unlockedMilestones) ? session.state.pay.unlockedMilestones : [];
+  return unlocked.some((x) => String(x.arcId) === String(arcId) && String(x.milestoneId) === String(milestoneId));
+}
+
+function updateMilestonePaywall(session, agent, directorPlan) {
+  const skeleton = getAgentSkeleton(agent);
+  if (!skeleton) return null;
+  const arc = getSkeletonArc(skeleton, session?.state?.arcId);
+  if (!arc) return null;
+  const arcId = String(arc.arcId || '');
+
+  const milestoneId = directorPlan?.milestoneTarget || '';
+  if (!milestoneId) return null;
+
+  const ms = Array.isArray(arc.milestones) ? arc.milestones.find((m) => String(m.id) === String(milestoneId)) : null;
+  if (!ms || !ms.paywall?.enabled) return null;
+  if (isMilestoneUnlocked(session, arcId, milestoneId)) return null;
+
+  session.state.pay = session.state.pay || { unlockedChapterIndex: 0 };
+  session.state.pay.pending = {
+    type: 'milestone_unlock',
+    arcId,
+    milestoneId,
+    reason: ms.paywall.reason || '解锁关键情节',
+    cost: Number(ms.paywall.cost || 0) || 0,
+    createdAt: new Date(),
+  };
+  return { ...session.state.pay.pending };
+}
+
 function buildContinuePrompt(session) {
   const direction = PLOT_DIRECTIONS[Math.floor(Math.random() * PLOT_DIRECTIONS.length)];
   const progress = session.progress || 0;
@@ -1328,6 +1414,14 @@ async function startStory(userId, agentId) {
   const defaultOpening = hookExample || sexyOpenings[Math.floor(Math.random() * sexyOpenings.length)];
   const openingText = agent.storyConfig?.opening || agent.defaultGreeting || defaultOpening;
   const openingImagePrompt = `seductive first meeting, intimate distance, bedroom eyes, soft lighting, romantic tension`;
+
+  // 初始化骨架状态（如果该角色有骨架）
+  const skeleton = getAgentSkeleton(agent);
+  const arc = getSkeletonArc(skeleton, null);
+  const skeletonVersion = skeleton?.version ? String(skeleton.version) : '';
+  const arcId = arc?.arcId ? String(arc.arcId) : '';
+  const beatIndex = 0;
+  const objectiveTitle = arc?.objective?.title ? String(arc.objective.title).slice(0, 24) : '';
   
   session = new StorySession({
     userId,
@@ -1346,6 +1440,18 @@ async function startStory(userId, agentId) {
       clothes: '',
       expression: '',
       lastAction: openingText.slice(-50),
+
+      // skeleton
+      arcId,
+      beatIndex,
+      skeletonVersion,
+      milestonesHit: [],
+      objective: {
+        title: objectiveTitle,
+        detail: arc?.objective?.detail ? String(arc.objective.detail).slice(0, 80) : '',
+        updatedAt: new Date(),
+        progress: 0,
+      },
     },
     events: [],
     paragraphs: [{
@@ -1398,12 +1504,14 @@ async function continueStory(sessionId, options = {}) {
   session.state.workflow = workflowVersion;
 
   const modelName = agent.modelName || 'grok-2';
+  const variant = await pickPromptVariant(session.agentId, session.userId);
 
   let rawResponse;
   let directorPlan = null;
   let llmMs = 0;
   let validateInfo = null;
   let criticPlan = null;
+  let retryCount = 0;
 
   // 最多 2 次重试：第1次追加“你刚才重复/无推进，必须改写”；第2次强制模板
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
@@ -1417,7 +1525,7 @@ async function continueStory(sessionId, options = {}) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (workflowVersion === 'v2') {
       // Director step (short JSON) - 缺字段最多重跑 1 次
-      const directorSystem = buildDirectorSystemPrompt(agent, session);
+      const directorSystem = buildDirectorSystemPrompt(agent, session) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
       const directorUser = buildDirectorUserPrompt(session, '继续推进下一段（短剧节奏）');
       const directorStart = Date.now();
       const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
@@ -1439,7 +1547,7 @@ async function continueStory(sessionId, options = {}) {
       }
 
       // Writer step
-      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
       let writerUser = buildWriterUserPrompt(session, directorPlan, null);
       if (attempt === 1) {
         writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
@@ -1514,6 +1622,7 @@ async function continueStory(sessionId, options = {}) {
       }
     }
   }
+  retryCount = validateInfo?.ok ? Math.max(0, (validateInfo?.reasons?.length ? 1 : 0)) : 2;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
@@ -1551,6 +1660,19 @@ async function continueStory(sessionId, options = {}) {
     }
   }
 
+  if (directorPlan?.arcId) session.state.arcId = String(directorPlan.arcId).slice(0, 48);
+  if (directorPlan?.beat) session.state.beat = String(directorPlan.beat).slice(0, 24);
+  if (directorPlan?.objectiveAdvance) {
+    session.state.objective = session.state.objective || {};
+    if (directorPlan.objectiveAdvance === 'advance') {
+      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 8);
+      session.state.objective.lastAdvancedAt = new Date();
+    } else if (directorPlan.objectiveAdvance === 'cost') {
+      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 4);
+      session.state.objective.lastAdvancedAt = new Date();
+    }
+  }
+
   // 记录事件类型，防止模板化（只记录 v2 或有 eventType 的情况）
   if (directorPlan?.eventType) {
     if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
@@ -1565,6 +1687,20 @@ async function continueStory(sessionId, options = {}) {
       session.state.objective = session.state.objective || {};
       session.state.objective.title = title;
       session.state.objective.updatedAt = new Date();
+    }
+  }
+
+  // 骨架定位
+  if (directorPlan?.arcId) session.state.arcId = String(directorPlan.arcId).slice(0, 48);
+  if (directorPlan?.beat) session.state.beat = String(directorPlan.beat).slice(0, 24);
+  if (directorPlan?.objectiveAdvance) {
+    session.state.objective = session.state.objective || {};
+    if (directorPlan.objectiveAdvance === 'advance') {
+      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 8);
+      session.state.objective.lastAdvancedAt = new Date();
+    } else if (directorPlan.objectiveAdvance === 'cost') {
+      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 4);
+      session.state.objective.lastAdvancedAt = new Date();
     }
   }
   
@@ -1604,8 +1740,46 @@ async function continueStory(sessionId, options = {}) {
     session.updateAffection(affectionChange);
   }
   
-  const payTrigger = updateChapterPaywall(session);
+  const payTrigger = updateMilestonePaywall(session, agent, directorPlan) || updateChapterPaywall(session);
   await session.save();
+
+  // Attribution: 每段一条（异步失败不影响主流程）
+  if (StoryAttribution) {
+    try {
+      const promptHash = crypto.createHash('sha256').update(String(directorPlan?.event || '') + '|' + (variant?.variantId || '')).digest('hex');
+      const contextHash = crypto.createHash('sha256').update(String(buildContextBundle(session).packed || '')).digest('hex');
+      await StoryAttribution.updateOne(
+        { sessionId: session._id, paragraphIndex },
+        {
+          $setOnInsert: {
+            sessionId: session._id,
+            userId: session.userId,
+            agentId: session.agentId,
+            paragraphIndex,
+          },
+          $set: {
+            workflowVersion,
+            modelName,
+            promptHash,
+            contextHash,
+            variantId: variant?.variantId || '',
+            experimentId: variant?.experimentId,
+            skeletonVersion: session.state.skeletonVersion || '',
+            arcId: session.state.arcId || '',
+            beat: session.state.beat || '',
+            eventType: directorPlan?.eventType || '',
+            validatePass: !!validateInfo?.ok,
+            failReasons: validateInfo?.reasons || [],
+            retryCount,
+            criticUsed: !!criticPlan,
+          }
+        },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.warn('[StoryAttribution] write failed:', e?.message || e);
+    }
+  }
   
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
@@ -1812,6 +1986,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   if (!agent) throw new Error('角色不存在');
   
   const modelName = agent.modelName || 'grok-2';
+  const variant = await pickPromptVariant(session.agentId, session.userId);
   const workflowVersion = pickWorkflowVersion(session, options);
   session.state.workflow = workflowVersion;
 
@@ -1820,6 +1995,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   let llmMs = 0;
   let validateInfo = null;
   let criticPlan = null;
+  let retryCount = 0;
 
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
@@ -1831,7 +2007,7 @@ async function inputStory(sessionId, userInput, options = {}) {
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (workflowVersion === 'v2') {
-      const directorSystem = buildDirectorSystemPrompt(agent, session);
+      const directorSystem = buildDirectorSystemPrompt(agent, session) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
       const directorUser = buildDirectorUserPrompt(session, `回应玩家输入并推进：${userInput}`);
       const directorStart = Date.now();
       const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
@@ -1852,7 +2028,7 @@ async function inputStory(sessionId, userInput, options = {}) {
         directorPlan = checked1.plan;
       }
 
-      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage);
+      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
       let writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
       if (attempt === 1) {
         writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
@@ -1925,6 +2101,7 @@ async function inputStory(sessionId, userInput, options = {}) {
       }
     }
   }
+  retryCount = validateInfo?.ok ? Math.max(0, (validateInfo?.reasons?.length ? 1 : 0)) : 2;
   
   const stateUpdate = extractStateUpdate(content);
   // 合并 AI 返回的状态变化
@@ -1981,8 +2158,45 @@ async function inputStory(sessionId, userInput, options = {}) {
   const actualChange = affectionChange || 2;
   session.updateAffection(actualChange);
   
-  const payTrigger = updateChapterPaywall(session);
+  const payTrigger = updateMilestonePaywall(session, agent, directorPlan) || updateChapterPaywall(session);
   await session.save();
+
+  if (StoryAttribution) {
+    try {
+      const promptHash = crypto.createHash('sha256').update(String(directorPlan?.event || '') + '|' + (variant?.variantId || '')).digest('hex');
+      const contextHash = crypto.createHash('sha256').update(String(buildContextBundle(session).packed || '')).digest('hex');
+      await StoryAttribution.updateOne(
+        { sessionId: session._id, paragraphIndex },
+        {
+          $setOnInsert: {
+            sessionId: session._id,
+            userId: session.userId,
+            agentId: session.agentId,
+            paragraphIndex,
+          },
+          $set: {
+            workflowVersion,
+            modelName,
+            promptHash,
+            contextHash,
+            variantId: variant?.variantId || '',
+            experimentId: variant?.experimentId,
+            skeletonVersion: session.state.skeletonVersion || '',
+            arcId: session.state.arcId || '',
+            beat: session.state.beat || '',
+            eventType: directorPlan?.eventType || '',
+            validatePass: !!validateInfo?.ok,
+            failReasons: validateInfo?.reasons || [],
+            retryCount,
+            criticUsed: !!criticPlan,
+          }
+        },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.warn('[StoryAttribution] write failed:', e?.message || e);
+    }
+  }
   
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });

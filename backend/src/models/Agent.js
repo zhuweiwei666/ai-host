@@ -29,6 +29,36 @@ const PreviewVideoSchema = new mongoose.Schema({
   toPose: { type: String, default: '' },           // 过渡目标姿态（transition 专用）
 }, { _id: true });
 
+// ========== Story Skeleton (per-agent) ==========
+const StorySkeletonSchema = new mongoose.Schema({
+  version: { type: String, default: 'v1' },
+  canonFacts: [{ type: String }],
+  arcs: [{
+    arcId: { type: String, required: true },
+    title: { type: String, default: '' },
+    objective: {
+      title: { type: String, default: '' },
+      detail: { type: String, default: '' },
+    },
+    beats: [{ type: String }], // hook/escalation/reveal/crisis/passion/payoff...
+    eventTypeSchedule: {
+      window: { type: Number, default: 6 },   // 6 段窗口
+      minDistinct: { type: Number, default: 3 }, // 至少 3 种事件类型
+    },
+    milestones: [{
+      id: { type: String, required: true },
+      type: { type: String, default: '' }, // passion/reveal/evidence/decision...
+      title: { type: String, default: '' },
+      requiredKeywords: [{ type: String }],
+      paywall: {
+        enabled: { type: Boolean, default: false },
+        cost: { type: Number, default: 0 },
+        reason: { type: String, default: '' },
+      }
+    }],
+  }],
+}, { _id: false });
+
 const AgentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   gender: { type: String, enum: ['male', 'female', 'other'], default: 'female' },
@@ -207,6 +237,9 @@ const AgentSchema = new mongoose.Schema({
     
     // 背景故事（用于 prompt）
     backstory: { type: String, default: '' },
+
+    // 角色专属剧情骨架（可运营可编辑）
+    skeleton: { type: StorySkeletonSchema, default: null },
   },
   
 }, { timestamps: true });

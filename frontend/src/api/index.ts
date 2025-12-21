@@ -908,8 +908,9 @@ export interface StoryState {
   canonFacts?: string[];
   chapter?: { index: number; size: number };
   pay?: {
-    pending?: { type: string; chapterIndex?: number; reason?: string; createdAt?: string };
+    pending?: { type: string; chapterIndex?: number; arcId?: string; milestoneId?: string; cost?: number; reason?: string; createdAt?: string };
     unlockedChapterIndex?: number;
+    unlockedMilestones?: Array<{ arcId: string; milestoneId: string; at?: string }>;
   };
 }
 
@@ -970,7 +971,7 @@ export interface StoryContinueResponse {
   cost?: number;
   imageGenerating?: boolean; // 是否有图片正在生成
   choices?: Array<{ text: string; value: string; kind?: 'choice' | 'cta' }>;
-  payTrigger?: { type: string; chapterIndex?: number; reason?: string; createdAt?: string } | null;
+  payTrigger?: { type: string; chapterIndex?: number; arcId?: string; milestoneId?: string; cost?: number; reason?: string; createdAt?: string } | null;
   subscribed?: boolean;
 }
 
@@ -1004,6 +1005,17 @@ export const unlockStoryChapter = (sessionId: string, chapterIndex: number, clie
     '/story/unlock-chapter',
     { sessionId, chapterIndex, clientRequestId }
   );
+
+// 解锁里程碑
+export const unlockStoryMilestone = (sessionId: string, arcId: string, milestoneId: string, clientRequestId?: string) =>
+  http.post<{ sessionId: string; arcId: string; milestoneId: string; balance: number; cost: number; subscribed: boolean }>(
+    '/story/unlock-milestone',
+    { sessionId, arcId, milestoneId, clientRequestId }
+  );
+
+// 段落反馈（点赞/点踩）
+export const sendStoryFeedback = (sessionId: string, paragraphIndex: number, thumb: 'up' | 'down', dwellMs?: number) =>
+  http.post<{ ok: true }>('/story/feedback', { sessionId, paragraphIndex, thumb, dwellMs });
 
 // 获取故事状态
 export const getStoryState = (sessionId: string) =>

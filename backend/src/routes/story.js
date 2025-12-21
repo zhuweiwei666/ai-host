@@ -19,6 +19,9 @@ const storyService = require('../services/storyService');
 const walletService = require('../services/walletService');
 const StorySession = require('../models/StorySession');
 const Subscription = require('../models/Subscription');
+const Agent = require('../models/Agent');
+let StoryAttribution;
+try { StoryAttribution = require('../models/StoryAttribution'); } catch { StoryAttribution = null; }
 
 // 消耗配置
 const COST_CONTINUE = 2;  // 继续剧情消耗
@@ -52,6 +55,18 @@ function isChapterLocked(session) {
   const unlocked = Number(session?.state?.pay?.unlockedChapterIndex || 0);
   if (Number(pending.chapterIndex || 0) > unlocked) return pending;
   return null;
+}
+
+function isMilestoneLocked(session) {
+  const pending = session?.state?.pay?.pending;
+  if (!pending || pending.type !== 'milestone_unlock') return null;
+  const unlocked = Array.isArray(session?.state?.pay?.unlockedMilestones) ? session.state.pay.unlockedMilestones : [];
+  const already = unlocked.some((x) => String(x.arcId) === String(pending.arcId) && String(x.milestoneId) === String(pending.milestoneId));
+  return already ? null : pending;
+}
+
+function getPaywallLock(session) {
+  return isMilestoneLocked(session) || isChapterLocked(session) || null;
 }
 
 /**
@@ -101,10 +116,12 @@ router.post('/continue', requireAuth, async (req, res) => {
     if (forbidden) return errors.forbidden(res, '无权访问该故事');
     if (!ownedSession) return errors.notFound(res, '故事不存在');
     if (!subscribed) {
-      const locked = isChapterLocked(ownedSession);
+      const locked = getPaywallLock(ownedSession);
       if (locked) {
-        console.log(`[Story API] Chapter locked: sessionId=${sessionId}, needUnlock=${locked.chapterIndex}`);
-        return errors.insufficientFunds(res, 'CHAPTER_LOCKED', { paywall: locked, cost: COST_CHAPTER_UNLOCK });
+        console.log(`[Story API] Locked: sessionId=${sessionId}, type=${locked.type}`);
+        const code = locked.type === 'milestone_unlock' ? 'MILESTONE_LOCKED' : 'CHAPTER_LOCKED';
+        const cost = locked.type === 'milestone_unlock' ? (Number(locked.cost || 0) || COST_CHAPTER_UNLOCK) : COST_CHAPTER_UNLOCK;
+        return errors.insufficientFunds(res, code, { paywall: locked, cost });
       }
     }
 
@@ -129,6 +146,15 @@ router.post('/continue', requireAuth, async (req, res) => {
     const balance = await walletService.getBalance(userId);
     
     console.log(`[Story API] Continue: sessionId=${sessionId}, progress=${result.progress}%, imageGenerating=${result.imageGenerating}`);
+
+    // Online tuning: use continue as light engagement signal
+    try {
+      const exp = await require('../models/PromptExperiment').getActiveExperiment(ownedSession.agentId);
+      if (exp) {
+        const v = exp.assignVariant(String(userId));
+        await exp.recordMetric(v.id, 'message', 1);
+      }
+    } catch {}
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
@@ -169,10 +195,12 @@ router.post('/input', requireAuth, async (req, res) => {
     if (forbidden) return errors.forbidden(res, '无权访问该故事');
     if (!ownedSession) return errors.notFound(res, '故事不存在');
     if (!subscribed) {
-      const locked = isChapterLocked(ownedSession);
+      const locked = getPaywallLock(ownedSession);
       if (locked) {
-        console.log(`[Story API] Chapter locked: sessionId=${sessionId}, needUnlock=${locked.chapterIndex}`);
-        return errors.insufficientFunds(res, 'CHAPTER_LOCKED', { paywall: locked, cost: COST_CHAPTER_UNLOCK });
+        console.log(`[Story API] Locked: sessionId=${sessionId}, type=${locked.type}`);
+        const code = locked.type === 'milestone_unlock' ? 'MILESTONE_LOCKED' : 'CHAPTER_LOCKED';
+        const cost = locked.type === 'milestone_unlock' ? (Number(locked.cost || 0) || COST_CHAPTER_UNLOCK) : COST_CHAPTER_UNLOCK;
+        return errors.insufficientFunds(res, code, { paywall: locked, cost });
       }
     }
 
@@ -197,6 +225,14 @@ router.post('/input', requireAuth, async (req, res) => {
     const balance = await walletService.getBalance(userId);
     
     console.log(`[Story API] Input: sessionId=${sessionId}, input="${userInput.slice(0, 20)}...", imageGenerating=${result.imageGenerating}`);
+
+    try {
+      const exp = await require('../models/PromptExperiment').getActiveExperiment(ownedSession.agentId);
+      if (exp) {
+        const v = exp.assignVariant(String(userId));
+        await exp.recordMetric(v.id, 'message', 1);
+      }
+    } catch {}
     
     sendSuccess(res, HTTP_STATUS.OK, {
       ...result,
@@ -345,9 +381,87 @@ router.post('/unlock-chapter', requireAuth, async (req, res) => {
 
     const balance = await walletService.getBalance(userId);
     console.log(`[Story API] Chapter unlocked: sessionId=${sessionId}, chapterIndex=${chapterIndex}, cost=${cost}`);
+
+    // Online tuning: treat unlock as high-value conversion signal
+    try {
+      const exp = await require('../models/PromptExperiment').getActiveExperiment(owned.agentId);
+      if (exp) {
+        const v = exp.assignVariant(String(userId));
+        await exp.recordMetric(v.id, 'unlock', 1);
+      }
+    } catch {}
+
     return sendSuccess(res, HTTP_STATUS.OK, { sessionId, chapterIndex, balance, cost, subscribed: false });
   } catch (err) {
     console.error('[Story API] Unlock chapter error:', err);
+    errors.badRequest(res, err.message || '解锁失败');
+  }
+});
+
+/**
+ * POST /api/story/unlock-milestone
+ * 解锁里程碑（激情/越界/关键证据等）
+ */
+router.post('/unlock-milestone', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId, arcId, milestoneId, clientRequestId } = req.body;
+
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+      return errors.badRequest(res, '无效的故事 ID');
+    }
+    if (!arcId || !milestoneId) return errors.badRequest(res, '缺少 arcId/milestoneId');
+
+    const { session: owned, forbidden } = await loadAndAuthorizeSession(userId, sessionId);
+    if (forbidden) return errors.forbidden(res, '无权访问该故事');
+    if (!owned) return errors.notFound(res, '故事不存在');
+
+    const subscribed = await isSubscribed(userId);
+    if (subscribed) {
+      owned.state.pay = owned.state.pay || {};
+      if (!Array.isArray(owned.state.pay.unlockedMilestones)) owned.state.pay.unlockedMilestones = [];
+      owned.state.pay.unlockedMilestones.push({ arcId: String(arcId), milestoneId: String(milestoneId), at: new Date() });
+      if (owned.state.pay.pending?.type === 'milestone_unlock') owned.state.pay.pending = undefined;
+      await owned.save();
+      const balance = await walletService.getBalance(userId);
+      return sendSuccess(res, HTTP_STATUS.OK, { sessionId, arcId, milestoneId, balance, cost: 0, subscribed: true });
+    }
+
+    // cost 从 skeleton 里取（兜底 12）
+    let cost = 12;
+    const agent = await Agent.findById(owned.agentId).lean();
+    const sk = agent?.storyConfig?.skeleton;
+    const arc = Array.isArray(sk?.arcs) ? sk.arcs.find((a) => String(a.arcId) === String(arcId)) : null;
+    const ms = Array.isArray(arc?.milestones) ? arc.milestones.find((m) => String(m.id) === String(milestoneId)) : null;
+    if (ms?.paywall?.cost) cost = Number(ms.paywall.cost) || cost;
+
+    try {
+      const idem = clientRequestId ? `story:unlock-milestone:${sessionId}:${clientRequestId}` : null;
+      await walletService.consume(userId, cost, 'story_unlock_milestone', `${sessionId}:${arcId}:${milestoneId}`, idem);
+    } catch (walletErr) {
+      return errors.badRequest(res, walletErr.message || '余额不足');
+    }
+
+    owned.state.pay = owned.state.pay || {};
+    if (!Array.isArray(owned.state.pay.unlockedMilestones)) owned.state.pay.unlockedMilestones = [];
+    owned.state.pay.unlockedMilestones.push({ arcId: String(arcId), milestoneId: String(milestoneId), at: new Date() });
+    if (owned.state.pay.pending?.type === 'milestone_unlock') owned.state.pay.pending = undefined;
+    await owned.save();
+
+    const balance = await walletService.getBalance(userId);
+    console.log(`[Story API] Milestone unlocked: sessionId=${sessionId}, arcId=${arcId}, milestoneId=${milestoneId}, cost=${cost}`);
+
+    try {
+      const exp = await require('../models/PromptExperiment').getActiveExperiment(owned.agentId);
+      if (exp) {
+        const v = exp.assignVariant(String(userId));
+        await exp.recordMetric(v.id, 'unlock', 1);
+      }
+    } catch {}
+
+    return sendSuccess(res, HTTP_STATUS.OK, { sessionId, arcId, milestoneId, balance, cost, subscribed: false });
+  } catch (err) {
+    console.error('[Story API] Unlock milestone error:', err);
     errors.badRequest(res, err.message || '解锁失败');
   }
 });
@@ -396,6 +510,51 @@ router.get('/user/sessions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[Story API] Get user sessions error:', err);
     errors.internalError(res, '获取故事列表失败');
+  }
+});
+
+/**
+ * POST /api/story/feedback
+ * 段落点赞/点踩 + 隐式时长
+ */
+router.post('/feedback', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId, paragraphIndex, thumb, dwellMs } = req.body;
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) return errors.badRequest(res, '无效的故事 ID');
+    const idx = Number(paragraphIndex);
+    if (!Number.isFinite(idx) || idx < 0) return errors.badRequest(res, '无效的段落索引');
+    if (thumb !== 'up' && thumb !== 'down') return errors.badRequest(res, 'thumb 必须是 up/down');
+
+    if (StoryAttribution) {
+      await StoryAttribution.updateOne(
+        { sessionId, userId, paragraphIndex: idx },
+        { $set: { thumb, dwellMs: Number.isFinite(Number(dwellMs)) ? Number(dwellMs) : undefined } },
+        { upsert: true }
+      );
+    }
+
+    // Online tuning: thumbs -> quality score sample
+    const { session } = await loadAndAuthorizeSession(userId, sessionId);
+    if (session) {
+      const exp = await require('../models/PromptExperiment').getActiveExperiment(session.agentId);
+      if (exp) {
+        const v = exp.assignVariant(String(userId));
+        const variant = exp.variants.find((x) => x.id === v.id);
+        if (variant) {
+          const n = variant.qualityScores.sampleCount || 0;
+          const val = thumb === 'up' ? 1 : 0;
+          variant.qualityScores.avgEngagement = (variant.qualityScores.avgEngagement * n + val) / (n + 1);
+          variant.qualityScores.sampleCount = n + 1;
+          await exp.save();
+        }
+      }
+    }
+
+    return sendSuccess(res, HTTP_STATUS.OK, { ok: true });
+  } catch (err) {
+    console.error('[Story API] Feedback error:', err);
+    return errors.badRequest(res, err.message || '反馈失败');
   }
 });
 
