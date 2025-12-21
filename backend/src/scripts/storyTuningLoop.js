@@ -60,6 +60,7 @@ const EVENT_TRIGGERS = [
   '决定', '答应', '拒绝', '同意', '条件', '交易', '威胁', '报警',
   '钥匙', '日记', '信', '信封', '抽屉', '文件', 'U盘', '硬盘', '录像', '对讲机',
   '报警器', '警报', '摄像头', '监控室', '密码', '锁', '撬', '破门', '闯入', '追', '抓', '躲',
+  '检查', '通知', '消息', '纸条', '检查员',
   'door', 'knock', 'footstep', 'phone', 'call', 'message', 'key', 'diary', 'evidence', 'security', 'police', 'alarm', 'camera', 'recording',
 ];
 

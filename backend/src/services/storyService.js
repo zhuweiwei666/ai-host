@@ -854,6 +854,7 @@ const EVENT_TRIGGERS = [
   // 扩展：证据/逃离/闯入/工具
   '钥匙', '日记', '信', '信封', '抽屉', '文件', 'U盘', '硬盘', '录像', '对讲机',
   '报警器', '警报', '摄像头', '监控室', '密码', '锁', '撬', '破门', '闯入', '追', '抓', '躲',
+  '检查', '通知', '消息', '纸条', '检查员',
   // English (防止模型偶尔英文导致误判)
   'door', 'knock', 'footstep', 'phone', 'call', 'message', 'key', 'diary', 'evidence', 'security', 'police', 'alarm', 'camera', 'recording',
 ];
