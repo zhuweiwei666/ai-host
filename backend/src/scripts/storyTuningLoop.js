@@ -82,6 +82,10 @@ function validateParagraph({ text, recentParas, directorPlan }) {
   if (curStart && lastStart && curStart === lastStart) {
     return { ok: false, reasons: ['opening_repeat'] };
   }
+  // avoid meta headings
+  if (/^\s*(事件|反应|推进|悬念)\s*[:：]/.test(out) || out.includes('反应：') || out.includes('推进：')) {
+    return { ok: false, reasons: ['meta_headings'] };
+  }
   const cur3 = charNgrams(out, 3);
   let maxOverlap = 0;
   for (const r of recent.slice(-3)) {
@@ -95,7 +99,11 @@ function validateParagraph({ text, recentParas, directorPlan }) {
     const kws = extractEventKeywords(event);
     const hit = kws.filter((k) => out.includes(k)).length;
     const need = kws.length ? Math.max(1, Math.ceil(kws.length * 0.2)) : 0;
-    if (kws.length && hit < need) return { ok: false, reasons: ['director_event_not_realized'] };
+    if (kws.length && hit < need) {
+      const first = (out.split('\n').find(Boolean) || out).slice(0, 120);
+      const sim = overlapRatio(charNgrams(event, 2), charNgrams(first, 2));
+      if (sim < 0.22) return { ok: false, reasons: ['director_event_not_realized'] };
+    }
   }
   const t = directorPlan?.eventType;
   if (!t) return { ok: false, reasons: ['missing_eventType'] };
@@ -123,6 +131,7 @@ function buildWriterSystem(agentName, plan) {
     `你是短剧编剧（只用中文）。\n` +
     `角色用「${agentName}」名字表达，用户用“你”。\n` +
     `第一句必须落实 event：${plan.event}\n` +
+    `禁止输出“事件/反应/推进/悬念”等小标题，只写正文。\n` +
     `结构：事件→反应→推进→悬念。\n` +
     `120-180字；边界：R18_soft。\n`
   );
