@@ -797,6 +797,7 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
     `你是短剧编剧（只用中文），写事件驱动的沉浸式短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
     `【合同】第一句必须写出这个 event（照抄或同义改写，但要能看出发生了同一件事）：${event}\n` +
+    `【禁止】不要输出“事件/反应/推进/悬念”这类小标题或括号标注，只写正文。\n` +
     `【最重要】每段必须有新事件，不能原地打转。\n` +
     `结构：事件(第一句) → 反应(感官/动作) → 推进(决定/代价) → 悬念(最后一句)\n` +
     `【写法】用感官细节渲染（气息/心跳/温度/触感），用动作暗示心理。\n` +
@@ -913,7 +914,12 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
     eventHit = eventKeywords.filter((k) => out.includes(k)).length;
     eventNeed = eventKeywords.length ? Math.max(1, Math.ceil(eventKeywords.length * 0.2)) : 0;
     if (eventKeywords.length && eventHit < eventNeed) {
-      return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords } };
+      // 允许更强的语义改写：用 2-gram 重叠做兜底（避免过度严格）
+      const first = (out.split('\n').find(Boolean) || out).slice(0, 120);
+      const sim = overlapRatio(charNgrams(event, 2), charNgrams(first, 2));
+      if (sim < 0.22) {
+        return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords, sim } };
+      }
     }
   }
 
