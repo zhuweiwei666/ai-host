@@ -583,6 +583,7 @@ function buildContextBundle(session, opts = {}) {
 
   const recentText = getRecentStoryContext(session, count, Math.min(700, maxChars));
   const summary = (session?.state?.summary || '').trim();
+  const objectiveTitle = (session?.state?.objective?.title || '').trim();
   const canonFacts = Array.isArray(session?.state?.canonFacts) ? session.state.canonFacts.slice(-6) : [];
   const openLoops = Array.isArray(session?.state?.openLoops) ? session.state.openLoops.slice(-6) : [];
   const memoryEvents = Array.isArray(session?.memoryEvents) ? session.memoryEvents.slice(-memoryK) : [];
@@ -590,13 +591,14 @@ function buildContextBundle(session, opts = {}) {
   // 轻量裁剪：让整体上下文不超过 maxChars
   let packed =
     `【摘要】${summary || '(无)'}\n` +
+    `【目标】${objectiveTitle || '(无)'}\n` +
     `【事实】${canonFacts.length ? canonFacts.join('；') : '(无)'}\n` +
     `【伏笔】${openLoops.length ? openLoops.join('；') : '(无)'}\n` +
     `【最近】\n${recentText || '(无)'}\n` +
     `【记忆】\n${memoryEvents.length ? memoryEvents.map((m) => `- ${[m.place, m.stakes, m.secret].filter(Boolean).join(' / ')}`).join('\n') : '(无)'}\n`;
 
   if (packed.length > maxChars) packed = packed.slice(-maxChars);
-  return { packed, recentText, summary, canonFacts, openLoops, memoryEvents };
+  return { packed, recentText, summary, objectiveTitle, canonFacts, openLoops, memoryEvents };
 }
 
 function addUniqueLimited(arr, item, max = 7) {
@@ -745,11 +747,12 @@ function validateDirectorPlan(plan) {
   const stakes = typeof p.stakes === 'string' ? p.stakes.trim() : '';
   const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
   const eventType = typeof p.eventType === 'string' ? p.eventType.trim() : '';
+  const objective = typeof p.objective === 'string' ? p.objective.trim() : '';
   const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
   const ok = !!event && !!eventType;
   return {
     ok,
-    plan: { event, hook, stakes, twist, eventType, choices, beat: p.beat },
+    plan: { event, hook, stakes, twist, eventType, objective, choices, beat: p.beat },
     reasons: ok ? [] : ['missing_event_or_eventType'],
   };
 }
@@ -770,9 +773,10 @@ function buildDirectorSystemPrompt(agent, session) {
     `要求：只输出 JSON。\n` +
     `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
     `eventType 必填，只能从：intrusion(闯入/敲门/被发现)/evidence(证据)/reveal(揭示)/decision(决定/交易)/relocate(换地点)/conflict(冲突/对峙)/escape(逃离)\n` +
+    `objective 可选：如果当前【目标】为空或已明显跑偏，给一个新的“本章目标”(<=12字)。\n` +
     `角色：${agent.name}。人设：${persona}\n` +
     `边界：R18_soft。进度暗示：${intensityGuide}\n` +
-    `JSON 字段：eventType(必填), event(必填, 1句短句, 含2-4个关键词), twist, hook, stakes, choices(array 2-3 strings).`;
+    `JSON 字段：eventType(必填), event(必填, 1句短句, 含2-4个关键词), objective(optional), twist, hook, stakes, choices(array 2-3 strings).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -1538,11 +1542,30 @@ async function continueStory(sessionId, options = {}) {
     while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
   }
 
+  if (directorPlan?.objective) {
+    const title = String(directorPlan.objective).trim().slice(0, 24);
+    if (title && String(session.state?.objective?.title || '') !== title) {
+      session.state.objective = session.state.objective || {};
+      session.state.objective.title = title;
+      session.state.objective.updatedAt = new Date();
+    }
+  }
+
   // 记录事件类型，防止模板化（只记录 v2 或有 eventType 的情况）
   if (directorPlan?.eventType) {
     if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
     session.state.eventTypeHistory.push(String(directorPlan.eventType).slice(0, 24));
     while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
+  }
+
+  // 目标推进器：导演可更新本章目标（短）
+  if (directorPlan?.objective) {
+    const title = String(directorPlan.objective).trim().slice(0, 24);
+    if (title && String(session.state?.objective?.title || '') !== title) {
+      session.state.objective = session.state.objective || {};
+      session.state.objective.title = title;
+      session.state.objective.updatedAt = new Date();
+    }
   }
   
   // 保存段落（如果开启写真模式，标记为图片生成中）
