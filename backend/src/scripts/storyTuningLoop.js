@@ -90,9 +90,12 @@ function validateParagraph({ text, recentParas, directorPlan }) {
   const event = directorPlan?.event;
   if (event) {
     const kws = extractEventKeywords(event);
-    const match = kws.length ? kws.some((k) => out.includes(k)) : true;
-    if (!match) return { ok: false, reasons: ['director_event_not_realized'] };
+    const hit = kws.filter((k) => out.includes(k)).length;
+    const need = kws.length ? Math.max(1, Math.ceil(kws.length * 0.2)) : 0;
+    if (kws.length && hit < need) return { ok: false, reasons: ['director_event_not_realized'] };
   }
+  const t = directorPlan?.eventType;
+  if (!t) return { ok: false, reasons: ['missing_eventType'] };
   return { ok: true, reasons: [] };
 }
 
@@ -105,8 +108,9 @@ async function chat(model, messages, temperature, maxTokens) {
 function buildDirectorSystem(agentName) {
   return (
     `你是短剧导演，只输出 JSON。\n` +
-    `event 必填，且必须可执行（具体到“谁做了什么导致什么后果”）。\n` +
-    `JSON: event, twist, hook, stakes, choices(2-3).\n` +
+    `eventType 必填，只能从 intrusion/evidence/reveal/decision/relocate/conflict/escape。\n` +
+    `event 必填，必须 1 句短句，含 2-4 个关键词（便于落地）。\n` +
+    `JSON: eventType, event, twist, hook, stakes, choices(2-3).\n` +
     `角色：${agentName}；边界：R18_soft。\n`
   );
 }
@@ -145,17 +149,19 @@ async function runRound({ round, model, criticModel }) {
     paragraphs: [
       '夜里，空荡的教室只剩粉笔灰的味道。百濑老师把门反锁，低声说：“别紧张，只是补课。”门外却忽然传来脚步声——'
     ],
+    eventTypes: [],
   };
 
   const failCounts = new Map();
   for (let step = 0; step < 6; step += 1) {
     const recent = session.paragraphs.slice(-3);
+    const recentTypes = session.eventTypes.slice(-2);
     // Director
     const director = await chat(model, [
       { role: 'system', content: buildDirectorSystem(agentName) },
-      { role: 'user', content: `续写下一段。最近：\n${recent.join('\n---\n')}` },
+      { role: 'user', content: `续写下一段。避免重复事件类型：${recentTypes.join('->') || '(无)'}。\n最近：\n${recent.join('\n---\n')}` },
     ], 0.4, 180);
-    const plan = safeJsonParseFromText(director) || { event: '门外有人敲门，百濑老师拉着你躲到讲台后' };
+    const plan = safeJsonParseFromText(director) || { eventType: 'intrusion', event: '敲门声逼近，百濑老师拉你躲到讲台后' };
     // Writer
     let draft = await chat(model, [
       { role: 'system', content: buildWriterSystem(agentName, plan) },
@@ -188,6 +194,7 @@ async function runRound({ round, model, criticModel }) {
     }
 
     session.paragraphs.push(String(draft).trim());
+    if (plan.eventType) session.eventTypes.push(String(plan.eventType));
   }
 
   const sorted = [...failCounts.entries()].sort((a, b) => b[1] - a[1]);

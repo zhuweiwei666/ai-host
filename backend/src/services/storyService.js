@@ -744,11 +744,11 @@ function validateDirectorPlan(plan) {
   const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
   const eventType = typeof p.eventType === 'string' ? p.eventType.trim() : '';
   const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
-  const ok = !!event;
+  const ok = !!event && !!eventType;
   return {
     ok,
     plan: { event, hook, stakes, twist, eventType, choices, beat: p.beat },
-    reasons: ok ? [] : ['missing_event'],
+    reasons: ok ? [] : ['missing_event_or_eventType'],
   };
 }
 
@@ -1407,7 +1407,12 @@ async function continueStory(sessionId, options = {}) {
       const parsedDirector = safeJsonParseFromText(directorRaw) || {};
       const checked1 = validateDirectorPlan(parsedDirector);
       if (!checked1.ok) {
-        const directorRaw2 = await generateContent(directorSystem, directorUser + '\n【修正】event 必填，给出更具体可执行的事件。', modelName, { maxTokens: 200, temperature: 0.4 });
+        const directorRaw2 = await generateContent(
+          directorSystem,
+          directorUser + '\n【修正】eventType+event 必填：event 必须1句短句(含2-4关键词)，可执行，且尽量不要与最近事件类型重复。',
+          modelName,
+          { maxTokens: 220, temperature: 0.4 }
+        );
         directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
       } else {
         directorPlan = checked1.plan;
@@ -1797,7 +1802,12 @@ async function inputStory(sessionId, userInput, options = {}) {
       const parsedDirector = safeJsonParseFromText(directorRaw) || {};
       const checked1 = validateDirectorPlan(parsedDirector);
       if (!checked1.ok) {
-        const directorRaw2 = await generateContent(directorSystem, directorUser + '\n【修正】event 必填，给出更具体可执行的事件。', modelName, { maxTokens: 200, temperature: 0.4 });
+        const directorRaw2 = await generateContent(
+          directorSystem,
+          directorUser + '\n【修正】eventType+event 必填：event 必须1句短句(含2-4关键词)，可执行，且尽量不要与最近事件类型重复。',
+          modelName,
+          { maxTokens: 220, temperature: 0.4 }
+        );
         directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
       } else {
         directorPlan = checked1.plan;
