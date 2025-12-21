@@ -382,6 +382,19 @@ router.post('/unlock-chapter', requireAuth, async (req, res) => {
     const balance = await walletService.getBalance(userId);
     console.log(`[Story API] Chapter unlocked: sessionId=${sessionId}, chapterIndex=${chapterIndex}, cost=${cost}`);
 
+    // Attribution: payEvent 写回触发段落
+    if (StoryAttribution) {
+      try {
+        const pidx = Number(owned.state?.pay?.pending?.paragraphIndex);
+        if (Number.isFinite(pidx)) {
+          await StoryAttribution.updateOne(
+            { sessionId, paragraphIndex: pidx },
+            { $set: { payEvent: { type: 'chapter_unlock', cost, at: new Date() } } }
+          );
+        }
+      } catch {}
+    }
+
     // Online tuning: treat unlock as high-value conversion signal
     try {
       const exp = await require('../models/PromptExperiment').getActiveExperiment(owned.agentId);
@@ -450,6 +463,18 @@ router.post('/unlock-milestone', requireAuth, async (req, res) => {
 
     const balance = await walletService.getBalance(userId);
     console.log(`[Story API] Milestone unlocked: sessionId=${sessionId}, arcId=${arcId}, milestoneId=${milestoneId}, cost=${cost}`);
+
+    if (StoryAttribution) {
+      try {
+        const pidx = Number(owned.state?.pay?.pending?.paragraphIndex);
+        if (Number.isFinite(pidx)) {
+          await StoryAttribution.updateOne(
+            { sessionId, paragraphIndex: pidx },
+            { $set: { payEvent: { type: 'milestone_unlock', cost, at: new Date() } } }
+          );
+        }
+      } catch {}
+    }
 
     try {
       const exp = await require('../models/PromptExperiment').getActiveExperiment(owned.agentId);
@@ -528,8 +553,12 @@ router.post('/feedback', requireAuth, async (req, res) => {
 
     if (StoryAttribution) {
       await StoryAttribution.updateOne(
-        { sessionId, userId, paragraphIndex: idx },
-        { $set: { thumb, dwellMs: Number.isFinite(Number(dwellMs)) ? Number(dwellMs) : undefined } },
+        // 归因记录是“每段一条”（sessionId+paragraphIndex 唯一）
+        { sessionId, paragraphIndex: idx },
+        {
+          $setOnInsert: { sessionId, userId, paragraphIndex: idx },
+          $set: { thumb, dwellMs: Number.isFinite(Number(dwellMs)) ? Number(dwellMs) : undefined },
+        },
         { upsert: true }
       );
     }

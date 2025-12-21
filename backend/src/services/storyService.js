@@ -641,6 +641,21 @@ function getNextMilestone(arc, milestonesHit = []) {
   return ms.find((m) => m?.id && !hit.has(String(m.id))) || null;
 }
 
+function syncNextMilestoneHint(session, agent) {
+  const skeleton = getAgentSkeleton(agent);
+  if (!skeleton) {
+    session.state.nextMilestoneId = '';
+    session.state.nextMilestoneTitle = '';
+    return null;
+  }
+  const arc = getSkeletonArc(skeleton, session?.state?.arcId);
+  if (!arc) return null;
+  const ms = getNextMilestone(arc, session?.state?.milestonesHit || []);
+  session.state.nextMilestoneId = ms?.id ? String(ms.id) : '';
+  session.state.nextMilestoneTitle = ms?.title ? String(ms.title).slice(0, 24) : '';
+  return ms;
+}
+
 async function pickPromptVariant(agentId, userId) {
   if (!agentId || !userId) return null;
   const exp = await PromptExperiment.getActiveExperiment(agentId);
@@ -839,9 +854,15 @@ function buildDirectorUserPrompt(session, intent) {
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
   const recentTypes = Array.isArray(session?.state?.eventTypeHistory) ? session.state.eventTypeHistory.slice(-3).filter(Boolean) : [];
+  // 下一里程碑提示（若角色未配置 skeleton，则为空）
+  const nextMsId = (session?.state?.nextMilestoneId || '').trim();
+  const nextMsTitle = (session?.state?.nextMilestoneTitle || '').trim();
   return `${bundle.packed}\n【意图】${intent}\n` +
     (recentTypes.length ? `【最近事件类型】${recentTypes.join(' -> ')}（避免连续重复同一类型）\n` : '') +
+    (bundle.arcId ? `【当前骨架】arcId=${bundle.arcId} beatIndex=${bundle.beatIndex}\n` : '') +
     `要求：开头禁止与上一段开头相似：「${lastStart}」。\n` +
+    (nextMsId ? `【下一里程碑】${nextMsId}${nextMsTitle ? `(${nextMsTitle})` : ''}\n` : '') +
+    `如果存在【下一里程碑】，请用 milestoneTarget 指向它；若该里程碑带 paywall，则这一段要在临界点收尾，等待解锁。\n` +
     `输出 JSON。`;
 }
 
@@ -1118,6 +1139,7 @@ function updateChapterPaywall(session) {
       chapterIndex: nextChapterIndex,
       reason: pickChapterPayReason(session),
       createdAt: new Date(),
+      paragraphIndex: Math.max(0, total - 1),
     };
     return { ...session.state.pay.pending };
   }
@@ -1151,6 +1173,7 @@ function updateMilestonePaywall(session, agent, directorPlan) {
     reason: ms.paywall.reason || '解锁关键情节',
     cost: Number(ms.paywall.cost || 0) || 0,
     createdAt: new Date(),
+    paragraphIndex: Math.max(0, (session?.totalParagraphs || session?.paragraphs?.length || 1) - 1),
   };
   return { ...session.state.pay.pending };
 }
@@ -1499,6 +1522,9 @@ async function continueStory(sessionId, options = {}) {
 
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
+
+  // 在生成前同步“下一里程碑提示”
+  syncNextMilestoneHint(session, agent);
   
   const workflowVersion = pickWorkflowVersion(session, options);
   session.state.workflow = workflowVersion;
@@ -1516,6 +1542,17 @@ async function continueStory(sessionId, options = {}) {
   // 最多 2 次重试：第1次追加“你刚才重复/无推进，必须改写”；第2次强制模板
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
+
+  // continued 回填：用户继续时，上一段视为 continued=true
+  if (StoryAttribution && session.paragraphs.length > 0) {
+    try {
+      await StoryAttribution.updateOne(
+        { sessionId: session._id, paragraphIndex: session.paragraphs.length - 1 },
+        { $set: { continued: true } },
+        { upsert: false }
+      );
+    } catch {}
+  }
   let parsed = null;
   let content = '';
   let affectionChange = 0;
@@ -1643,6 +1680,12 @@ async function continueStory(sessionId, options = {}) {
       if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
       addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
     }
+  }
+
+  // milestoneHit: 导演可显式命中里程碑
+  if (directorPlan?.milestoneHit) {
+    if (!Array.isArray(session.state.milestonesHit)) session.state.milestonesHit = [];
+    addUniqueLimited(session.state.milestonesHit, String(directorPlan.milestoneHit).slice(0, 64), 50);
   }
 
   if (directorPlan?.eventType) {
@@ -1984,6 +2027,8 @@ async function inputStory(sessionId, userInput, options = {}) {
 
   const agent = await Agent.findById(session.agentId);
   if (!agent) throw new Error('角色不存在');
+
+  syncNextMilestoneHint(session, agent);
   
   const modelName = agent.modelName || 'grok-2';
   const variant = await pickPromptVariant(session.agentId, session.userId);
@@ -1999,6 +2044,16 @@ async function inputStory(sessionId, userInput, options = {}) {
 
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
+
+  if (StoryAttribution && session.paragraphs.length > 0) {
+    try {
+      await StoryAttribution.updateOne(
+        { sessionId: session._id, paragraphIndex: session.paragraphs.length - 1 },
+        { $set: { continued: true } },
+        { upsert: false }
+      );
+    } catch {}
+  }
   let parsed = null;
   let content = '';
   let affectionChange = 0;
@@ -2121,6 +2176,11 @@ async function inputStory(sessionId, userInput, options = {}) {
       if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
       addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
     }
+  }
+
+  if (directorPlan?.milestoneHit) {
+    if (!Array.isArray(session.state.milestonesHit)) session.state.milestonesHit = [];
+    addUniqueLimited(session.state.milestonesHit, String(directorPlan.milestoneHit).slice(0, 64), 50);
   }
   
   // 保存段落（如果开启写真模式，标记为图片生成中）

@@ -100,6 +100,7 @@ const StorySessionSchema = new mongoose.Schema({
         arcId: { type: String },
         milestoneId: { type: String },
         cost: { type: Number },
+        paragraphIndex: { type: Number },             // 触发付费点的段落索引（归因用）
       },
       unlockedChapterIndex: { type: Number, default: 0 }, // 已解锁到的章节（包含）
       unlockedMilestones: [{
