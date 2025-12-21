@@ -742,11 +742,12 @@ function validateDirectorPlan(plan) {
   const hook = typeof p.hook === 'string' ? p.hook.trim() : '';
   const stakes = typeof p.stakes === 'string' ? p.stakes.trim() : '';
   const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
+  const eventType = typeof p.eventType === 'string' ? p.eventType.trim() : '';
   const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
   const ok = !!event;
   return {
     ok,
-    plan: { event, hook, stakes, twist, choices, beat: p.beat },
+    plan: { event, hook, stakes, twist, eventType, choices, beat: p.beat },
     reasons: ok ? [] : ['missing_event'],
   };
 }
@@ -766,17 +767,19 @@ function buildDirectorSystemPrompt(agent, session) {
   return `你是短剧导演，规划下一段要发生什么事件。\n` +
     `要求：只输出 JSON。\n` +
     `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
-    `事件类型：有人闯入/被发现/秘密暴露/意外发生/关系升级/危机出现/换地点\n` +
+    `eventType 必填，只能从：intrusion(闯入/敲门/被发现)/evidence(证据)/reveal(揭示)/decision(决定/交易)/relocate(换地点)/conflict(冲突/对峙)/escape(逃离)\n` +
     `角色：${agent.name}。人设：${persona}\n` +
     `边界：R18_soft。进度暗示：${intensityGuide}\n` +
-    `JSON 字段：event(必填), twist, hook, stakes, choices(array 2-3 strings).`;
+    `JSON 字段：eventType(必填), event(必填, 1句短句, 含2-4个关键词), twist, hook, stakes, choices(array 2-3 strings).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
   const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
   const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
   const lastStart = last.trim().slice(0, 24);
+  const recentTypes = Array.isArray(session?.state?.eventTypeHistory) ? session.state.eventTypeHistory.slice(-3).filter(Boolean) : [];
   return `${bundle.packed}\n【意图】${intent}\n` +
+    (recentTypes.length ? `【最近事件类型】${recentTypes.join(' -> ')}（避免连续重复同一类型）\n` : '') +
     `要求：开头禁止与上一段开头相似：「${lastStart}」。\n` +
     `输出 JSON。`;
 }
@@ -903,9 +906,20 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
   const event = directorPlan?.event;
   if (event) {
     const kws = extractEventKeywords(event);
-    const match = kws.length ? kws.some((k) => out.includes(k)) : true;
-    if (!match) {
+    // 允许改写：至少命中 1 个关键词（或命中比例达到 20%）
+    const hit = kws.filter((k) => out.includes(k)).length;
+    const need = kws.length ? Math.max(1, Math.ceil(kws.length * 0.2)) : 0;
+    if (kws.length && hit < need) {
       return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords: kws } };
+    }
+  }
+
+  // 5.1) eventType 多样性：避免连续重复同一类事件（软失败）
+  const t = directorPlan?.eventType;
+  if (t) {
+    const hist = Array.isArray(sessionState?.eventTypeHistory) ? sessionState.eventTypeHistory.slice(-2) : [];
+    if (hist.length >= 2 && hist.every((x) => String(x) === String(t))) {
+      return { ok: false, reasons: ['event_type_repeat'], metrics: { eventType: t, hist } };
     }
   }
 
@@ -1495,6 +1509,19 @@ async function continueStory(sessionId, options = {}) {
       if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
       addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
     }
+  }
+
+  if (directorPlan?.eventType) {
+    if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
+    session.state.eventTypeHistory.push(String(directorPlan.eventType).slice(0, 24));
+    while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
+  }
+
+  // 记录事件类型，防止模板化（只记录 v2 或有 eventType 的情况）
+  if (directorPlan?.eventType) {
+    if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
+    session.state.eventTypeHistory.push(String(directorPlan.eventType).slice(0, 24));
+    while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
   }
   
   // 保存段落（如果开启写真模式，标记为图片生成中）

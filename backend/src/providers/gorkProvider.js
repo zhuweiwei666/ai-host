@@ -2,14 +2,18 @@ const axios = require('axios');
 
 class GorkProvider {
   constructor() {
-    this.apiKey = process.env.GORK_API_KEY;
+    // Backward/typo compatible:
+    // - historical env used in this repo: GORK_API_KEY (typo)
+    // - expected name: GROK_API_KEY
+    // - some deployments use XAI_API_KEY
+    this.apiKey = process.env.GROK_API_KEY || process.env.GORK_API_KEY || process.env.XAI_API_KEY;
     // Using xAI API endpoint (key format xai-* suggests xAI API)
-    this.apiUrl = process.env.GORK_API_URL || 'https://api.x.ai/v1/chat/completions';
+    this.apiUrl = process.env.GROK_API_URL || process.env.GORK_API_URL || 'https://api.x.ai/v1/chat/completions';
   }
 
   async chat(modelName, messages, temperature, options = {}) {
     if (!this.apiKey) {
-      throw new Error('GORK_API_KEY is not set');
+      throw new Error('GROK_API_KEY is not set (also supports GORK_API_KEY/XAI_API_KEY)');
     }
 
     // Model name mapping: if GORK_MODEL_MAP is set in env, use it for custom mappings
@@ -57,7 +61,7 @@ class GorkProvider {
       
       // Provide more specific error messages
       if (errorCode === 401 || errorMessage.includes('Invalid API key') || errorMessage.includes('Unauthorized')) {
-        throw new Error(`Gork API authentication failed. Please check GORK_API_KEY. Error: ${errorMessage}`);
+        throw new Error(`Grok API authentication failed. Please check GROK_API_KEY (or GORK_API_KEY/XAI_API_KEY). Error: ${errorMessage}`);
       } else if (errorCode === 429) {
         throw new Error('Gork API rate limit exceeded. Please try again later.');
       } else if (errorCode === 402) {

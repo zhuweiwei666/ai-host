@@ -12,7 +12,7 @@ const { downloadAndUploadToOSS } = require('../utils/ossUpload');
 
 class GrokImageProvider {
   constructor() {
-    this.apiKey = process.env.GORK_API_KEY;
+    this.apiKey = process.env.GROK_API_KEY || process.env.GORK_API_KEY || process.env.XAI_API_KEY;
     this.apiUrl = 'https://api.x.ai/v1/images/generations';
     this.model = 'grok-2-image'; // xAI 官方图片生成模型
   }
@@ -27,7 +27,7 @@ class GrokImageProvider {
    */
   async generate(prompt, options = {}) {
     if (!this.apiKey) {
-      throw new Error('GORK_API_KEY is not set');
+      throw new Error('GROK_API_KEY is not set (also supports GORK_API_KEY/XAI_API_KEY)');
     }
 
     const { n = 1, responseFormat = 'url' } = options;

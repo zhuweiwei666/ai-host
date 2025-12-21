@@ -76,6 +76,7 @@ const StorySessionSchema = new mongoose.Schema({
       scene: { type: String },                          // 最近场景（短）
       at: { type: Date, default: Date.now },
     }],
+    eventTypeHistory: [{ type: String }],               // 最近事件类型（用于防模板化）
 
     // 章节与付费触发（混合变现）
     chapter: {
