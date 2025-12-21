@@ -471,6 +471,7 @@ function buildSystemPrompt(agent, session) {
   
   // 沉浸版 prompt - 剧情推进 + 感官化场景
   return `你是${agent.name}，${config.personality || archetype.personality}
+【语言】只用中文输出
 
 【最重要】每段必须推进剧情！不能原地打转！
 必须包含以下至少1项：
@@ -522,6 +523,7 @@ function buildSystemPromptWithScene(agent, session) {
   
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
+【语言】只用中文输出
 
 【最重要】每段必须推进剧情！
 必须有：新事件/新信息/新行动/新冲突（四选一）
@@ -764,7 +766,7 @@ function buildDirectorSystemPrompt(agent, session) {
   else if (progress < 50) intensityGuide = '更大胆试探：危险的距离、呼吸交缠';
   else if (progress < 70) intensityGuide = '亲密升级：暧昧到极致';
   
-  return `你是短剧导演，规划下一段要发生什么事件。\n` +
+  return `你是短剧导演（只用中文），规划下一段要发生什么事件。\n` +
     `要求：只输出 JSON。\n` +
     `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
     `eventType 必填，只能从：intrusion(闯入/敲门/被发现)/evidence(证据)/reveal(揭示)/decision(决定/交易)/relocate(换地点)/conflict(冲突/对峙)/escape(逃离)\n` +
@@ -792,7 +794,7 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const event = directorPlan?.event || '';
 
   const base =
-    `你是短剧编剧，写事件驱动的沉浸式短剧。\n` +
+    `你是短剧编剧（只用中文），写事件驱动的沉浸式短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
     `【合同】第一句必须写出这个 event（照抄或同义改写，但要能看出发生了同一件事）：${event}\n` +
     `【最重要】每段必须有新事件，不能原地打转。\n` +
@@ -848,6 +850,11 @@ const EVENT_TRIGGERS = [
   '被发现', '撞见', '露馅', '秘密', '证据', '录音', '照片', '账本',
   '决定', '答应', '拒绝', '分手', '同意', '条件', '交易', '威胁', '报警',
   '老师', '校长', '保安', '同学', '家长', '第三者', '前任',
+  // 扩展：证据/逃离/闯入/工具
+  '钥匙', '日记', '信', '信封', '抽屉', '文件', 'U盘', '硬盘', '录像', '对讲机',
+  '报警器', '警报', '摄像头', '监控室', '密码', '锁', '撬', '破门', '闯入', '追', '抓', '躲',
+  // English (防止模型偶尔英文导致误判)
+  'door', 'knock', 'footstep', 'phone', 'call', 'message', 'key', 'diary', 'evidence', 'security', 'police', 'alarm', 'camera', 'recording',
 ];
 
 const SCENE_ACTION_TOKENS = [
@@ -896,22 +903,24 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
     return { ok: false, reasons: ['scene_action_template_repeat'], metrics: { tokenOverlap } };
   }
 
-  // 4) 事件推进：必须至少命中一个事件触发词
-  const hasEventTrigger = EVENT_TRIGGERS.some((w) => out.includes(w));
-  if (!hasEventTrigger) {
-    return { ok: false, reasons: ['no_event_trigger'], metrics: { hasEventTrigger: false } };
+  // 4/5) 事件推进：触发词命中 OR Director event 落地（二选一）
+  const event = directorPlan?.event;
+  let eventHit = 0;
+  let eventNeed = 0;
+  let eventKeywords = [];
+  if (event) {
+    eventKeywords = extractEventKeywords(event);
+    eventHit = eventKeywords.filter((k) => out.includes(k)).length;
+    eventNeed = eventKeywords.length ? Math.max(1, Math.ceil(eventKeywords.length * 0.2)) : 0;
+    if (eventKeywords.length && eventHit < eventNeed) {
+      return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords } };
+    }
   }
 
-  // 5) Director 合同：如果给了 event，正文必须弱匹配到关键词
-  const event = directorPlan?.event;
-  if (event) {
-    const kws = extractEventKeywords(event);
-    // 允许改写：至少命中 1 个关键词（或命中比例达到 20%）
-    const hit = kws.filter((k) => out.includes(k)).length;
-    const need = kws.length ? Math.max(1, Math.ceil(kws.length * 0.2)) : 0;
-    if (kws.length && hit < need) {
-      return { ok: false, reasons: ['director_event_not_realized'], metrics: { eventKeywords: kws } };
-    }
+  const hasEventTrigger = EVENT_TRIGGERS.some((w) => out.toLowerCase().includes(String(w).toLowerCase()));
+  const hasEventByPlan = eventKeywords.length ? eventHit >= Math.max(1, eventNeed) : false;
+  if (!hasEventTrigger && !hasEventByPlan) {
+    return { ok: false, reasons: ['no_event_trigger'], metrics: { hasEventTrigger: false } };
   }
 
   // 5.1) eventType 多样性：避免连续重复同一类事件（软失败）

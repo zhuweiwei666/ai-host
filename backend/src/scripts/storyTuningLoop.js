@@ -58,6 +58,9 @@ const EVENT_TRIGGERS = [
   '门', '敲门', '推开', '脚步', '来人', '电话', '响起', '短信', '监控',
   '被发现', '撞见', '露馅', '秘密', '证据', '录音', '照片', '账本',
   '决定', '答应', '拒绝', '同意', '条件', '交易', '威胁', '报警',
+  '钥匙', '日记', '信', '信封', '抽屉', '文件', 'U盘', '硬盘', '录像', '对讲机',
+  '报警器', '警报', '摄像头', '监控室', '密码', '锁', '撬', '破门', '闯入', '追', '抓', '躲',
+  'door', 'knock', 'footstep', 'phone', 'call', 'message', 'key', 'diary', 'evidence', 'security', 'police', 'alarm', 'camera', 'recording',
 ];
 
 function extractEventKeywords(eventText) {
@@ -117,7 +120,7 @@ function buildDirectorSystem(agentName) {
 
 function buildWriterSystem(agentName, plan) {
   return (
-    `你是短剧编剧。\n` +
+    `你是短剧编剧（只用中文）。\n` +
     `角色用「${agentName}」名字表达，用户用“你”。\n` +
     `第一句必须落实 event：${plan.event}\n` +
     `结构：事件→反应→推进→悬念。\n` +
