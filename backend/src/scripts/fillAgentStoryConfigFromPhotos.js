@@ -176,8 +176,19 @@ function mergeStoryConfig(existing, incoming, force) {
   setIf('backstory');
   if (force || !ex.skeleton) out.skeleton = inc.skeleton;
 
-  // Keep enabled/contentRating/paragraphLength if already configured
+  // Ensure required nested objects exist (old docs may not have defaults materialized)
   if (typeof out.enabled !== 'boolean') out.enabled = true;
+  if (!out.contentRating || typeof out.contentRating !== 'string') out.contentRating = 'moderate';
+  if (!out.paragraphLength || typeof out.paragraphLength !== 'object') {
+    out.paragraphLength = { min: 200, max: 500 };
+  } else {
+    const min = Number(out.paragraphLength.min);
+    const max = Number(out.paragraphLength.max);
+    out.paragraphLength = {
+      min: Number.isFinite(min) ? min : 200,
+      max: Number.isFinite(max) ? max : 500,
+    };
+  }
   return out;
 }
 
