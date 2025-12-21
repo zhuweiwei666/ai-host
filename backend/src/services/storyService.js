@@ -915,6 +915,55 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
   return { ok: true, reasons: [], metrics: { maxOverlap, tokenOverlap, stuck } };
 }
 
+function buildCriticSystemPrompt() {
+  return (
+    `你是“挑刺审核官”(Critic)，专门找短剧段落的问题并给出可执行的改写约束。\n` +
+    `目标：解决“重复/打转/无推进/事件不落地”。\n` +
+    `要求：只输出 JSON（不要解释）。\n` +
+    `边界：R18_soft（允许暧昧撩拨，但禁止露骨细节）；禁止未成年。\n` +
+    `JSON 字段：issues(array), diagnosis(string), mustInclude(array strings), avoidStarts(array strings), avoidPhrases(array strings), rewriteHint(string), forceTemplate(boolean).\n`
+  );
+}
+
+function buildCriticUserPrompt({ recentParas, lastText, draftText, directorPlan, validateInfo, sessionState }) {
+  const recent = Array.isArray(recentParas) ? recentParas.slice(-3) : [];
+  const event = directorPlan?.event ? String(directorPlan.event).slice(0, 80) : '';
+  const reasons = (validateInfo?.reasons || []).join(',');
+  const scene = sessionState?.scene ? String(sessionState.scene) : '';
+  const objective = sessionState?.objective?.title ? String(sessionState.objective.title) : '';
+  return (
+    `【最近三段】\n${recent.map((t, i) => `(${i + 1}) ${String(t).slice(0, 220)}`).join('\n') || '(无)'}\n\n` +
+    `【上一段】\n${String(lastText || '').slice(0, 240)}\n\n` +
+    `【本次草稿】\n${String(draftText || '').slice(0, 260)}\n\n` +
+    `【导演event】${event || '(无)'}\n` +
+    `【校验失败原因】${reasons || '(无)'}\n` +
+    `【当前场景】${scene || '(无)'}\n` +
+    `【当前目标】${objective || '(无)'}\n` +
+    `输出 JSON：给出最少 3 条 mustInclude（必须落地的“新事件/新信息/新行动/新冲突”），并给出 rewriteHint（可直接贴进提示词）。`
+  );
+}
+
+function sanitizeCriticPlan(plan) {
+  const p = plan && typeof plan === 'object' ? plan : {};
+  const issues = Array.isArray(p.issues) ? p.issues.filter(Boolean).slice(0, 6) : [];
+  const mustInclude = Array.isArray(p.mustInclude) ? p.mustInclude.filter(Boolean).slice(0, 6) : [];
+  const avoidStarts = Array.isArray(p.avoidStarts) ? p.avoidStarts.filter(Boolean).slice(0, 6) : [];
+  const avoidPhrases = Array.isArray(p.avoidPhrases) ? p.avoidPhrases.filter(Boolean).slice(0, 10) : [];
+  const rewriteHint = typeof p.rewriteHint === 'string' ? p.rewriteHint.trim().slice(0, 400) : '';
+  const diagnosis = typeof p.diagnosis === 'string' ? p.diagnosis.trim().slice(0, 200) : '';
+  const forceTemplate = !!p.forceTemplate;
+  return { issues, mustInclude, avoidStarts, avoidPhrases, rewriteHint, diagnosis, forceTemplate };
+}
+
+async function runCritic({ modelName, recentParas, lastText, draftText, directorPlan, validateInfo, sessionState }) {
+  const criticModel = process.env.STORY_CRITIC_MODEL || modelName || 'grok-2';
+  const sys = buildCriticSystemPrompt();
+  const user = buildCriticUserPrompt({ recentParas, lastText, draftText, directorPlan, validateInfo, sessionState });
+  const raw = await generateContent(sys, user, criticModel, { maxTokens: 220, temperature: 0.2 });
+  const parsed = safeJsonParseFromText(raw) || {};
+  return sanitizeCriticPlan(parsed);
+}
+
 function ensureShortDramaFormat(content, lastParagraph) {
   let out = String(content || '').trim();
   if (!out) return out;
@@ -1320,6 +1369,7 @@ async function continueStory(sessionId, options = {}) {
   let directorPlan = null;
   let llmMs = 0;
   let validateInfo = null;
+  let criticPlan = null;
 
   // 最多 2 次重试：第1次追加“你刚才重复/无推进，必须改写”；第2次强制模板
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
@@ -1354,8 +1404,17 @@ async function continueStory(sessionId, options = {}) {
       let writerUser = buildWriterUserPrompt(session, directorPlan, null);
       if (attempt === 1) {
         writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
+        if (criticPlan) {
+          writerUser += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
+            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
+            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
+            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
+        }
       } else if (attempt >= 2) {
         writerUser += '\n【强制模板】第一句=事件；第二句=你和她的反应；第三句=做出决定/代价；最后一句=悬念(有人来/被发现/证据出现)。';
+        if (criticPlan) {
+          writerUser += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
+        }
       }
       const writerStart = Date.now();
       rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
@@ -1367,8 +1426,17 @@ async function continueStory(sessionId, options = {}) {
       let userPrompt = buildContinuePrompt(session);
       if (attempt === 1) {
         userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
+        if (criticPlan) {
+          userPrompt += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
+            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
+            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
+            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
+        }
       } else if (attempt >= 2) {
         userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
+        if (criticPlan) {
+          userPrompt += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
+        }
       }
       const maxTokens = generateImage ? 450 : 380;
       const startTime = Date.now();
@@ -1388,6 +1456,24 @@ async function continueStory(sessionId, options = {}) {
       sessionState: session.state,
     });
     if (validateInfo.ok) break;
+
+    // 失败：触发 Critic 生成可执行的纠错约束（仅一次，后续复用）
+    if (!criticPlan) {
+      try {
+        criticPlan = await runCritic({
+          modelName,
+          recentParas,
+          lastText: lastParagraph,
+          draftText: content,
+          directorPlan,
+          validateInfo,
+          sessionState: session.state,
+        });
+      } catch (e) {
+        console.warn('[StoryService] Critic failed:', e?.message || e);
+        criticPlan = null;
+      }
+    }
   }
   
   const stateUpdate = extractStateUpdate(content);
@@ -1662,6 +1748,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   let directorPlan = null;
   let llmMs = 0;
   let validateInfo = null;
+  let criticPlan = null;
 
   const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
@@ -1693,8 +1780,17 @@ async function inputStory(sessionId, userInput, options = {}) {
       let writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
       if (attempt === 1) {
         writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
+        if (criticPlan) {
+          writerUser += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
+            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
+            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
+            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
+        }
       } else if (attempt >= 2) {
         writerUser += '\n【强制模板】第一句=事件；第二句=反应；第三句=推进(决定/代价)；最后一句=悬念(被发现/证据出现)。';
+        if (criticPlan) {
+          writerUser += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
+        }
       }
       const writerStart = Date.now();
       rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
@@ -1705,8 +1801,17 @@ async function inputStory(sessionId, userInput, options = {}) {
       let userPrompt = buildUserInputPrompt(session, userInput);
       if (attempt === 1) {
         userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
+        if (criticPlan) {
+          userPrompt += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
+            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
+            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
+            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
+        }
       } else if (attempt >= 2) {
         userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
+        if (criticPlan) {
+          userPrompt += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
+        }
       }
       const maxTokens = generateImage ? 450 : 380;
       const startTime = Date.now();
@@ -1726,6 +1831,23 @@ async function inputStory(sessionId, userInput, options = {}) {
       sessionState: session.state,
     });
     if (validateInfo.ok) break;
+
+    if (!criticPlan) {
+      try {
+        criticPlan = await runCritic({
+          modelName,
+          recentParas,
+          lastText: lastParagraph,
+          draftText: content,
+          directorPlan,
+          validateInfo,
+          sessionState: session.state,
+        });
+      } catch (e) {
+        console.warn('[StoryService] Critic failed:', e?.message || e);
+        criticPlan = null;
+      }
+    }
   }
   
   const stateUpdate = extractStateUpdate(content);
