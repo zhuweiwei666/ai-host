@@ -492,6 +492,52 @@ router.post('/unlock-milestone', requireAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/story/tts
+ * 为故事段落生成语音
+ */
+router.post('/tts', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId, paragraphIndex, text } = req.body;
+
+    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) return errors.badRequest(res, '无效的故事 ID');
+    const idx = Number(paragraphIndex);
+    if (!Number.isFinite(idx) || idx < 0) return errors.badRequest(res, '无效的段落索引');
+    if (!text) return errors.badRequest(res, '没有可播放的文字');
+
+    const session = await StorySession.findById(sessionId);
+    if (!session) return errors.notFound(res, '故事不存在');
+    const agent = await Agent.findById(session.agentId);
+    if (!agent) return errors.notFound(res, '角色不存在');
+
+    // 清理文本（移除标签和括号内的内容）
+    const cleanText = text
+      .replace(/\[[^\]]+\]/g, '')
+      .replace(/\([^)]+\)/g, '')
+      .replace(/（[^）]+）/g, '')
+      .trim();
+
+    if (!cleanText) return errors.badRequest(res, '没有可播放的正文');
+
+    const fishAudioService = require('../services/fishAudioService');
+    const audioUrl = await fishAudioService.generateAudio(cleanText, agent.voiceId);
+
+    if (!audioUrl) return errors.ttsError(res, '语音生成失败');
+
+    // 更新段落的 audioUrl
+    if (session.paragraphs[idx]) {
+      session.paragraphs[idx].audioUrl = audioUrl;
+      await session.save();
+    }
+
+    return sendSuccess(res, 200, { audioUrl });
+  } catch (err) {
+    console.error('[Story API] TTS error:', err);
+    return errors.ttsError(res, err.message || '语音生成失败');
+  }
+});
+
+/**
  * GET /api/story/:sessionId/image/:index
  * 获取段落图片状态（用于轮询）
  */

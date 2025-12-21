@@ -119,6 +119,7 @@ const StorySessionSchema = new mongoose.Schema({
   // 历史段落（存储最近 N 段用于上下文）
   paragraphs: [{
     content: { type: String, required: true },
+    audioUrl: { type: String },   // 每层楼的语音 URL
     imageUrl: { type: String },   // 每层楼的配图 URL
     imagePrompt: { type: String }, // 图片生成使用的 prompt（旧版兼容）
     imageCharge: { type: Number, default: 0 },        // 写真模式额外扣费（用于失败补偿）

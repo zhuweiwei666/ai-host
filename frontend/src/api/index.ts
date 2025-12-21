@@ -922,6 +922,7 @@ export interface StoryAffection {
 
 export interface StoryParagraph {
   content: string;
+  audioUrl?: string;      // 每层楼的语音 URL
   imageUrl?: string;      // 每层楼的配图
   imagePrompt?: string;   // 图片生成使用的 prompt
   imageGenerating?: boolean;
@@ -1016,6 +1017,10 @@ export const unlockStoryMilestone = (sessionId: string, arcId: string, milestone
 // 段落反馈（点赞/点踩）
 export const sendStoryFeedback = (sessionId: string, paragraphIndex: number, thumb: 'up' | 'down', dwellMs?: number) =>
   http.post<{ ok: true }>('/story/feedback', { sessionId, paragraphIndex, thumb, dwellMs });
+
+// 生成段落语音
+export const generateStoryTTS = (sessionId: string, paragraphIndex: number, text: string) =>
+  http.post<{ audioUrl: string }>('/story/tts', { sessionId, paragraphIndex, text });
 
 // 获取故事状态
 export const getStoryState = (sessionId: string) =>

@@ -13,6 +13,7 @@ import {
   getAgent,
   getParagraphImage,
   sendStoryFeedback,
+  generateStoryTTS,
   Agent,
 } from '../api';
 
@@ -63,6 +64,10 @@ export default function StoryPage() {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null); // 写真弹窗
   const [photoModeEnabled, setPhotoModeEnabled] = useState(false); // 写真模式开关
+  
+  // 语音播放状态
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // 正在加载图片的段落索引集合
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
@@ -350,6 +355,60 @@ export default function StoryPage() {
       // ignore
     }
   };
+
+  const handlePlayVoice = async (idx: number, text: string, existingAudioUrl?: string) => {
+    if (!sessionId) return;
+    
+    // 如果点击的是正在播放的，则停止
+    if (playingIndex === idx) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        setPlayingIndex(null);
+      }
+      return;
+    }
+
+    try {
+      let url = existingAudioUrl;
+      
+      // 如果没有现成的音频，则生成
+      if (!url) {
+        setPlayingIndex(idx); // 设置索引表示正在生成/播放
+        const res = await generateStoryTTS(sessionId, idx, text);
+        url = res.data.audioUrl;
+        
+        // 更新本地段落数据，避免下次重复生成
+        setParagraphs(prev => {
+          const updated = [...prev];
+          if (updated[idx]) {
+            updated[idx] = { ...updated[idx], audioUrl: url };
+          }
+          return updated;
+        });
+      }
+
+      if (url) {
+        if (!audioRef.current) {
+          audioRef.current = new Audio();
+        }
+        audioRef.current.src = url;
+        audioRef.current.play();
+        setPlayingIndex(idx);
+        
+        audioRef.current.onended = () => {
+          setPlayingIndex(null);
+        };
+        
+        audioRef.current.onerror = () => {
+          console.error('Audio play failed');
+          setPlayingIndex(null);
+        };
+      }
+    } catch (err) {
+      console.error('TTS error:', err);
+      setPlayingIndex(null);
+    }
+  };
   
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -527,9 +586,33 @@ export default function StoryPage() {
                 </div>
                 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-white">{agent?.name}</span>
-                    <span className="text-xs text-gray-500">{formatTime(p.createdAt)}</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-white">{agent?.name}</span>
+                      <span className="text-xs text-gray-500">{formatTime(p.createdAt)}</span>
+                    </div>
+                    
+                    {/* 语音播放按钮 */}
+                    {p.source === 'ai' && (
+                      <button
+                        onClick={() => handlePlayVoice(idx, p.content, p.audioUrl)}
+                        className={`p-1.5 rounded-full transition-all ${
+                          playingIndex === idx 
+                            ? 'bg-pink-500 text-white animate-pulse' 
+                            : 'bg-gray-800 text-gray-400 hover:text-pink-400'
+                        }`}
+                      >
+                        {playingIndex === idx ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
                   </div>
                   
                   {p.source === 'user_input' && p.userInput && (
