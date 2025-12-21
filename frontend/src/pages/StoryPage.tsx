@@ -559,7 +559,7 @@ export default function StoryPage() {
                   
                   <div className="flex items-center gap-6 mt-3 text-gray-500">
                     <button
-                      onClick={() => handleThumb(index, 'up')}
+                      onClick={() => handleThumb(idx, 'up')}
                       className="flex items-center gap-1.5 text-xs hover:text-pink-400 transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -568,7 +568,7 @@ export default function StoryPage() {
                       <span>喜欢</span>
                     </button>
                     <button
-                      onClick={() => handleThumb(index, 'down')}
+                      onClick={() => handleThumb(idx, 'down')}
                       className="flex items-center gap-1.5 text-xs hover:text-gray-300 transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
