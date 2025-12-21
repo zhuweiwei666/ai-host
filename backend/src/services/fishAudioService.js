@@ -29,7 +29,7 @@ class FishAudioService {
           text: text,
           reference_id: referenceId,
           format: "mp3",
-          mp3_bitrate: 96, // 降低比特率以加快生成速度（从128降到96）
+          mp3_bitrate: 128, // 128 是 Fish Audio 支持的标准比特率
           normalize: true,
           latency: "low" // 使用低延迟模式（从normal改为low）
         },
