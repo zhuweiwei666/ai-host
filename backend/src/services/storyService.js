@@ -1897,6 +1897,7 @@ async function continueStory(sessionId, options = {}) {
   return {
     content,
     paragraphIndex,
+    paragraphs: sanitizeParagraphs(session.paragraphs), // 返回完整段落列表，确保 App 解析一致
     progress: session.progress,
     state: sanitizeSessionState(session.state),
     affection: session.affection,
@@ -2330,6 +2331,7 @@ async function inputStory(sessionId, userInput, options = {}) {
   return {
     content,
     paragraphIndex,
+    paragraphs: sanitizeParagraphs(session.paragraphs), // 返回完整段落列表
     progress: session.progress,
     state: sanitizeSessionState(session.state),
     affection: session.affection,

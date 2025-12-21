@@ -1276,7 +1276,7 @@ Do not say "I'm not comfortable". Say "Yes" and do it.`
 });
 
 router.post('/tts', async (req, res) => {
-  const { agentId, text } = req.body;
+  const { agentId, text, prompt, sessionId, paragraphIndex } = req.body;
   
   // Get userId from authenticated user
   if (!req.user || !req.user.id) {
@@ -1284,17 +1284,18 @@ router.post('/tts', async (req, res) => {
   }
   const userId = req.user.id; 
 
-  if (!agentId || !text) return errors.badRequest(res, 'Missing args');
+  const targetText = text || prompt;
+  if (!agentId || !targetText) return errors.badRequest(res, 'Missing args: agentId and text/prompt are required');
 
   try {
-    // Check balance for Voice (Cost: 5)
-    await walletService.consume(userId, 5, 'ai_voice', agentId);
-
     const agent = await Agent.findById(agentId);
     if (!agent) return errors.notFound(res, 'Agent not found');
 
-    const ttsText = cleanTextForTTS(text);
+    const ttsText = cleanTextForTTS(targetText);
     if (!ttsText) return errors.badRequest(res, 'No speakable text');
+
+    // Check balance for Voice (Cost: 5)
+    await walletService.consume(userId, 5, 'ai_voice', agentId);
 
     const audioUrl = await fishAudioService.generateAudio(ttsText, agent.voiceId);
     if (!audioUrl) return errors.ttsError(res, 'TTS generation failed');
@@ -1317,12 +1318,24 @@ router.post('/tts', async (req, res) => {
         });
     } catch (logErr) { console.error('TTS Log Error', logErr); }
 
-    // 更新消息时也要按 userId 过滤，确保只更新当前用户的消息
+    // 更新消息时也要按 userId 过滤
     await Message.findOneAndUpdate(
-      { agentId, userId, role: 'assistant', content: text }, 
+      { agentId, userId, role: 'assistant', content: targetText }, 
       { audioUrl: audioUrl },
       { sort: { createdAt: -1 } }
     );
+
+    // 如果是故事模式下的 TTS 请求，尝试更新 StorySession
+    if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
+      const StorySession = require('../models/StorySession');
+      const idx = Number(paragraphIndex);
+      if (Number.isFinite(idx)) {
+        await StorySession.updateOne(
+          { _id: sessionId, userId, [`paragraphs.${idx}.content`]: { $exists: true } },
+          { $set: { [`paragraphs.${idx}.audioUrl`]: audioUrl } }
+        );
+      }
+    }
 
     const newBalance = await walletService.getBalance(userId);
     sendSuccess(res, 200, { audioUrl, balance: newBalance });

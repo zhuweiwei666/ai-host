@@ -498,39 +498,52 @@ router.post('/unlock-milestone', requireAuth, async (req, res) => {
 router.post('/tts', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { sessionId, paragraphIndex, text } = req.body;
+    const { sessionId, paragraphIndex, text, prompt, agentId } = req.body; // 增加 agentId 兼容性
 
-    if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) return errors.badRequest(res, '无效的故事 ID');
+    const targetText = text || prompt; // 兼容性处理
+
+    if (!sessionId && !agentId) return errors.badRequest(res, '缺少 sessionId 或 agentId');
     const idx = Number(paragraphIndex);
-    if (!Number.isFinite(idx) || idx < 0) return errors.badRequest(res, '无效的段落索引');
-    if (!text) return errors.badRequest(res, '没有可播放的文字');
+    if (sessionId && (!Number.isFinite(idx) || idx < 0)) return errors.badRequest(res, '无效的段落索引');
+    if (!targetText) return errors.badRequest(res, '没有可播放的文字');
 
-    const session = await StorySession.findById(sessionId);
-    if (!session) return errors.notFound(res, '故事不存在');
-    const agent = await Agent.findById(session.agentId);
-    if (!agent) return errors.notFound(res, '角色不存在');
+    // 获取角色信息（优先从 session 获取，兜底从 agentId 获取）
+    let voiceId = '';
+    let session = null;
+    if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
+      session = await StorySession.findById(sessionId);
+      if (session) {
+        const agent = await Agent.findById(session.agentId);
+        if (agent) voiceId = agent.voiceId;
+      }
+    } else if (agentId && mongoose.Types.ObjectId.isValid(agentId)) {
+      const agent = await Agent.findById(agentId);
+      if (agent) voiceId = agent.voiceId;
+    }
 
     // 清理文本（移除标签和括号内的内容）
-    const cleanText = text
+    const cleanText = targetText
       .replace(/\[[^\]]+\]/g, '')
       .replace(/\([^)]+\)/g, '')
       .replace(/（[^）]+）/g, '')
+      .replace(/["“”'‘’]/g, '') // 移除引号，让朗读更自然
       .trim();
 
     if (!cleanText) return errors.badRequest(res, '没有可播放的正文');
 
     const fishAudioService = require('../services/fishAudioService');
-    const audioUrl = await fishAudioService.generateAudio(cleanText, agent.voiceId);
+    const audioUrl = await fishAudioService.generateAudio(cleanText, voiceId);
 
     if (!audioUrl) return errors.ttsError(res, '语音生成失败');
 
-    // 更新段落的 audioUrl
-    if (session.paragraphs[idx]) {
+    // 如果提供了会话，尝试更新段落的 audioUrl
+    if (session && Number.isFinite(idx) && session.paragraphs[idx]) {
       session.paragraphs[idx].audioUrl = audioUrl;
       await session.save();
     }
 
-    return sendSuccess(res, 200, { audioUrl });
+    const balance = await walletService.getBalance(userId);
+    return sendSuccess(res, 200, { audioUrl, balance }); // 增加 balance 返回，对齐 App 需求
   } catch (err) {
     console.error('[Story API] TTS error:', err);
     return errors.ttsError(res, err.message || '语音生成失败');
