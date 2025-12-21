@@ -244,6 +244,59 @@ function getCliffhangerExample(archetype, beat) {
 }
 
 /**
+ * 清理会话状态，移除内部字段并处理 iOS 解析不兼容的对象
+ */
+function sanitizeSessionState(state) {
+  if (!state) return state;
+  const s = state.toObject ? state.toObject() : JSON.parse(JSON.stringify(state));
+
+  // 1. 处理 pay.pending: 如果是空对象，设为 null（iOS Decodable 友好）
+  if (s.pay && s.pay.pending && Object.keys(s.pay.pending).length === 0) {
+    s.pay.pending = null;
+  }
+
+  // 1.1 处理 objective: 如果没有 title，设为 null
+  if (s.objective && !s.objective.title) {
+    s.objective = null;
+  }
+
+  // 2. 清理 locationHistory: 移除 _id
+  if (Array.isArray(s.locationHistory)) {
+    s.locationHistory = s.locationHistory.map((h) => {
+      const { _id, ...rest } = h;
+      return rest;
+    });
+  }
+
+  // 3. 移除其它对客户端无用的海量上下文内部字段，保持 state 精简
+  // 这些字段主要用于后端生成，返回给客户端可能会撑爆 JSON 或导致解析失败
+  const internalFields = ['conflict', 'stakes', 'secrets', 'openLoops', 'canonFacts', 'summary', 'eventTypeHistory'];
+  for (const f of internalFields) {
+    delete s[f];
+  }
+
+  return s;
+}
+
+/**
+ * 清理段落数据
+ */
+function sanitizeParagraphs(paragraphs) {
+  if (!Array.isArray(paragraphs)) return paragraphs;
+  return paragraphs.map((p) => {
+    const obj = p.toObject ? p.toObject() : p;
+    const { _id, ...rest } = obj;
+    if (Array.isArray(rest.choices)) {
+      rest.choices = rest.choices.map((c) => {
+        const { _id: cid, ...crest } = c;
+        return cid ? crest : c;
+      });
+    }
+    return rest;
+  });
+}
+
+/**
  * 从 prompt 提取关键词标签
  */
 function extractTags(prompt) {
@@ -1417,9 +1470,9 @@ async function startStory(userId, agentId) {
       sessionId: session._id,
       opening: session.paragraphs[0]?.content || agent.storyConfig?.opening || agent.defaultGreeting,
       progress: session.progress,
-      state: session.state,
+      state: sanitizeSessionState(session.state),
       affection: session.affection || { level: 0, stage: '陌生', lastChange: 0 },
-      paragraphs: session.paragraphs,
+      paragraphs: sanitizeParagraphs(session.paragraphs),
       isExisting: true,
     };
   }
@@ -1497,9 +1550,9 @@ async function startStory(userId, agentId) {
     sessionId: session._id,
     opening: openingText,
     progress: 0,
-    state: session.state,
+    state: sanitizeSessionState(session.state),
     affection: session.affection,
-    paragraphs: session.paragraphs,
+    paragraphs: sanitizeParagraphs(session.paragraphs),
     isExisting: false,
   };
 }
@@ -1845,7 +1898,7 @@ async function continueStory(sessionId, options = {}) {
     content,
     paragraphIndex,
     progress: session.progress,
-    state: session.state,
+    state: sanitizeSessionState(session.state),
     affection: session.affection,
     imageGenerating: generateImage && !!sceneData, // 告诉客户端是否在生成图片
     sceneData,
@@ -2278,7 +2331,7 @@ async function inputStory(sessionId, userInput, options = {}) {
     content,
     paragraphIndex,
     progress: session.progress,
-    state: session.state,
+    state: sanitizeSessionState(session.state),
     affection: session.affection,
     imageGenerating: generateImage && !!sceneData,
     sceneData,
@@ -2317,8 +2370,8 @@ async function getStoryState(sessionId) {
     agentName: session.agentId.name,
     agentAvatar: session.agentId.avatarUrls?.[0],
     progress: session.progress,
-    state: session.state,
-    paragraphs: session.paragraphs,
+    state: sanitizeSessionState(session.state),
+    paragraphs: sanitizeParagraphs(session.paragraphs),
     totalParagraphs: session.totalParagraphs,
     status: session.status,
   };
