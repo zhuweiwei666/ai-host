@@ -3,12 +3,18 @@ const axios = require('axios');
 class OpenAIProvider {
   constructor() {
     // 优先读取 AIHUBMIX 的配置，如果没有则回退到官方配置
-    this.apiKey = process.env.AIHUBMIX_API_KEY || process.env.OPENAI_API_KEY;
+    // 兼容：图片服务使用 OPENAI_IMAGE_API_KEY / OPENAI_IMAGE_BASE_URL（API易等代理）
+    // 让 chat/completions 也能复用同一套密钥与 baseUrl，避免重复配置
+    this.apiKey = process.env.AIHUBMIX_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_IMAGE_API_KEY;
     
     // Base URL 处理：
     // 1. 如果有 AIHUBMIX_BASE_URL，就用它（注意去掉末尾斜杠）
     // 2. 否则用官方地址
-    const baseUrl = process.env.AIHUBMIX_BASE_URL || 'https://api.openai.com/v1';
+    const baseUrl =
+      process.env.AIHUBMIX_BASE_URL ||
+      process.env.OPENAI_BASE_URL ||
+      process.env.OPENAI_IMAGE_BASE_URL ||
+      'https://api.openai.com/v1';
     this.apiUrl = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
   }
 
