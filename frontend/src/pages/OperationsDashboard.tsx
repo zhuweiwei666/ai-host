@@ -19,10 +19,12 @@ import {
   getUserSegmentation,
   getAvailableTasks,
   runTask,
+  getApplications,
   Alert,
   AlertRule,
   ABExperiment,
   RecallCandidate,
+  Application
 } from '../api';
 
 type TabType = 'overview' | 'alerts' | 'ab-test' | 'recall' | 'users' | 'tasks';
@@ -30,6 +32,8 @@ type TabType = 'overview' | 'alerts' | 'ab-test' | 'recall' | 'users' | 'tasks';
 export default function OperationsDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(false);
+  const [apps, setApps] = useState<Application[]>([]);
+  const [selectedAppId, setSelectedAppId] = useState<string>('');
 
   // Overview data
   const [overview, setOverview] = useState<{
@@ -39,6 +43,7 @@ export default function OperationsDashboard() {
     activeUsersToday: number;
     totalRevenue: number;
     revenueToday: number;
+    retentionD1?: number;
   } | null>(null);
 
   // Alert data
@@ -63,12 +68,27 @@ export default function OperationsDashboard() {
 
   // Fetch data based on active tab
   useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const appsRes = await getApplications();
+        setApps(appsRes.data);
+        if (appsRes.data.length > 0) {
+          setSelectedAppId(appsRes.data[0].appId);
+        }
+      } catch (err) {
+        console.error('Failed to fetch apps:', err);
+      }
+    };
+    fetchInitialData();
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
         switch (activeTab) {
           case 'overview':
-            const overviewRes = await getDashboardOverview();
+            const overviewRes = await getDashboardOverview(selectedAppId);
             setOverview(overviewRes.data.overview);
             break;
           case 'alerts':
@@ -109,7 +129,7 @@ export default function OperationsDashboard() {
       }
     };
     fetchData();
-  }, [activeTab, alertFilter]);
+  }, [activeTab, alertFilter, selectedAppId]);
 
   // Alert actions
   const handleAcknowledgeAlerts = async (alertIds: string[]) => {
@@ -249,9 +269,25 @@ export default function OperationsDashboard() {
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">🎯 运营仪表盘</h1>
-          <p className="text-gray-500 text-sm">AI 自进化系统监控中心</p>
+        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">🎯 运营仪表盘</h1>
+            <p className="text-gray-500 text-sm">AI 自进化系统监控中心</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500 font-medium">查看应用数据:</span>
+            <select 
+              value={selectedAppId}
+              onChange={(e) => setSelectedAppId(e.target.value)}
+              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">所有应用 (汇总)</option>
+              {apps.map(app => (
+                <option key={app.appId} value={app.appId}>{app.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -309,6 +345,10 @@ export default function OperationsDashboard() {
               <div className="bg-white rounded-lg shadow p-4">
                 <div className="text-2xl font-bold text-pink-600">{overview.revenueToday}</div>
                 <div className="text-sm text-gray-500">今日收入</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-primary-500">
+                <div className="text-2xl font-bold text-primary-600">{overview.retentionD1 !== undefined ? `${overview.retentionD1}%` : '--'}</div>
+                <div className="text-sm text-gray-500 font-semibold">昨日次留 (D1)</div>
               </div>
             </div>
 

@@ -24,6 +24,7 @@ const Layout: React.FC = () => {
   const isApiDocsActive = location.pathname === '/api-docs';
   const isSettingsActive = location.pathname === '/settings';
   const isOperationsActive = location.pathname === '/operations';
+  const isApplicationsActive = location.pathname === '/applications';
   const isAvatarLabActive = location.pathname === '/avatar-lab';
   const isMyAgentsActive = location.pathname.startsWith('/my-agents');
   const isReviewAgentsActive = location.pathname === '/review-agents';
@@ -149,6 +150,21 @@ const Layout: React.FC = () => {
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
              </svg>
              🎯 运营仪表盘
+           </button>
+
+           {/* Application Management Menu */}
+           <button
+             onClick={() => navigate('/applications')}
+             className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+               isApplicationsActive
+                 ? 'text-primary-700 bg-primary-50'
+                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+             }`}
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+             </svg>
+             应用管理
            </button>
 
            {/* Voice Models Menu Group */}

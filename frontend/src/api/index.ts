@@ -549,7 +549,7 @@ export const batchDeleteUgcImages = (agentId: string, imageIds: string[]) =>
 // ==================== 运营仪表盘 API ====================
 
 // Dashboard 概览
-export const getDashboardOverview = () => 
+export const getDashboardOverview = (appId?: string) => 
   http.get<{
     overview: {
       totalAgents: number;
@@ -558,13 +558,14 @@ export const getDashboardOverview = () =>
       activeUsersToday: number;
       totalRevenue: number;
       revenueToday: number;
+      retentionD1?: number;
     };
     trends: {
       users: { date: string; count: number }[];
       revenue: { date: string; amount: number }[];
       messages: { date: string; count: number }[];
     };
-  }>('/analytics/dashboard');
+  }>('/analytics/dashboard', { params: { appId } });
 
 // 告警相关
 export interface Alert {
@@ -1041,3 +1042,30 @@ export const generateStoryPhoto = (sessionId: string) =>
 // 获取段落图片状态（用于轮询）
 export const getParagraphImage = (sessionId: string, paragraphIndex: number) =>
   http.get<ParagraphImageResponse>(`/story/${sessionId}/image/${paragraphIndex}`);
+
+// ==================== Application Management API ====================
+export interface Application {
+  _id: string;
+  appId: string;
+  name: string;
+  secretKey: string;
+  status: 'active' | 'inactive';
+  description?: string;
+  channels: Array<{
+    channelId: string;
+    name: string;
+    status: string;
+    _id: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getApplications = () =>
+  http.get<Application[]>('/applications');
+
+export const createApplication = (data: { name: string; description?: string }) =>
+  http.post<Application>('/applications', data);
+
+export const addAppChannel = (appId: string, channelId: string, name: string) =>
+  http.post<Application>(`/applications/${appId}/channels`, { channelId, name });

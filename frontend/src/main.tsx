@@ -13,6 +13,7 @@ import ApiDocs from './pages/ApiDocs';
 import AdminLogin from './pages/AdminLogin';
 import Settings from './pages/Settings';
 import OperationsDashboard from './pages/OperationsDashboard';
+import ApplicationManagement from './pages/ApplicationManagement';
 import SpatialAvatarLab from './pages/SpatialAvatarLab';
 import MyAgents from './pages/MyAgents';
 import CreateUserAgent from './pages/CreateUserAgent';
@@ -66,6 +67,7 @@ const App = (
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/operations" element={<OperationsDashboard />} />
+          <Route path="/applications" element={<ApplicationManagement />} />
           <Route path="/avatar-lab" element={<SpatialAvatarLab />} />
           {/* 用户创建角色 */}
           <Route path="/my-agents" element={<MyAgents />} />
