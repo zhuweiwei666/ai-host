@@ -433,7 +433,6 @@ const EditAgent: React.FC = () => {
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 1440, height: 3120 });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<'fal' | 'volcengine'>('fal');
-  const [activePromptTab, setActivePromptTab] = useState<'base' | 'stage1' | 'stage2' | 'stage3'>('base');
 
   useEffect(() => {
     // 如果id变化，重置dataLoaded状态，强制重新加载
@@ -638,7 +637,6 @@ const EditAgent: React.FC = () => {
   };
 
 
-  const [updateGlobalCore, setUpdateGlobalCore] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -720,17 +718,6 @@ const EditAgent: React.FC = () => {
     }
   };
 
-  const handleApplyCoreTemplate = () => {
-    if (recommendedCorePrompt) {
-      setFormData(prev => ({ 
-        ...prev, 
-        corePrompt: recommendedCorePrompt,
-        stage1Prompt: DEFAULT_STAGE_PROMPTS.stage1,
-        stage2Prompt: DEFAULT_STAGE_PROMPTS.stage2,
-        stage3Prompt: DEFAULT_STAGE_PROMPTS.stage3,
-      }));
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
