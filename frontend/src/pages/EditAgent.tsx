@@ -1393,136 +1393,18 @@ const EditAgent: React.FC = () => {
             selectedVoiceId={formData.voiceId}
           />
 
-          {/* Core Protocol Tabs */}
+          {/* Core Prompt - 极简版 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Core Protocol (Behavior Stages)</label>
-            <div className="border border-gray-200 rounded-md overflow-hidden">
-              <div className="flex bg-gray-50 border-b border-gray-200">
-                {['base', 'stage1', 'stage2', 'stage3'].map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActivePromptTab(tab as any)}
-                    className={`flex-1 px-4 py-2 text-sm font-medium text-center transition-colors ${
-                      activePromptTab === tab 
-                        ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' 
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    {tab === 'base' ? 'Base' : 
-                     tab === 'stage1' ? 'Stage 1 (Tease)' : 
-                     tab === 'stage2' ? 'Stage 2 (Reveal)' : 'Stage 3 (Explicit)'}
-                  </button>
-                ))}
-              </div>
-              
-              <div className="p-4 bg-white">
-                {activePromptTab === 'base' && (
-                  <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">核心人设 (Core Prompt)</label>
             <textarea
               name="corePrompt"
-              rows={8}
+              rows={10}
               value={formData.corePrompt || ''}
               onChange={handleChange}
-                      placeholder="Base personality rules..."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Default behavior if no specific stage is active.</p>
-                  </div>
-                )}
-                {activePromptTab === 'stage1' && (
-                  <div>
-                    <textarea
-                      name="stage1Prompt"
-                      rows={8}
-                      value={formData.stage1Prompt || ''}
-                      onChange={handleChange}
-                      placeholder="Stage 1 rules (Teasing, no nudity)..."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+              placeholder="角色的核心人设和行为规则..."
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
             />
-                    <p className="text-xs text-gray-500 mt-1">Active for turns 0-6.</p>
-                  </div>
-                )}
-                {activePromptTab === 'stage2' && (
-                  <div>
-                    <textarea
-                      name="stage2Prompt"
-                      rows={8}
-                      value={formData.stage2Prompt || ''}
-                      onChange={handleChange}
-                      placeholder="Stage 2 rules (Partial reveal)..."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Active for turns 7-15.</p>
-                  </div>
-                )}
-                {activePromptTab === 'stage3' && (
-                  <div>
-                    <textarea
-                      name="stage3Prompt"
-                      rows={8}
-                      value={formData.stage3Prompt || ''}
-                      onChange={handleChange}
-                      placeholder="Stage 3 rules (Uncensored)..."
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Active for turns 16+.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-              <span>Configure how the agent behaves as the conversation progresses.</span>
-              <div className="flex items-center gap-4">
-                <label className="inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={updateGlobalCore}
-                    onChange={(e) => setUpdateGlobalCore(e.target.checked)}
-                    className="form-checkbox h-3 w-3 text-indigo-600" 
-                  />
-                  <span className="ml-1">Apply to all agents using this model</span>
-                </label>
-              <button
-                type="button"
-                onClick={handleApplyCoreTemplate}
-                disabled={!recommendedCorePrompt}
-                className="text-indigo-600 hover:text-indigo-800 disabled:text-gray-400"
-              >
-                {recommendedCorePrompt ? 'Use recommended template' : 'No template for this model'}
-              </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Intimacy Operation Settings */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Intimacy Settings (亲密度运营)</label>
-            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md border border-gray-200">
-                <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Stage 1 Limit (0 - X)</label>
-                    <input
-                        type="number"
-                        name="stage1Threshold"
-                        value={formData.stage1Threshold || 20}
-                        onChange={(e) => setFormData(prev => ({ ...prev, stage1Threshold: parseInt(e.target.value) }))}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Below this is "Tease" (Stage 1).</p>
-                </div>
-                <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Stage 2 Limit (X - Y)</label>
-                    <input
-                        type="number"
-                        name="stage2Threshold"
-                        value={formData.stage2Threshold || 60}
-                        onChange={(e) => setFormData(prev => ({ ...prev, stage2Threshold: parseInt(e.target.value) }))}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Below this is "Reveal" (Stage 2). Above is "Explicit" (Stage 3).</p>
-              </div>
-            </div>
+            <p className="text-xs text-gray-500 mt-1">定义角色的性格、说话风格和行为规则</p>
           </div>
 
           {/* 暂时隐藏：AI UGC 相册 / 私房照管理（当前用不上） */}
