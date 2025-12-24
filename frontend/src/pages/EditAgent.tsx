@@ -660,7 +660,6 @@ const EditAgent: React.FC = () => {
       
       const payload = {
         ...formData,
-        updateGlobalCore,
         avatarUrls: formData.avatarUrls || [],
         coverVideoUrls: formData.coverVideoUrls || [],
         privatePhotoUrls: formData.privatePhotoUrls || [],
