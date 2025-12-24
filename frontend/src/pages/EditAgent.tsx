@@ -709,108 +709,30 @@ const EditAgent: React.FC = () => {
             />
           </div>
 
+          {/* 极简剧情设定 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">剧情设定（故事模式）</label>
+            <label className="block text-sm font-medium text-gray-700">剧情设定</label>
             <div className="mt-2 grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-gray-50 p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">一句话标签（tagline）</label>
-                  <input
-                    type="text"
-                    value={formData.storyConfig?.tagline || ''}
-                    onChange={(e) => handleStoryConfigChange('tagline', e.target.value)}
-                    placeholder="例如：禁忌继母 · 三天独处"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">故事简介（synopsis）</label>
-                  <input
-                    type="text"
-                    value={formData.storyConfig?.synopsis || ''}
-                    onChange={(e) => handleStoryConfigChange('synopsis', e.target.value)}
-                    placeholder="1-2 句话描述剧情主线"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">开场白（opening）</label>
-            <textarea
-              rows={3}
-                  value={formData.storyConfig?.opening || ''}
-                  onChange={(e) => handleStoryConfigChange('opening', e.target.value)}
-                  placeholder="故事第一段（用户进入剧情时看到的开场）"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">剧情背景（backstory）</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">开场白</label>
                 <textarea
                   rows={4}
-                  value={formData.storyConfig?.backstory || ''}
-                  onChange={(e) => handleStoryConfigChange('backstory', e.target.value)}
-                  placeholder="世界观/关系设定/关键禁忌点/冲突点/动机等（越清晰越好）"
+                  value={formData.storyConfig?.opening || ''}
+                  onChange={(e) => handleStoryConfigChange('opening', e.target.value)}
+                  placeholder="用户进入对话时看到的第一条消息..."
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">外观设定（appearance，用于生图/保角色）</label>
-                  <textarea
-                    rows={3}
-                    value={formData.storyConfig?.appearance || ''}
-                    onChange={(e) => handleStoryConfigChange('appearance', e.target.value)}
-                    placeholder="例如：162cm，银白长发，九尾狐耳…（尽量结构化）"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">性格设定（personality）</label>
-                  <textarea
-                    rows={3}
-                    value={formData.storyConfig?.personality || ''}
-                    onChange={(e) => handleStoryConfigChange('personality', e.target.value)}
-                    placeholder="例如：温柔但腹黑，喜欢诱导…（决定叙事口吻）"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">角色设定</label>
+                <textarea
+                  rows={3}
+                  value={formData.storyConfig?.personality || ''}
+                  onChange={(e) => handleStoryConfigChange('personality', e.target.value)}
+                  placeholder="角色的性格、说话风格..."
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">内容尺度（contentRating）</label>
-                  <select
-                    value={formData.storyConfig?.contentRating || 'moderate'}
-                    onChange={(e) => handleStoryConfigChange('contentRating', e.target.value as any)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  >
-                    <option value="mild">mild</option>
-                    <option value="moderate">moderate</option>
-                    <option value="explicit">explicit</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">保角色强度（imagePromptStrength 0-1，可选）</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={typeof formData.storyConfig?.imagePromptStrength === 'number' ? formData.storyConfig?.imagePromptStrength : ''}
-                    onChange={(e) => handleStoryConfigChange('imagePromptStrength', e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                    placeholder="留空走默认：realistic 0.18 / anime 0.22"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-600">
-                说明：这部分会被故事模式直接使用；头像生成也会优先读取“外观设定”。
-              </p>
             </div>
           </div>
 
