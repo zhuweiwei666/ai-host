@@ -65,7 +65,7 @@ const EditAgent: React.FC = () => {
     modelName: 'grok-4-1-fast-reasoning',
     temperature: 0.7,
     corePrompt: '',
-    systemPrompt: DEFAULT_CUSTOM_PROMPT,
+    systemPrompt: '',
     voiceId: '',
     status: 'online',
     storyConfig: {
