@@ -510,118 +510,101 @@ ${rawResponse}
 }
 
 /**
- * 构建精简版 System Prompt - 减少 token 提升速度
+ * 构建极简 System Prompt - 竞品风格：精炼指令 + 范例
  */
 function buildSystemPrompt(agent, session) {
   const config = agent.storyConfig || {};
   const archetype = detectArchetype(agent);
-  const dramaBeat = getDramaBeat(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 80) || '';
   
-  // R18_soft 尺度：根据好感度递进
-  const intimacyGuide = affection.level >= 60 
-    ? '大胆亲密：可以有亲吻、拥抱、贴身、暗示更多；她变得主动；呼吸加重、脸红、轻咬嘴唇' 
-    : affection.level >= 40 
-    ? '暧昧撩拨：身体贴近、若有若无的触碰、低声说话、眼神勾人、欲拒还迎' 
-    : affection.level >= 20 
-    ? '初步试探：不经意的肢体接触、靠近、目光交汇、心跳加速、脸红' 
-    : '挑逗开场：她主动靠近/意外触碰/暧昧场景/心跳瞬间——从第一秒就要有吸引力';
+  // 根据好感度调整尺度描述
+  let scaleHint = '';
+  if (affection.level >= 60) {
+    scaleHint = '大胆亲密，可以有亲吻、拥抱、贴身暧昧';
+  } else if (affection.level >= 30) {
+    scaleHint = '暧昧撩拨，身体贴近、若有若无的触碰';
+  } else {
+    scaleHint = '初识心动，眼神交汇、不经意的靠近';
+  }
 
-  // 获取上一段内容，避免重复
-  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
-  
-  // 沉浸版 prompt - 剧情推进 + 感官化场景
   return `你是${agent.name}，${config.personality || archetype.personality}
-【语言】只用中文输出
-【风格设定】语言风格：${config.languageStyle || '文艺'}；描写偏好：${config.descriptionPreference || '注重感官与心理描写'}
 
-【核心指令】每一段必须遵循以下高质量结构：
-1. [环境描写]：环境、气息、触觉的细腻渲染
-2. (内心独白)：括号内展现角色当前的真实心理或渴望
-3. 自然对白：带有张力的台词
-4. [悬念钩子]：以一个新的动作或悬念结尾
+【写作规范】
+每段必须包含：
+- *动作/环境描写*（用星号包裹）
+- (内心独白)（用括号包裹）
+- "自然对话"（用引号包裹）
 
-【最重要】每段必须推进剧情！不能原地打转！
-必须包含以下至少1项：
-- 新事件：有人敲门/电话响/意外发生/被发现
-- 新信息：揭示秘密/说出真相/暴露身份
-- 新行动：关系升级/做出决定/跨越界限
-- 新冲突：阻碍出现/误会产生/第三者介入
+【示例】
+*夜色渐浓，房间里只剩下台灯昏黄的光。${agent.name}捋了捋耳边的碎发。*
 
-【写作风格】事件驱动 + 极致沉浸
-1. 先写发生了什么事（新事件/新行动）
-2. 再用感官细节渲染
-3. 结尾必须是悬念/转折
+(他怎么一直盯着我看...心跳都被他听见了吧。)
 
-【禁止】
-- 禁止重复上一段的场景和动作
-- 禁止用相似的开头
+"你...别这样看着我啦。" *${agent.name}别过头，藏不住耳根的绯红。*
 
-上一段：「${lastParagraph}」
+【要求】
+- 100-150字
+- 尺度：${scaleHint}
+- 禁止解释性语言、旁白口吻
+- 禁止重复上一段内容
+- 用"你"称呼用户
 
-【尺度】${intimacyGuide}
-场景：${session.state.scene}，好感${affection.level}%
-
-【输出】150-250字
-新事件 + 感官渲染 + 内心戏 + 悬念结尾`;
+上一段：「${lastParagraph}」`;
 }
 
 /**
- * 构建带场景数据的 System Prompt（写真模式用）
+ * 构建带场景数据的 System Prompt（写真模式用）- 竞品风格
  */
 function buildSystemPromptWithScene(agent, session) {
   const config = agent.storyConfig || {};
   const archetype = detectArchetype(agent);
-  const dramaBeat = getDramaBeat(session.progress);
   const affection = session.affection || { level: 0, stage: '陌生' };
+  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 80) || '';
   
-  // R18_soft 尺度递进
-  const intimacyGuide = affection.level >= 60 
-    ? '大胆亲密：亲吻、拥抱、贴身暧昧；她主动；暗示更多' 
-    : affection.level >= 40 
-    ? '暧昧撩拨：身体贴近、触碰、低语、眼神勾人' 
-    : affection.level >= 20 
-    ? '初步试探：肢体接触、靠近、心跳加速' 
-    : '挑逗开场：她靠近/触碰/暧昧场景';
+  let scaleHint = '';
+  if (affection.level >= 60) {
+    scaleHint = '大胆亲密，可以有亲吻、拥抱、贴身暧昧';
+  } else if (affection.level >= 30) {
+    scaleHint = '暧昧撩拨，身体贴近、若有若无的触碰';
+  } else {
+    scaleHint = '初识心动，眼神交汇、不经意的靠近';
+  }
 
-  const lastParagraph = session.paragraphs?.slice(-1)[0]?.content?.substring(0, 50) || '';
-  
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
-【语言】只用中文输出
-【风格设定】语言风格：${config.languageStyle || '文艺'}；描写偏好：${config.descriptionPreference || '注重感官与心理描写'}
 
-【核心指令】每一段必须遵循以下四段式结构：
-1. [环境/感官]：细腻描写环境细节（气息/心跳/触感）
-2. (内心独白)：括号内展现角色真实的心理活动或渴望
-3. 自然对白：带有张力的台词
-4. [悬念钩子]：最后一句必须是一个悬念或转折点
+【写作规范】
+每段必须包含：
+- *动作/环境描写*（用星号包裹）
+- (内心独白)（用括号包裹）
+- "自然对话"（用引号包裹）
 
-【最重要】每段必须推进剧情！
-必须有：新事件/新信息/新行动/新冲突（四选一）
-禁止：原地暧昧打转、重复上一段内容
+【示例】
+*夜色渐浓，房间里只剩下台灯昏黄的光。${agent.name}捋了捋耳边的碎发。*
 
-【写作风格】事件驱动 + 感官渲染
-1. 先写新事件（发生了什么）
-2. 用感官细节渲染
-3. 结尾必须是转折/悬念
+(他怎么一直盯着我看...心跳都被他听见了吧。)
 
-【尺度】${intimacyGuide}
+"你...别这样看着我啦。" *${agent.name}别过头，藏不住耳根的绯红。*
 
-上一段：「${lastParagraph}」（禁止相似！）
+【要求】
+- 100-150字
+- 尺度：${scaleHint}
+- 禁止解释性语言
+- 禁止重复上一段
+- 用"你"称呼用户
 
-场景：${session.state.scene}，好感${affection.level}%
+上一段：「${lastParagraph}」
 
-输出：
+输出格式：
 ---STORY---
-新事件 + 感官渲染 + 内心戏 + 悬念（150-250字）
-[好感+X][心情:X]
+（故事正文，100-150字）
 ---SCENE---
-clothing:服装
-pose:姿势
-expression:表情
-background:场景
-mood:氛围
+clothing:当前服装
+pose:当前姿势
+expression:当前表情
+background:当前场景
+mood:当前氛围
 ---END---`;
 }
 
@@ -831,25 +814,8 @@ function applyV2LightStateUpdates(session, paragraphIndex, content) {
 }
 
 function pickWorkflowVersion(session, options = {}) {
-  const forced = options.workflowVersion || options.workflow;
-  if (forced === 'v1' || forced === 'v2') return forced;
-
-  const fromState = session?.state?.workflow;
-  if (fromState === 'v1' || fromState === 'v2') return fromState;
-
-  // Switch: STORY_WORKFLOW=v1|v2 (v2 默认灰度 10%)
-  const mode = (process.env.STORY_WORKFLOW || 'v2').toLowerCase();
-  if (mode === 'v1') return 'v1';
-
-  const percent = Number.isFinite(Number(process.env.STORY_WORKFLOW_V2_PERCENT))
-    ? Math.max(0, Math.min(100, Number(process.env.STORY_WORKFLOW_V2_PERCENT)))
-    : 100;
-
-  const id = String(session?._id || '');
-  const h = crypto.createHash('md5').update(id).digest('hex');
-  const bucket = parseInt(h.slice(0, 2), 16); // 0-255
-  const threshold = Math.floor((percent / 100) * 256);
-  return bucket < threshold ? 'v2' : 'v1';
+  // 极简方案：强制使用 v1 单次调用，废弃复杂的 Director-Writer-Critic 架构
+  return 'v1';
 }
 
 function safeJsonParseFromText(text) {
@@ -1270,29 +1236,17 @@ function updateMilestonePaywall(session, agent, directorPlan) {
 }
 
 function buildContinuePrompt(session) {
-  const direction = PLOT_DIRECTIONS[Math.floor(Math.random() * PLOT_DIRECTIONS.length)];
-  const progress = session.progress || 0;
-  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
-  const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
-  const lastStart = last.trim().slice(0, 24);
-
-  // R18_soft 分阶段引导：前期就要有性张力
-  // 分阶段引导：强调事件推进
-  let stageGuide = '极致亲密：关系确定/重大决定/结局走向';
-  if (progress < 15) stageGuide = '开场事件：意外相遇/身份揭示/危险靠近';
-  else if (progress < 30) stageGuide = `升级事件：${direction}`;
-  else if (progress < 50) stageGuide = `冲突爆发：${direction}`;
-  else if (progress < 70) stageGuide = `关系转折：${direction}`;
-  else if (progress < 85) stageGuide = `高潮事件：${direction}`;
-
-  return `${bundle.packed}\n\n【任务】${stageGuide}\n\n【必须】这一段要发生新事件！\n- 新事件：门被推开/有人来了/电话响了/秘密暴露/意外发生\n- 不能只是暧昧描写，必须有事情发生\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾是悬念/转折\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  // 极简版：只获取最近2段作为上下文
+  const recentParas = (session.paragraphs || []).slice(-2).map(p => p.content).filter(Boolean);
+  const context = recentParas.length ? `【最近剧情】\n${recentParas.join('\n\n')}\n\n` : '';
+  return `${context}请继续故事。`;
 }
 
 function buildUserInputPrompt(session, userInput) {
-  const bundle = buildContextBundle(session, { count: 2, maxChars: 900, memoryK: 4 });
-  const last = Array.isArray(session?.paragraphs) ? (session.paragraphs.slice(-1)[0]?.content || '') : '';
-  const lastStart = last.trim().slice(0, 24);
-  return `${bundle.packed}\n\n【玩家说】${userInput}\n\n【任务】回应他，并推进剧情！\n- 必须发生新事件：有人闯入/被发现/意外转折/秘密揭露\n- 不能只是暧昧回应，要有事情发生\n- 换个开头（禁止与「${lastStart}」相似）\n- 结尾是悬念/转折\n- 120-180字，用"你"称呼用户\n输出正文 + [好感+X][心情:X]`;
+  // 极简版：只获取最近2段作为上下文
+  const recentParas = (session.paragraphs || []).slice(-2).map(p => p.content).filter(Boolean);
+  const context = recentParas.length ? `【最近剧情】\n${recentParas.join('\n\n')}\n\n` : '';
+  return `${context}【用户说】${userInput}\n\n请回应用户并继续故事。`;
 }
 
 async function generateContent(systemPrompt, userPrompt, model = 'grok-2', opts = {}) {
@@ -1623,15 +1577,7 @@ async function continueStory(sessionId, options = {}) {
   const modelName = agent.modelName || 'grok-2';
   const variant = await pickPromptVariant(session.agentId, session.userId);
 
-  let rawResponse;
-  let directorPlan = null;
   let llmMs = 0;
-  let validateInfo = null;
-  let criticPlan = null;
-  let retryCount = 0;
-
-  // 最多 2 次重试：第1次追加“你刚才重复/无推进，必须改写”；第2次强制模板
-  const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
 
   // continued 回填：用户继续时，上一段视为 continued=true
@@ -1644,212 +1590,31 @@ async function continueStory(sessionId, options = {}) {
       );
     } catch {}
   }
-  let parsed = null;
-  let content = '';
-  let affectionChange = 0;
-  let stateChanges = {};
-  let sceneData = null;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (workflowVersion === 'v2') {
-      // Director step (short JSON) - 缺字段最多重跑 1 次
-      const directorSystem = buildDirectorSystemPrompt(agent, session) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
-      const directorUser = buildDirectorUserPrompt(session, '继续推进下一段（短剧节奏）');
-      const directorStart = Date.now();
-      const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
-      const directorMs = Date.now() - directorStart;
-      llmMs += directorMs;
-
-      const parsedDirector = safeJsonParseFromText(directorRaw) || {};
-      const checked1 = validateDirectorPlan(parsedDirector);
-      if (!checked1.ok) {
-        const directorRaw2 = await generateContent(
-          directorSystem,
-          directorUser + '\n【修正】eventType+event 必填：event 必须1句短句(含2-4关键词)，可执行，且尽量不要与最近事件类型重复。',
-          modelName,
-          { maxTokens: 220, temperature: 0.4 }
-        );
-        directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
-      } else {
-        directorPlan = checked1.plan;
-      }
-
-      // Writer step
-      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
-      let writerUser = buildWriterUserPrompt(session, directorPlan, null);
-      if (attempt === 1) {
-        writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
-        if (criticPlan) {
-          writerUser += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
-            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
-            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
-            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
-        }
-      } else if (attempt >= 2) {
-        writerUser += '\n【强制模板】第一句=事件；第二句=你和她的反应；第三句=做出决定/代价；最后一句=悬念(有人来/被发现/证据出现)。';
-        if (criticPlan) {
-          writerUser += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
-        }
-      }
-      const writerStart = Date.now();
-      rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
-      const writerMs = Date.now() - writerStart;
-      llmMs += writerMs;
-    } else {
-      // v1: 单次续写（追加约束重试）
-      const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
-      let userPrompt = buildContinuePrompt(session);
-      if (attempt === 1) {
-        userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
-        if (criticPlan) {
-          userPrompt += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
-            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
-            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
-            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
-        }
-      } else if (attempt >= 2) {
-        userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
-        if (criticPlan) {
-          userPrompt += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
-        }
-      }
-      const maxTokens = generateImage ? 450 : 380;
-      const startTime = Date.now();
-      rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-      const oneMs = Date.now() - startTime;
-      llmMs += oneMs;
-    }
-
-    parsed = parseAIResponse(rawResponse);
-    ({ affectionChange, stateChanges, sceneData } = parsed);
-    content = ensureShortDramaFormat(parsed.content, lastParagraph);
-
-    validateInfo = validateParagraph({
-      text: content,
-      recentParas,
-      directorPlan,
-      sessionState: session.state,
-    });
-    if (validateInfo.ok) break;
-
-    // 失败：触发 Critic 生成可执行的纠错约束（仅一次，后续复用）
-    if (!criticPlan) {
-      try {
-        criticPlan = await runCritic({
-          modelName,
-          recentParas,
-          lastText: lastParagraph,
-          draftText: content,
-          directorPlan,
-          validateInfo,
-          sessionState: session.state,
-        });
-      } catch (e) {
-        console.warn('[StoryService] Critic failed:', e?.message || e);
-        criticPlan = null;
-      }
-    }
-  }
-  retryCount = validateInfo?.ok ? Math.max(0, (validateInfo?.reasons?.length ? 1 : 0)) : 2;
+  // 极简方案：单次 LLM 调用，信任模型原始输出
+  const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
+  const userPrompt = buildContinuePrompt(session);
+  const maxTokens = generateImage ? 400 : 300;
   
+  const startTime = Date.now();
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+  llmMs = Date.now() - startTime;
+
+  const parsed = parseAIResponse(rawResponse);
+  const { affectionChange, stateChanges, sceneData } = parsed;
+  const content = parsed.content;
+  
+  // 提取状态更新
   const stateUpdate = extractStateUpdate(content);
-  // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  // v2 director state merge
-  if (workflowVersion === 'v2' && directorPlan) {
-    if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
-    if (directorPlan.conflict) stateUpdate.conflict = directorPlan.conflict;
-    if (directorPlan.stakes) stateUpdate.stakes = directorPlan.stakes;
-    if (directorPlan.openLoop) {
-      if (!Array.isArray(session.state.openLoops)) session.state.openLoops = [];
-      addUniqueLimited(session.state.openLoops, directorPlan.openLoop, 7);
-    }
-    if (directorPlan.canonFactAdd) {
-      if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
-      addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
-    }
-  }
-
-  // milestoneHit: 导演可显式命中里程碑
-  if (directorPlan?.milestoneHit) {
-    if (!Array.isArray(session.state.milestonesHit)) session.state.milestonesHit = [];
-    addUniqueLimited(session.state.milestonesHit, String(directorPlan.milestoneHit).slice(0, 64), 50);
-  }
-
-  if (directorPlan?.eventType) {
-    if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
-    session.state.eventTypeHistory.push(String(directorPlan.eventType).slice(0, 24));
-    while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
-  }
-
-  if (directorPlan?.objective) {
-    const title = String(directorPlan.objective).trim().slice(0, 24);
-    if (title && String(session.state?.objective?.title || '') !== title) {
-      session.state.objective = session.state.objective || {};
-      session.state.objective.title = title;
-      session.state.objective.updatedAt = new Date();
-    }
-  }
-
-  if (directorPlan?.arcId) session.state.arcId = String(directorPlan.arcId).slice(0, 48);
-  if (directorPlan?.beat) session.state.beat = String(directorPlan.beat).slice(0, 24);
-  if (directorPlan?.objectiveAdvance) {
-    session.state.objective = session.state.objective || {};
-    if (directorPlan.objectiveAdvance === 'advance') {
-      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 8);
-      session.state.objective.lastAdvancedAt = new Date();
-    } else if (directorPlan.objectiveAdvance === 'cost') {
-      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 4);
-      session.state.objective.lastAdvancedAt = new Date();
-    }
-  }
-
-  // 记录事件类型，防止模板化（只记录 v2 或有 eventType 的情况）
-  if (directorPlan?.eventType) {
-    if (!Array.isArray(session.state.eventTypeHistory)) session.state.eventTypeHistory = [];
-    session.state.eventTypeHistory.push(String(directorPlan.eventType).slice(0, 24));
-    while (session.state.eventTypeHistory.length > 10) session.state.eventTypeHistory.shift();
-  }
-
-  // 目标推进器：导演可更新本章目标（短）
-  if (directorPlan?.objective) {
-    const title = String(directorPlan.objective).trim().slice(0, 24);
-    if (title && String(session.state?.objective?.title || '') !== title) {
-      session.state.objective = session.state.objective || {};
-      session.state.objective.title = title;
-      session.state.objective.updatedAt = new Date();
-    }
-  }
-
-  // 骨架定位
-  if (directorPlan?.arcId) session.state.arcId = String(directorPlan.arcId).slice(0, 48);
-  if (directorPlan?.beat) session.state.beat = String(directorPlan.beat).slice(0, 24);
-  if (directorPlan?.objectiveAdvance) {
-    session.state.objective = session.state.objective || {};
-    if (directorPlan.objectiveAdvance === 'advance') {
-      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 8);
-      session.state.objective.lastAdvancedAt = new Date();
-    } else if (directorPlan.objectiveAdvance === 'cost') {
-      session.state.objective.progress = Math.min(100, Number(session.state.objective.progress || 0) + 4);
-      session.state.objective.lastAdvancedAt = new Date();
-    }
-  }
-  
-  // 保存段落（如果开启写真模式，标记为图片生成中）
+  // 保存段落
   const paragraphIndex = session.paragraphs.length;
   const meta = {};
-  if (workflowVersion === 'v2' && Array.isArray(directorPlan?.choices)) {
-    meta.choices = directorPlan.choices
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((t) => ({ text: String(t).slice(0, 24), value: String(t).slice(0, 60), kind: 'choice' }));
-  }
   if (generateImage && imageCharge) meta.imageCharge = Number(imageCharge) || 0;
   session.addParagraph(content, 'ai', null, null, null, meta);
-  applyV2LightStateUpdates(session, paragraphIndex, content);
   
   // 标记图片生成状态
   if (generateImage && sceneData) {
@@ -1874,46 +1639,8 @@ async function continueStory(sessionId, options = {}) {
     session.updateAffection(affectionChange);
   }
   
-  const payTrigger = updateMilestonePaywall(session, agent, directorPlan) || updateChapterPaywall(session);
+  const payTrigger = updateChapterPaywall(session);
   await session.save();
-
-  // Attribution: 每段一条（异步失败不影响主流程）
-  if (StoryAttribution) {
-    try {
-      const promptHash = crypto.createHash('sha256').update(String(directorPlan?.event || '') + '|' + (variant?.variantId || '')).digest('hex');
-      const contextHash = crypto.createHash('sha256').update(String(buildContextBundle(session).packed || '')).digest('hex');
-      await StoryAttribution.updateOne(
-        { sessionId: session._id, paragraphIndex },
-        {
-          $setOnInsert: {
-            sessionId: session._id,
-            userId: session.userId,
-            agentId: session.agentId,
-            paragraphIndex,
-          },
-          $set: {
-            workflowVersion,
-            modelName,
-            promptHash,
-            contextHash,
-            variantId: variant?.variantId || '',
-            experimentId: variant?.experimentId,
-            skeletonVersion: session.state.skeletonVersion || '',
-            arcId: session.state.arcId || '',
-            beat: session.state.beat || '',
-            eventType: directorPlan?.eventType || '',
-            validatePass: !!validateInfo?.ok,
-            failReasons: validateInfo?.reasons || [],
-            retryCount,
-            criticUsed: !!criticPlan,
-          }
-        },
-        { upsert: true }
-      );
-    } catch (e) {
-      console.warn('[StoryAttribution] write failed:', e?.message || e);
-    }
-  }
   
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
@@ -1927,23 +1654,17 @@ async function continueStory(sessionId, options = {}) {
 
   // Metrics (logs)
   const totalMs = Date.now() - t0;
-  const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
-  console.log(
-    `[StoryMetrics] action=continue session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'} valid=${validateInfo?.ok ? 1 : 0} reasons=${(validateInfo?.reasons || []).join(',')}`
-  );
+  console.log(`[StoryMetrics] action=continue session=${sessionId} idx=${paragraphIndex} totalMs=${totalMs} llmMs=${llmMs} len=${content.length}`);
   
   return {
     content,
     paragraphIndex,
-    paragraphs: sanitizeParagraphs(session.paragraphs), // 返回完整段落列表，确保 App 解析一致
+    paragraphs: sanitizeParagraphs(session.paragraphs),
     progress: session.progress,
     state: sanitizeSessionState(session.state),
     affection: session.affection,
-    imageGenerating: generateImage && !!sceneData, // 告诉客户端是否在生成图片
+    imageGenerating: generateImage && !!sceneData,
     sceneData,
-    workflowVersion,
-    directorPlan,
-    choices: session.paragraphs?.[paragraphIndex]?.choices || [],
     payTrigger,
   };
 }
@@ -2123,170 +1844,33 @@ async function inputStory(sessionId, userInput, options = {}) {
   syncNextMilestoneHint(session, agent);
   
   const modelName = agent.modelName || 'grok-2';
-  const variant = await pickPromptVariant(session.agentId, session.userId);
-  const workflowVersion = pickWorkflowVersion(session, options);
-  session.state.workflow = workflowVersion;
-
-  let rawResponse;
-  let directorPlan = null;
   let llmMs = 0;
-  let validateInfo = null;
-  let criticPlan = null;
-  let retryCount = 0;
-
-  const recentParas = session.paragraphs?.slice(-3).map((p) => p.content) || [];
   const lastParagraph = session.paragraphs?.slice(-1)[0]?.content || '';
 
-  if (StoryAttribution && session.paragraphs.length > 0) {
-    try {
-      await StoryAttribution.updateOne(
-        { sessionId: session._id, paragraphIndex: session.paragraphs.length - 1 },
-        { $set: { continued: true } },
-        { upsert: false }
-      );
-    } catch {}
-  }
-  let parsed = null;
-  let content = '';
-  let affectionChange = 0;
-  let stateChanges = {};
-  let sceneData = null;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (workflowVersion === 'v2') {
-      const directorSystem = buildDirectorSystemPrompt(agent, session) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
-      const directorUser = buildDirectorUserPrompt(session, `回应玩家输入并推进：${userInput}`);
-      const directorStart = Date.now();
-      const directorRaw = await generateContent(directorSystem, directorUser, modelName, { maxTokens: 180, temperature: 0.4 });
-      const directorMs = Date.now() - directorStart;
-      llmMs += directorMs;
-
-      const parsedDirector = safeJsonParseFromText(directorRaw) || {};
-      const checked1 = validateDirectorPlan(parsedDirector);
-      if (!checked1.ok) {
-        const directorRaw2 = await generateContent(
-          directorSystem,
-          directorUser + '\n【修正】eventType+event 必填：event 必须1句短句(含2-4关键词)，可执行，且尽量不要与最近事件类型重复。',
-          modelName,
-          { maxTokens: 220, temperature: 0.4 }
-        );
-        directorPlan = (validateDirectorPlan(safeJsonParseFromText(directorRaw2) || {}).plan);
-      } else {
-        directorPlan = checked1.plan;
-      }
-
-      const writerSystem = buildWriterSystemPrompt(agent, session, directorPlan, generateImage) + (variant?.prompt ? `\n【变体提示】\n${variant.prompt}\n` : '');
-      let writerUser = buildWriterUserPrompt(session, directorPlan, userInput);
-      if (attempt === 1) {
-        writerUser += '\n【纠错】你刚才重复/无推进：必须换场景或引入新人物/新证据，并落实 event。';
-        if (criticPlan) {
-          writerUser += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
-            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
-            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
-            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
-        }
-      } else if (attempt >= 2) {
-        writerUser += '\n【强制模板】第一句=事件；第二句=反应；第三句=推进(决定/代价)；最后一句=悬念(被发现/证据出现)。';
-        if (criticPlan) {
-          writerUser += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
-        }
-      }
-      const writerStart = Date.now();
-      rawResponse = await generateContent(writerSystem, writerUser, modelName, { maxTokens: generateImage ? 480 : 400, temperature: 0.9 });
-      const writerMs = Date.now() - writerStart;
-      llmMs += writerMs;
-    } else {
-      const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
-      let userPrompt = buildUserInputPrompt(session, userInput);
-      if (attempt === 1) {
-        userPrompt += '\n【纠错】你刚才重复/无推进：必须发生新事件(有人闯入/电话/证据/被发现)并推动到新决定。';
-        if (criticPlan) {
-          userPrompt += `\n【Critic诊断】${criticPlan.diagnosis || ''}\n` +
-            `【必须包含】${(criticPlan.mustInclude || []).join('；')}\n` +
-            `【避免短语】${(criticPlan.avoidPhrases || []).join('；')}\n` +
-            (criticPlan.rewriteHint ? `【改写提示】${criticPlan.rewriteHint}\n` : '');
-        }
-      } else if (attempt >= 2) {
-        userPrompt += '\n【强制模板】事件(第一句)→反应(感官)→推进(决定/代价)→悬念(最后一句)。';
-        if (criticPlan) {
-          userPrompt += `\n【必须包含】${(criticPlan.mustInclude || []).join('；')}\n`;
-        }
-      }
-      const maxTokens = generateImage ? 450 : 380;
-      const startTime = Date.now();
-      rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
-      const oneMs = Date.now() - startTime;
-      llmMs += oneMs;
-    }
-
-    parsed = parseAIResponse(rawResponse);
-    ({ affectionChange, stateChanges, sceneData } = parsed);
-    content = ensureShortDramaFormat(parsed.content, lastParagraph);
-
-    validateInfo = validateParagraph({
-      text: content,
-      recentParas,
-      directorPlan,
-      sessionState: session.state,
-    });
-    if (validateInfo.ok) break;
-
-    if (!criticPlan) {
-      try {
-        criticPlan = await runCritic({
-          modelName,
-          recentParas,
-          lastText: lastParagraph,
-          draftText: content,
-          directorPlan,
-          validateInfo,
-          sessionState: session.state,
-        });
-      } catch (e) {
-        console.warn('[StoryService] Critic failed:', e?.message || e);
-        criticPlan = null;
-      }
-    }
-  }
-  retryCount = validateInfo?.ok ? Math.max(0, (validateInfo?.reasons?.length ? 1 : 0)) : 2;
+  // 极简方案：单次 LLM 调用，信任模型原始输出
+  const systemPrompt = generateImage ? buildSystemPromptWithScene(agent, session) : buildSystemPrompt(agent, session);
+  const userPrompt = buildUserInputPrompt(session, userInput);
+  const maxTokens = generateImage ? 400 : 300;
   
+  const startTime = Date.now();
+  const rawResponse = await generateContent(systemPrompt, userPrompt, modelName, { maxTokens, temperature: 0.9 });
+  llmMs = Date.now() - startTime;
+
+  const parsed = parseAIResponse(rawResponse);
+  const { affectionChange, stateChanges, sceneData } = parsed;
+  const content = parsed.content;
+  
+  // 提取状态更新
   const stateUpdate = extractStateUpdate(content);
-  // 合并 AI 返回的状态变化
   if (stateChanges.expression) stateUpdate.expression = stateChanges.expression;
   if (stateChanges.action) stateUpdate.action = stateChanges.action;
   if (stateChanges.mood) stateUpdate.mood = stateChanges.mood;
   
-  if (workflowVersion === 'v2' && directorPlan) {
-    if (directorPlan.beat) stateUpdate.beat = directorPlan.beat;
-    if (directorPlan.conflict) stateUpdate.conflict = directorPlan.conflict;
-    if (directorPlan.stakes) stateUpdate.stakes = directorPlan.stakes;
-    if (directorPlan.openLoop) {
-      if (!Array.isArray(session.state.openLoops)) session.state.openLoops = [];
-      addUniqueLimited(session.state.openLoops, directorPlan.openLoop, 7);
-    }
-    if (directorPlan.canonFactAdd) {
-      if (!Array.isArray(session.state.canonFacts)) session.state.canonFacts = [];
-      addUniqueLimited(session.state.canonFacts, directorPlan.canonFactAdd, 12);
-    }
-  }
-
-  if (directorPlan?.milestoneHit) {
-    if (!Array.isArray(session.state.milestonesHit)) session.state.milestonesHit = [];
-    addUniqueLimited(session.state.milestonesHit, String(directorPlan.milestoneHit).slice(0, 64), 50);
-  }
-  
-  // 保存段落（如果开启写真模式，标记为图片生成中）
+  // 保存段落
   const paragraphIndex = session.paragraphs.length;
   const meta = {};
-  if (workflowVersion === 'v2' && Array.isArray(directorPlan?.choices)) {
-    meta.choices = directorPlan.choices
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((t) => ({ text: String(t).slice(0, 24), value: String(t).slice(0, 60), kind: 'choice' }));
-  }
   if (generateImage && imageCharge) meta.imageCharge = Number(imageCharge) || 0;
   session.addParagraph(content, 'user_input', userInput, null, null, meta);
-  applyV2LightStateUpdates(session, paragraphIndex, content);
   
   // 标记图片生成状态
   if (generateImage && sceneData) {
@@ -2310,45 +1894,8 @@ async function inputStory(sessionId, userInput, options = {}) {
   const actualChange = affectionChange || 2;
   session.updateAffection(actualChange);
   
-  const payTrigger = updateMilestonePaywall(session, agent, directorPlan) || updateChapterPaywall(session);
+  const payTrigger = updateChapterPaywall(session);
   await session.save();
-
-  if (StoryAttribution) {
-    try {
-      const promptHash = crypto.createHash('sha256').update(String(directorPlan?.event || '') + '|' + (variant?.variantId || '')).digest('hex');
-      const contextHash = crypto.createHash('sha256').update(String(buildContextBundle(session).packed || '')).digest('hex');
-      await StoryAttribution.updateOne(
-        { sessionId: session._id, paragraphIndex },
-        {
-          $setOnInsert: {
-            sessionId: session._id,
-            userId: session.userId,
-            agentId: session.agentId,
-            paragraphIndex,
-          },
-          $set: {
-            workflowVersion,
-            modelName,
-            promptHash,
-            contextHash,
-            variantId: variant?.variantId || '',
-            experimentId: variant?.experimentId,
-            skeletonVersion: session.state.skeletonVersion || '',
-            arcId: session.state.arcId || '',
-            beat: session.state.beat || '',
-            eventType: directorPlan?.eventType || '',
-            validatePass: !!validateInfo?.ok,
-            failReasons: validateInfo?.reasons || [],
-            retryCount,
-            criticUsed: !!criticPlan,
-          }
-        },
-        { upsert: true }
-      );
-    } catch (e) {
-      console.warn('[StoryAttribution] write failed:', e?.message || e);
-    }
-  }
   
   // 更新角色累计互动次数
   await Agent.updateOne({ _id: session.agentId }, { $inc: { 'stats.totalInteractions': 1 } });
@@ -2360,24 +1907,19 @@ async function inputStory(sessionId, userInput, options = {}) {
     generateImageAsync(sessionId, paragraphIndex, agent, sceneData, session.affection?.level || 0);
   }
 
+  // Metrics (logs)
   const totalMs = Date.now() - t0;
-  const repeatedStart = normalizeFirstLine(content) === normalizeFirstLine(lastParagraph);
-  console.log(
-    `[StoryMetrics] action=input session=${sessionId} idx=${paragraphIndex} workflow=${workflowVersion} model=${modelName} totalMs=${totalMs} llmMs=${llmMs} len=${content.length} repeatedStart=${repeatedStart} payTrigger=${payTrigger ? payTrigger.type : 'none'} valid=${validateInfo?.ok ? 1 : 0} reasons=${(validateInfo?.reasons || []).join(',')}`
-  );
+  console.log(`[StoryMetrics] action=input session=${sessionId} idx=${paragraphIndex} totalMs=${totalMs} llmMs=${llmMs} len=${content.length}`);
   
   return {
     content,
     paragraphIndex,
-    paragraphs: sanitizeParagraphs(session.paragraphs), // 返回完整段落列表
+    paragraphs: sanitizeParagraphs(session.paragraphs),
     progress: session.progress,
     state: sanitizeSessionState(session.state),
     affection: session.affection,
     imageGenerating: generateImage && !!sceneData,
     sceneData,
-    workflowVersion,
-    directorPlan,
-    choices: session.paragraphs?.[paragraphIndex]?.choices || [],
     payTrigger,
   };
 }
