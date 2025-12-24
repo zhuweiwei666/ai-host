@@ -34,6 +34,7 @@ class LedgerService {
    */
   async applyCreditsMutation({
     userId,
+    appId = null, // 新增 appId
     delta,
     reason,
     idempotencyKey,
@@ -45,6 +46,14 @@ class LedgerService {
     if (!userId) throw makeError('BAD_REQUEST', 'userId is required');
     if (!Number.isFinite(delta) || delta === 0) throw makeError('BAD_REQUEST', 'delta must be a non-zero number');
     if (!reason) throw makeError('BAD_REQUEST', 'reason is required');
+
+    // 如果未传入 appId，尝试从 User 自动回填（或者由 caller 传入）
+    let targetAppId = appId;
+    if (!targetAppId) {
+      const User = require('../models/User');
+      const user = await User.findById(userId).select('appId').lean();
+      targetAppId = user?.appId;
+    }
 
     const finalType =
       type ||
@@ -77,7 +86,7 @@ class LedgerService {
             // Ensure a balance doc exists (0 if new user) so debit can be checked with $gte.
             await UserBalance.updateOne(
               { userId },
-              { $setOnInsert: { creditsBalance: 0, version: 0 } },
+              { $setOnInsert: { appId: targetAppId, creditsBalance: 0, version: 0 } },
               { upsert: true, session }
             );
 
@@ -93,7 +102,10 @@ class LedgerService {
           } else {
             updated = await UserBalance.findOneAndUpdate(
               { userId },
-              { $inc: { creditsBalance: delta, version: 1 } },
+              { 
+                $inc: { creditsBalance: delta, version: 1 },
+                $set: { appId: targetAppId } // 确保 appId 被设置
+              },
               { new: true, upsert: true, setDefaultsOnInsert: true, session }
             );
           }
@@ -103,6 +115,7 @@ class LedgerService {
             [
               {
                 userId,
+                appId: targetAppId,
                 currency: 'credits',
                 delta,
                 type: finalType,

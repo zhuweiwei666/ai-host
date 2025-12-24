@@ -64,7 +64,8 @@ const requireAuth = (req, res, next) => {
     // Inject user info into request
     req.user = {
       id: decoded.userId || decoded.id,
-      role: decoded.role || 'user'
+      role: decoded.role || 'user',
+      appId: decoded.appId || null
     };
     
     next();
@@ -97,7 +98,8 @@ const optionalAuth = (req, res, next) => {
       
       req.user = {
         id: decoded.userId || decoded.id,
-        role: decoded.role || 'user'
+        role: decoded.role || 'user',
+        appId: decoded.appId || null
       };
     } else {
       // Allow mock header ONLY in non-production with explicit flag

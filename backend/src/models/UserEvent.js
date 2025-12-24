@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 
 const UserEventSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
+  appId: { type: String, index: true }, // 所属应用ID
   agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent', index: true },
   
   // ========== 事件类型 ==========
@@ -165,8 +166,17 @@ UserEventSchema.index({ serverTimestamp: 1 }, { expireAfterSeconds: 90 * 24 * 60
  */
 UserEventSchema.statics.track = async function(userId, agentId, eventType, data = {}, context = {}) {
   try {
+    let appId = context.appId;
+    if (!appId) {
+      // 自动查找用户的 appId
+      const User = require('./User');
+      const user = await User.findById(userId).select('appId').lean();
+      appId = user?.appId;
+    }
+
     const event = new this({
       userId,
+      appId, // 新增 appId
       agentId,
       eventType,
       data,

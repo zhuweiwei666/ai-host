@@ -15,17 +15,20 @@ router.use(requireAuth);
 // GET /api/stats/agents - Get agent statistics (Admin only)
 router.get('/agents', requireAdmin, async (req, res) => {
   try {
-    // 1. Get all agents to ensure we list even those with no activity
-    const agents = await Agent.find({}, 'name modelName avatarUrl');
-
-    // Parse Date Filter
-    const { startDate, endDate } = req.query;
+    // Parse Date Filter and appId
+    const { startDate, endDate, appId } = req.query;
     let matchStage = {};
     if (startDate || endDate) {
         matchStage.createdAt = {};
         if (startDate) matchStage.createdAt.$gte = new Date(startDate);
         if (endDate) matchStage.createdAt.$lte = new Date(endDate);
     }
+    if (appId) {
+      matchStage.appId = appId;
+    }
+
+    // 1. Get all agents
+    const agents = await Agent.find({}, 'name modelName avatarUrl');
 
     // 2. Aggregate COST from UsageLog with Date Filter
     const costStats = await UsageLog.aggregate([

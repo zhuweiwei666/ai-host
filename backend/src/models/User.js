@@ -18,6 +18,9 @@ const UserSchema = new mongoose.Schema({
     default: 'web' 
   }, // 渠道用户的平台类型
   phone: { type: String }, // 手机号（用于渠道用户）
+  appId: { type: String, index: true }, // 所属应用ID
+  channelId: { type: String, index: true }, // 渠道ID
+  adSource: { type: String }, // 广告来源
   externalUserId: { type: String }, // 外部产品的用户ID（Android/iOS传入）
   externalAppId: { type: String }, // 外部应用ID（可选，用于区分不同的外部产品）
   isActive: { type: Boolean, default: true }, // 是否激活

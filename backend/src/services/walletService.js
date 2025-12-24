@@ -13,7 +13,7 @@ class WalletService {
    * Get user balance.
    * Ledger is the source of truth; legacy UserAIBalance is used only for migration fallback.
    */
-  async getBalance(userId) {
+  async getBalance(userId, appId = null) {
     // Fast path: new snapshot
     const snap = await UserBalance.findOne({ userId }).lean();
     if (snap) return snap.creditsBalance ?? 0;
@@ -23,6 +23,7 @@ class WalletService {
     if (legacy && Number.isFinite(legacy.balance) && legacy.balance > 0) {
       const migrated = await ledgerService.applyCreditsMutation({
         userId,
+        appId,
         delta: legacy.balance,
         reason: 'open_balance_migration',
         idempotencyKey: `migration:open_balance:${userId}`,
@@ -36,6 +37,7 @@ class WalletService {
     // New user: grant welcome bonus (100) once
     const welcome = await ledgerService.applyCreditsMutation({
       userId,
+      appId,
       delta: 100,
       reason: 'new_user_gift',
       idempotencyKey: `init:welcome:${userId}`,
@@ -48,6 +50,7 @@ class WalletService {
     // Keep legacy transaction log for admin/support tooling that reads it.
     WalletTransaction.create({
       userId,
+      appId: appId || welcome.ledgerEntry?.appId,
       type: 'reward',
       amount: 100,
       beforeBalance: 0,
@@ -63,16 +66,17 @@ class WalletService {
    * Deduct coins. Throws error if insufficient funds.
    * Ledger-backed (atomic + auditable).
    */
-  async consume(userId, amount, itemType, refId = null, idempotencyKey = null) {
-    if (!amount || Number(amount) <= 0) return this.getBalance(userId);
+  async consume(userId, amount, itemType, refId = null, idempotencyKey = null, appId = null) {
+    if (!amount || Number(amount) <= 0) return this.getBalance(userId, appId);
 
     // Ensure user has been initialized/migrated
-    await this.getBalance(userId);
+    await this.getBalance(userId, appId);
 
     let res;
     try {
       res = await ledgerService.applyCreditsMutation({
         userId,
+        appId,
         delta: -Math.abs(Number(amount)),
         reason: itemType || 'consume',
         idempotencyKey: idempotencyKey || `consume:${crypto.randomUUID()}`,
@@ -91,6 +95,7 @@ class WalletService {
     // Legacy log (best-effort)
     WalletTransaction.create({
       userId,
+      appId: appId || res.ledgerEntry?.appId,
       type: 'consume',
       amount: -Math.abs(Number(amount)),
       beforeBalance: res.balance + Math.abs(Number(amount)),
@@ -110,11 +115,11 @@ class WalletService {
    * @param {string} refId - Optional reference ID (can be traceId for duplicate prevention)
    * @param {string} traceId - Optional trace ID for duplicate prevention (if provided, checks for duplicates)
    */
-  async reward(userId, amount, itemType, refId = null, traceId = null, idempotencyKey = null) {
-    if (!amount || Number(amount) <= 0) return this.getBalance(userId);
+  async reward(userId, amount, itemType, refId = null, traceId = null, idempotencyKey = null, appId = null) {
+    if (!amount || Number(amount) <= 0) return this.getBalance(userId, appId);
 
     // Ensure user has been initialized/migrated
-    await this.getBalance(userId);
+    await this.getBalance(userId, appId);
 
     // Legacy duplicate prevention for ad rewards (kept)
     if (traceId) {
@@ -130,6 +135,7 @@ class WalletService {
 
     const res = await ledgerService.applyCreditsMutation({
       userId,
+      appId,
       delta: Math.abs(Number(amount)),
       reason: itemType || 'reward',
       idempotencyKey: key,
@@ -151,6 +157,7 @@ class WalletService {
     // Legacy log (best-effort)
     WalletTransaction.create({
       userId,
+      appId: appId || res.ledgerEntry?.appId,
       type: 'reward',
       amount: Math.abs(Number(amount)),
       beforeBalance: res.balance - Math.abs(Number(amount)),

@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const LedgerEntrySchema = new mongoose.Schema(
   {
     userId: { type: String, required: true, index: true },
-
+    appId: { type: String, index: true }, // 所属应用ID
     currency: { type: String, default: 'credits', index: true }, // currently only 'credits'
 
     // Positive = credit, negative = debit

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const UsageLogSchema = new mongoose.Schema({
   agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent', required: true },
   userId: { type: String, required: true }, // String to match other models
+  appId: { type: String, index: true }, // 所属应用ID
   type: { 
     type: String, 
     enum: ['llm', 'tts', 'image', 'video'], 
@@ -21,6 +22,7 @@ const UsageLogSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes for faster aggregation
+UsageLogSchema.index({ appId: 1, createdAt: 1 });
 UsageLogSchema.index({ agentId: 1, type: 1 });
 UsageLogSchema.index({ createdAt: 1 });
 

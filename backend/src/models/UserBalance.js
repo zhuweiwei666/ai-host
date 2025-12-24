@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 const UserBalanceSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true, unique: true, index: true },
+    appId: { type: String, index: true }, // 所属应用ID
     creditsBalance: { type: Number, default: 0, min: 0 },
     version: { type: Number, default: 0 },
   },

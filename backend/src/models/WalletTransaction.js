@@ -10,6 +10,10 @@ const WalletTransactionSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    appId: {
+      type: String,
+      index: true
+    },
     type: {
       type: String,
       enum: ['recharge', 'consume', 'reward'],
@@ -45,6 +49,9 @@ const WalletTransactionSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+WalletTransactionSchema.index({ appId: 1, createdAt: 1 });
+WalletTransactionSchema.index({ userId: 1, createdAt: 1 });
 
 module.exports = mongoose.model('WalletTransaction', WalletTransactionSchema);
 

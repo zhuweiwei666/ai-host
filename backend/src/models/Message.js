@@ -4,6 +4,7 @@ const MessageSchema = new mongoose.Schema(
   {
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Agent', required: true },
     userId: { type: String, required: true }, // 用户ID - 用于数据隔离，每个用户有自己的聊天记录
+    appId: { type: String, index: true }, // 所属应用ID
     role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
     content: { type: String, required: true },
     audioUrl: { type: String }, // Optional, for assistant voice

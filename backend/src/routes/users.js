@@ -16,7 +16,7 @@ const { errors, sendSuccess, HTTP_STATUS } = require('../utils/errorHandler');
 // It will create a new user if not exists, or return existing user
 router.post('/sync', async (req, res) => {
   try {
-    const { externalUserId, platform, externalAppId, email, phone, username } = req.body;
+    const { externalUserId, platform, externalAppId, email, phone, username, channelId, adSource } = req.body;
     
     // Validation
     if (!externalUserId) {
@@ -26,18 +26,26 @@ router.post('/sync', async (req, res) => {
     if (!platform || !['android', 'ios'].includes(platform)) {
       return errors.badRequest(res, 'platform must be "android" or "ios"', { code: 'INVALID_PLATFORM' });
     }
+
+    // appId 校验 (从请求头获取 X-App-Id)
+    const appId = req.headers['x-app-id'] || externalAppId;
+    if (!appId) {
+      return errors.badRequest(res, 'appId is required (via header X-App-Id or externalAppId)', { code: 'MISSING_APP_ID' });
+    }
+
+    const Application = require('../models/Application');
+    const appDoc = await Application.findOne({ appId, status: 'active' });
+    if (!appDoc) {
+      return errors.badRequest(res, 'Invalid or inactive appId', { code: 'INVALID_APP_ID' });
+    }
     
-    // Build query to find existing user by externalUserId
+    // Build query to find existing user by externalUserId + appId
     const query = { 
       externalUserId,
       platform,
+      appId,
       userType: 'channel'
     };
-    
-    // If externalAppId is provided, include it in the query
-    if (externalAppId) {
-      query.externalAppId = externalAppId;
-    }
     
     // Try to find existing user
     let user = await User.findOne(query);
@@ -45,10 +53,13 @@ router.post('/sync', async (req, res) => {
     if (user) {
       // User exists, update last login and return
       user.lastLoginAt = new Date();
+      // 更新归因信息（如果之前没有）
+      if (channelId && !user.channelId) user.channelId = channelId;
+      if (adSource && !user.adSource) user.adSource = adSource;
       await user.save();
       
       // Get balance
-      const balance = await walletService.getBalance(user._id.toString());
+      const balance = await walletService.getBalance(user._id.toString(), appId);
       
       // Generate JWT token
       const token = jwt.sign(
@@ -56,7 +67,8 @@ router.post('/sync', async (req, res) => {
           userId: user._id.toString(), 
           username: user.username,
           role: user.role,
-          userType: user.userType 
+          userType: user.userType,
+          appId: user.appId
         },
         process.env.JWT_SECRET || 'your-secret-key-change-in-production',
         { expiresIn: '30d' }
@@ -66,6 +78,8 @@ router.post('/sync', async (req, res) => {
         user: {
           _id: user._id, // 内部用户ID
           externalUserId: user.externalUserId, // 外部用户ID
+          appId: user.appId,
+          channelId: user.channelId,
           username: user.username,
           email: user.email,
           phone: user.phone,
@@ -90,6 +104,9 @@ router.post('/sync', async (req, res) => {
       phone,
       externalUserId,
       externalAppId,
+      appId,
+      channelId,
+      adSource,
       platform,
       userType: 'channel',
       role: 'user',
@@ -98,7 +115,7 @@ router.post('/sync', async (req, res) => {
     });
     
     // Initialize wallet
-    const balance = await walletService.getBalance(user._id.toString());
+    const balance = await walletService.getBalance(user._id.toString(), appId);
     
     // Generate JWT token
     const token = jwt.sign(
@@ -106,7 +123,8 @@ router.post('/sync', async (req, res) => {
         userId: user._id.toString(), 
         username: user.username,
         role: user.role,
-        userType: user.userType 
+        userType: user.userType,
+        appId: user.appId
       },
       process.env.JWT_SECRET || 'your-secret-key-change-in-production',
       { expiresIn: '30d' }
@@ -116,6 +134,8 @@ router.post('/sync', async (req, res) => {
       user: {
         _id: user._id, // 内部用户ID
         externalUserId: user.externalUserId, // 外部用户ID
+        appId: user.appId,
+        channelId: user.channelId,
         username: user.username,
         email: user.email,
         phone: user.phone,

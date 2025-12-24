@@ -26,6 +26,9 @@ const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 // GET /api/analytics/dashboard - 获取仪表盘数据
 router.get('/dashboard', async (req, res) => {
   try {
+    const { appId } = req.query; // 新增 appId 过滤
+    const filter = appId ? { appId } : {};
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -52,29 +55,34 @@ router.get('/dashboard', async (req, res) => {
       flaggedForReview
     ] = await Promise.all([
       UserEvent.distinct('userId', { 
+        ...filter,
         eventType: 'session_start', 
         serverTimestamp: { $gte: today } 
       }).then(ids => ids.length),
       
       UserEvent.distinct('userId', { 
+        ...filter,
         eventType: 'session_start', 
         serverTimestamp: { $gte: weekAgo } 
       }).then(ids => ids.length),
       
-      UserProfile.countDocuments({ 
+      User.countDocuments({ 
+        ...filter,
         createdAt: { $gte: today } 
       }),
       
       Message.countDocuments({ 
+        ...filter,
         createdAt: { $gte: today } 
       }),
       
       UserEvent.countDocuments({
+        ...filter,
         eventType: 'gift_sent',
         serverTimestamp: { $gte: today }
       }),
       
-      ContentPerformance.countDocuments({ status: 'active' }),
+      ContentPerformance.countDocuments({ status: 'active' }), // 暂不按 appId 过滤主播
       
       ContentPerformance.countDocuments({ status: 'underperforming' }),
       
@@ -85,10 +93,14 @@ router.get('/dashboard', async (req, res) => {
     
     // 昨日对比
     const dauYesterday = await UserEvent.distinct('userId', {
+      ...filter,
       eventType: 'session_start',
       serverTimestamp: { $gte: yesterday, $lt: today }
     }).then(ids => ids.length);
     
+    const biService = require('../services/biService');
+    const retentionD1 = appId ? await biService.calculateRetention(appId, yesterday.toISOString().split('T')[0], 1) : 0;
+
     sendSuccess(res, HTTP_STATUS.OK, {
       date: today.toISOString().split('T')[0],
       metrics: {
@@ -98,6 +110,7 @@ router.get('/dashboard', async (req, res) => {
         newUsersToday,
         messagesToday,
         giftsToday,
+        retentionD1: appId ? Math.round(retentionD1) : undefined
       },
       content: {
         activeContent,
