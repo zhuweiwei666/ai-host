@@ -533,6 +533,13 @@ function buildSystemPrompt(agent, session) {
   // 沉浸版 prompt - 剧情推进 + 感官化场景
   return `你是${agent.name}，${config.personality || archetype.personality}
 【语言】只用中文输出
+【风格设定】语言风格：${config.languageStyle || '文艺'}；描写偏好：${config.descriptionPreference || '注重感官与心理描写'}
+
+【核心指令】每一段必须遵循以下高质量结构：
+1. [环境描写]：环境、气息、触觉的细腻渲染
+2. (内心独白)：括号内展现角色当前的真实心理或渴望
+3. 自然对白：带有张力的台词
+4. [悬念钩子]：以一个新的动作或悬念结尾
 
 【最重要】每段必须推进剧情！不能原地打转！
 必须包含以下至少1项：
@@ -541,15 +548,13 @@ function buildSystemPrompt(agent, session) {
 - 新行动：关系升级/做出决定/跨越界限
 - 新冲突：阻碍出现/误会产生/第三者介入
 
-【写作风格】沉浸式，但事件驱动
+【写作风格】事件驱动 + 极致沉浸
 1. 先写发生了什么事（新事件/新行动）
-2. 再用感官细节渲染（气息、心跳、温度）
-3. 用动作暗示心理（咬唇、垂眼、手指收紧）
-4. 结尾必须是悬念/转折（不是单纯的暧昧停留）
+2. 再用感官细节渲染
+3. 结尾必须是悬念/转折
 
 【禁止】
 - 禁止重复上一段的场景和动作
-- 禁止原地暧昧拉扯不推进
 - 禁止用相似的开头
 
 上一段：「${lastParagraph}」
@@ -557,9 +562,8 @@ function buildSystemPrompt(agent, session) {
 【尺度】${intimacyGuide}
 场景：${session.state.scene}，好感${affection.level}%
 
-【输出】120-180字
-新事件 + 感官渲染 + 悬念结尾
-[好感+X][心情:X]`;
+【输出】150-250字
+新事件 + 感官渲染 + 内心戏 + 悬念结尾`;
 }
 
 /**
@@ -585,6 +589,13 @@ function buildSystemPromptWithScene(agent, session) {
   return `你是${agent.name}，${config.personality || archetype.personality}
 外貌：${config.appearance || agent.description || ''}
 【语言】只用中文输出
+【风格设定】语言风格：${config.languageStyle || '文艺'}；描写偏好：${config.descriptionPreference || '注重感官与心理描写'}
+
+【核心指令】每一段必须遵循以下四段式结构：
+1. [环境/感官]：细腻描写环境细节（气息/心跳/触感）
+2. (内心独白)：括号内展现角色真实的心理活动或渴望
+3. 自然对白：带有张力的台词
+4. [悬念钩子]：最后一句必须是一个悬念或转折点
 
 【最重要】每段必须推进剧情！
 必须有：新事件/新信息/新行动/新冲突（四选一）
@@ -592,7 +603,7 @@ function buildSystemPromptWithScene(agent, session) {
 
 【写作风格】事件驱动 + 感官渲染
 1. 先写新事件（发生了什么）
-2. 用感官细节渲染（气息、心跳、温度）
+2. 用感官细节渲染
 3. 结尾必须是转折/悬念
 
 【尺度】${intimacyGuide}
@@ -603,7 +614,7 @@ function buildSystemPromptWithScene(agent, session) {
 
 输出：
 ---STORY---
-新事件 + 感官渲染 + 悬念（120-180字）
+新事件 + 感官渲染 + 内心戏 + 悬念（150-250字）
 [好感+X][心情:X]
 ---SCENE---
 clothing:服装
@@ -832,7 +843,7 @@ function pickWorkflowVersion(session, options = {}) {
 
   const percent = Number.isFinite(Number(process.env.STORY_WORKFLOW_V2_PERCENT))
     ? Math.max(0, Math.min(100, Number(process.env.STORY_WORKFLOW_V2_PERCENT)))
-    : 10;
+    : 100;
 
   const id = String(session?._id || '');
   const h = crypto.createHash('md5').update(id).digest('hex');
@@ -864,6 +875,7 @@ function validateDirectorPlan(plan) {
   const stakes = typeof p.stakes === 'string' ? p.stakes.trim() : '';
   const twist = typeof p.twist === 'string' ? p.twist.trim() : '';
   const eventType = typeof p.eventType === 'string' ? p.eventType.trim() : '';
+  const sensoryAnchor = typeof p.sensoryAnchor === 'string' ? p.sensoryAnchor.trim() : '';
   const objective = typeof p.objective === 'string' ? p.objective.trim() : '';
   const objectiveAdvance = typeof p.objectiveAdvance === 'string' ? p.objectiveAdvance.trim() : '';
   const arcId = typeof p.arcId === 'string' ? p.arcId.trim() : '';
@@ -871,10 +883,10 @@ function validateDirectorPlan(plan) {
   const milestoneTarget = typeof p.milestoneTarget === 'string' ? p.milestoneTarget.trim() : '';
   const milestoneHit = typeof p.milestoneHit === 'string' ? p.milestoneHit.trim() : '';
   const choices = Array.isArray(p.choices) ? p.choices.filter(Boolean).slice(0, 3) : [];
-  const ok = !!event && !!eventType && !!objectiveAdvance;
+  const ok = !!event && !!eventType && !!objectiveAdvance && !!sensoryAnchor;
   return {
     ok,
-    plan: { event, hook, stakes, twist, eventType, objective, objectiveAdvance, arcId, beat, milestoneTarget, milestoneHit, choices },
+    plan: { event, hook, stakes, twist, eventType, sensoryAnchor, objective, objectiveAdvance, arcId, beat, milestoneTarget, milestoneHit, choices },
     reasons: ok ? [] : ['missing_required_fields'],
   };
 }
@@ -885,21 +897,22 @@ function buildDirectorSystemPrompt(agent, session) {
   const progress = session?.progress || 0;
   
   // 根据进度调整暧昧强度
-  let intensityGuide = '极致暧昧，暗示水到渠成';
+  let intensityGuide = '极致暧昧，暗示水到戚成';
   if (progress < 15) intensityGuide = '制造心动：她靠近/触碰/暧昧对话';
   else if (progress < 30) intensityGuide = '升级撩拨：肢体接触、低语、眼神';
   else if (progress < 50) intensityGuide = '更大胆试探：危险的距离、呼吸交缠';
   else if (progress < 70) intensityGuide = '亲密升级：暧昧到极致';
   
-  return `你是短剧导演（只用中文），规划下一段要发生什么事件。\n` +
+  return `你是短剧导演（只用中文），规划下一段要发生什么事件，并提供感官锚点。\n` +
     `要求：只输出 JSON。\n` +
     `【合同】event 必填，且 writer 必须把 event 写进正文第一句。\n` +
     `eventType 必填，只能从：intrusion(闯入/敲门/被发现)/evidence(证据)/reveal(揭示)/decision(决定/交易)/relocate(换地点)/conflict(冲突/对峙)/escape(逃离)\n` +
+    `sensoryAnchor 必填：指定编剧必须重点描写的感官细节（如：指尖的颤抖、耳边的热气、避开的视线）。\n` +
     `objective 可选：如果当前【目标】为空或已明显跑偏，给一个新的“本章目标”(<=12字)。\n` +
     `objectiveAdvance 必填：advance(推进)/blocked(受阻)/cost(付出代价)。\n` +
     `角色：${agent.name}。人设：${persona}\n` +
     `边界：R18_soft。进度暗示：${intensityGuide}\n` +
-    `JSON 字段：arcId(optional), beat(optional), milestoneTarget(optional), milestoneHit(optional), eventType(必填), objectiveAdvance(必填), event(必填, 1句短句, 含2-4个关键词), objective(optional), twist, hook, stakes, choices(array 2-3 strings).`;
+    `JSON 字段：arcId(optional), beat(optional), milestoneTarget(optional), milestoneHit(optional), eventType(必填), sensoryAnchor(必填), objectiveAdvance(必填), event(必填, 1句短句, 含2-4个关键词), objective(optional), twist, hook, stakes, choices(array 2-3 strings).`;
 }
 
 function buildDirectorUserPrompt(session, intent) {
@@ -925,16 +938,24 @@ function buildWriterSystemPrompt(agent, session, directorPlan, generateImage) {
   const appearance = config.appearance || agent.description || '';
   const beat = directorPlan?.beat || session?.state?.beat || '';
   const event = directorPlan?.event || '';
+  const sensoryAnchor = directorPlan?.sensoryAnchor || '';
+  const languageStyle = config.languageStyle || '文艺';
+  const descriptionPreference = config.descriptionPreference || '注重感官与心理描写';
 
   const base =
     `你是短剧编剧（只用中文），写事件驱动的沉浸式短剧。\n` +
     `角色用「${agent.name}」的名字（不要用"我"）。用户用"你"。\n` +
-    `【合同】第一句必须写出这个 event（照抄或同义改写，但要能看出发生了同一件事）：${event}\n` +
-    `【禁止】不要输出“事件/反应/推进/悬念”这类小标题或括号标注，只写正文。\n` +
+    `【风格设定】语言风格：${languageStyle}；描写偏好：${descriptionPreference}\n` +
+    `【核心指令】每一段必须严格遵循以下四段式结构：\n` +
+    `1. [环境/感官]：基于导演给出的 sensoryAnchor 描写环境细节（气息/心跳/触感）。如：*空气中凝结着暧昧的水汽，他的指尖不经意地擦过我的手背*\n` +
+    `2. (内心独白)：在括号内描写角色的真实心理博弈或渴望。如：(他会发现我心跳得这么快吗？好想让他再靠近一点...)\n` +
+    `3. 自然对话：角色当前的台词，要带有潜台词和情感张力。\n` +
+    `4. [悬念/钩子]：最后一句必须是一个待解决的动作或悬念（有人敲门/手机响/眼神对视）。\n\n` +
+    `【合同】第一句必须写出这个 event（照抄或同义改写）：${event}\n` +
+    `【感官锚点】重点描写：${sensoryAnchor}\n` +
+    `【禁止】不要输出小标题或括号标注（除内心独白外），只写正文。\n` +
     `【最重要】每段必须有新事件，不能原地打转。\n` +
-    `结构：事件(第一句) → 反应(感官/动作) → 推进(决定/代价) → 悬念(最后一句)\n` +
-    `【写法】用感官细节渲染（气息/心跳/温度/触感），用动作暗示心理。\n` +
-    `长度：120-180字。边界：R18_soft。\n` +
+    `长度：150-250字。边界：R18_soft。\n` +
     `人设：${persona}\n` +
     `节拍：${beat}\n`;
 
@@ -1030,7 +1051,23 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
     return { ok: false, reasons: ['high_ngram_overlap'], metrics: { maxOverlap } };
   }
 
-  // 3) 场景/动作模板词重复（软失败）
+  // 3) 氛围感/三位一体结构检测（绝对对标版）
+  // 检查是否包含内心独白 (括号)
+  const hasInnerMonologue = /\(.*\)/.test(out);
+  // 检查是否包含感官描写 (星号动作)
+  const hasAction = /\*.*\*/.test(out);
+  if (!hasInnerMonologue || !hasAction) {
+    return { ok: false, reasons: ['missing_immersion_structure'], metrics: { hasInnerMonologue, hasAction } };
+  }
+
+  // 4) 氛围密度检测（检查是否有足够的描写性词汇）
+  const descriptionWords = ['气息', '心跳', '温度', '光影', '颤抖', '热气', '视线', '模糊', '紧致', '柔软'];
+  const descHit = descriptionWords.filter(w => out.includes(w)).length;
+  if (descHit < 1) {
+    return { ok: false, reasons: ['low_atmosphere_density'], metrics: { descHit } };
+  }
+
+  // 5) 场景/动作模板词重复（软失败）
   const tokensHit = SCENE_ACTION_TOKENS.filter((t) => out.includes(t));
   const lastTokensHit = SCENE_ACTION_TOKENS.filter((t) => last.includes(t));
   const tokenOverlap = tokensHit.filter((t) => lastTokensHit.includes(t)).length;
@@ -1081,7 +1118,8 @@ function validateParagraph({ text, recentParas, directorPlan, sessionState }) {
 function buildCriticSystemPrompt() {
   return (
     `你是“挑刺审核官”(Critic)，专门找短剧段落的问题并给出可执行的改写约束。\n` +
-    `目标：解决“重复/打转/无推进/事件不落地”。\n` +
+    `目标：解决“重复/打转/无推进/事件不落地/缺乏沉浸感”。\n` +
+    `重点检查：1. 是否包含 [环境/感官] 描写；2. 是否有 (内心独白)；3. 剧情是否真正推进；4. 结尾是否有钩子。\n` +
     `要求：只输出 JSON（不要解释）。\n` +
     `边界：R18_soft（允许暧昧撩拨，但禁止露骨细节）；禁止未成年。\n` +
     `JSON 字段：issues(array), diagnosis(string), mustInclude(array strings), avoidStarts(array strings), avoidPhrases(array strings), rewriteHint(string), forceTemplate(boolean).\n`

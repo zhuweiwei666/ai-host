@@ -238,6 +238,12 @@ const AgentSchema = new mongoose.Schema({
     // 背景故事（用于 prompt）
     backstory: { type: String, default: '' },
 
+    // 语言风格偏好（如：文艺、直白、幽默、高冷）
+    languageStyle: { type: String, default: '文艺' },
+    
+    // 描写偏好（如：注重感官描写、注重心理描写、注重对白张力）
+    descriptionPreference: { type: String, default: '注重感官与心理描写' },
+
     // 角色专属剧情骨架（可运营可编辑）
     skeleton: { type: StorySkeletonSchema, default: null },
   },
