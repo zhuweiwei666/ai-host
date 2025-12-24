@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const Application = require('../models/Application');
+const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const { sendSuccess, errors, HTTP_STATUS } = require('../utils/errorHandler');
 
 // 管理员权限保护
+router.use(requireAuth);
 router.use(requireAdmin);
 
 /**
