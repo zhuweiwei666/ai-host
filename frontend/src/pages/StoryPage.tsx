@@ -38,7 +38,7 @@ export default function StoryPage() {
       try {
         // 获取 agent 信息
         const agentRes = await getAgent(agentId);
-        const agentData = agentRes.data?.data || agentRes.data;
+        const agentData = (agentRes.data as any)?.data || agentRes.data;
         setAgent(agentData);
         
         // 开始故事
@@ -74,10 +74,9 @@ export default function StoryPage() {
     
     try {
       const res = await continueStory(sessionId);
-      setParagraphs(res.data.paragraphs);
-      if (res.data.affection) {
-        setAffection(res.data.affection);
-      }
+      const data = res.data as any;
+      if (data.paragraphs) setParagraphs(data.paragraphs);
+      if (data.affection) setAffection(data.affection);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '生成失败';
       setError(errorMessage);
@@ -96,10 +95,9 @@ export default function StoryPage() {
     
     try {
       const res = await inputStory(sessionId, input);
-      setParagraphs(res.data.paragraphs);
-      if (res.data.affection) {
-        setAffection(res.data.affection);
-      }
+      const data = res.data as any;
+      if (data.paragraphs) setParagraphs(data.paragraphs);
+      if (data.affection) setAffection(data.affection);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '发送失败';
       setError(errorMessage);
